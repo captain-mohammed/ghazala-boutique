@@ -12,9 +12,9 @@ export const toastOk = (m) => toast(m, 'success');
 export const toastErr = (m) => toast(m, 'error');
 
 /* ---------- Celebration bursts ---------- */
-export const celebrate = writable(null); // { x, y, emoji } | null
-export function celebrateAt(x = window.innerWidth / 2, y = window.innerHeight / 2.6, emoji = '✨') {
-  celebrate.set({ x, y, emoji, key: Date.now() });
+export const celebrate = writable(null); // { x, y, ox, oy, emoji } | null
+export function celebrateAt(x = window.innerWidth / 2, y = window.innerHeight / 2.6, emoji = '✨', origin = null) {
+  celebrate.set({ x, y, ox: origin?.x ?? x, oy: origin?.y ?? y, emoji, key: Date.now() });
   setTimeout(() => celebrate.set(null), 1600);
 }
 

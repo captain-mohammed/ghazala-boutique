@@ -5,6 +5,7 @@
   import Logo from '../components/Logo.svelte';
   import { db, allSettings } from '../db.js';
   import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap } from '../utils.js';
+  import { spotlight, tilt } from '../motion.js';
 
   let { goto } = $props();
 
@@ -56,29 +57,29 @@
 </script>
 
 <div class="stack" style="gap:14px">
-  <section class="hero glass rise" style="animation-delay:0.03s">
+  <section class="hero glass rise beam-host" style="animation-delay:0.03s">
     <div class="row" style="gap:12px; align-items:center">
       <Logo size={46} />
       <h1 class="h1">بوتيك غزالة</h1>
     </div>
 
     <div class="grid2">
-      <div class="stat">
+      <div class="stat spot" use:spotlight>
         <div class="muted small">مبيعات اليوم</div>
         <div class="big"><Ticker value={today.total} /> <span class="cur">د.ع</span></div>
         <div class="muted small">{today.count} عملية بيع</div>
       </div>
-      <div class="stat">
+      <div class="stat spot" use:spotlight>
         <div class="muted small">ربح اليوم</div>
         <div class="big gold"><Ticker value={today.profit} /> <span class="cur">د.ع</span></div>
         <div class="muted small">صافي الربح</div>
       </div>
-      <div class="stat">
+      <div class="stat spot" use:spotlight>
         <div class="muted small">قيمة المخزون</div>
         <div class="big"><Ticker value={stock.value} /> <span class="cur">د.ع</span></div>
         <div class="muted small">بسعر التكلفة</div>
       </div>
-      <div class="stat">
+      <div class="stat spot" use:spotlight>
         <div class="muted small">قطع المخزون</div>
         <div class="big"><Ticker value={stock.units} /></div>
         <div class="muted small">{stock.models} موديل</div>
@@ -88,7 +89,7 @@
 
   <section class="alerts">
     {#if stock.out > 0 || stock.low > 0}
-      <button class="alert glass rise" style="animation-delay:0.08s" onclick={() => goto('inventory')}>
+      <button class="alert glass rise" use:tilt={{ max: 5, scale: 1.01 }} style="animation-delay:0.08s" onclick={() => goto('inventory')}>
         <span class="a-ic warn"><Icon name="alert" size={20} /></span>
         <div class="a-body">
           <div class="bold">{stock.out > 0 ? `${stock.out} موديل نفد من المخزون` : `${stock.low} موديل كمية قليلة`}</div>
@@ -98,7 +99,7 @@
       </button>
     {/if}
     {#if dead.length > 0}
-      <button class="alert glass rise" style="animation-delay:0.12s" onclick={() => goto('reports')}>
+      <button class="alert glass rise" use:tilt={{ max: 5, scale: 1.01 }} style="animation-delay:0.12s" onclick={() => goto('reports')}>
         <span class="a-ic dead"><Icon name="clock" size={20} /></span>
         <div class="a-body">
           <div class="bold">{dead.length} موديل بلا حركة منذ {settings?.deadStockDays ?? 30} يوم</div>

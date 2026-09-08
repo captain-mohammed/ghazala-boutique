@@ -392,6 +392,98 @@ textarea.input { min-height: 84px; resize: vertical; }
 }
 .floaty { animation: floaty 3.2s ease-in-out infinite; }
 
+/* ---------- Spotlight surfaces (pair with use:spotlight) ---------- */
+.spot { position: relative; overflow: hidden; }
+.spot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(180px circle at var(--mx, -300px) var(--my, -300px), rgba(255, 255, 255, 0.5), transparent 65%);
+  opacity: 0;
+  transition: opacity 0.35s;
+  pointer-events: none;
+}
+.spot:hover::after { opacity: 1; }
+
+/* ---------- Border beam (Magic-UI style running light) ---------- */
+@keyframes beam-travel {
+  0% { offset-distance: 0%; opacity: 0; }
+  6% { opacity: 1; }
+  94% { opacity: 1; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+@keyframes beam-fallback {
+  0% { transform: translateX(-140%) skewX(-18deg); opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { transform: translateX(240%) skewX(-18deg); opacity: 0; }
+}
+.beam-host { position: relative; overflow: hidden; }
+.beam-host::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1.2px;
+  background: conic-gradient(from var(--beam-angle, 0deg), transparent 0%, transparent 78%, rgba(201, 161, 90, 0.85) 92%, transparent 100%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  animation: beam-rotate 5.5s linear infinite;
+  pointer-events: none;
+}
+@property --beam-angle {
+  syntax: '<angle>';
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes beam-rotate {
+  to { --beam-angle: 360deg; }
+}
+
+/* ---------- Odometer digit roll ---------- */
+.odo-digit-window {
+  display: inline-block;
+  height: 1em;
+  overflow: hidden;
+  vertical-align: baseline;
+}
+.odo-digit-col {
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.85s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.odo-digit-col > span {
+  display: block;
+  height: 1em;
+  line-height: 1;
+}
+.odo-flash {
+  animation: odo-flash 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes odo-flash {
+  0% { color: var(--gold); text-shadow: 0 0 14px rgba(201, 161, 90, 0.75); }
+  100% { color: inherit; text-shadow: none; }
+}
+
+/* ---------- Shimmer sweep text ---------- */
+.shimmer-text {
+  background: linear-gradient(100deg, var(--burgundy-deep) 0%, var(--burgundy-deep) 35%, var(--gold) 50%, var(--burgundy-deep) 65%, var(--burgundy-deep) 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3.2s ease-in-out infinite;
+}
+
+/* ---------- Dot pop (PIN dots) ---------- */
+@keyframes dot-in {
+  0% { transform: scale(0.3); }
+  55% { transform: scale(1.45); }
+  100% { transform: scale(1.15); }
+}
+
 /* ---------- Desktop sizing ---------- */
 @media (min-width: 700px) {
   .sheet { border-radius: var(--r-lg) var(--r-lg) 0 0; max-width: 560px; }

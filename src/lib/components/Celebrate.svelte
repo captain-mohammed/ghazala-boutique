@@ -17,9 +17,15 @@
       delay: Math.random() * 0.12
     }));
     burst = { ...ev, parts };
+    // sparks fly from the exact tapped button first, then the confetti blooms
+    if (typeof ev.ox === 'number') sparkFromRectAt(ev.ox, ev.oy, 16);
     const t = setTimeout(() => (burst = null), 1500);
     return () => clearTimeout(t);
   });
+
+  function sparkFromRectAt(x, y, n) {
+    import('../motion.js').then((m) => m.spawnSparks(x, y, n));
+  }
 </script>
 
 {#if burst}

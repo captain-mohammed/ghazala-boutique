@@ -8,6 +8,36 @@ Each version below lists **what was added and why it matters to the shop**.
 
 ---
 
+## [0.2.2] — 2026-09-09
+
+### Changed
+- **Baghdad time everywhere (UTC+3)** — every clock readout and the «today» boundary in the dashboard and reports now follow **Baghdad wall-clock time**, regardless of the device's timezone setting. Crossing midnight in Baghdad rolls the day correctly (a sale at 12:30 AM stays part of the new day, not yesterday).
+- **12-hour clock with ص/م** — all timestamps (sales log, sale details, item movements, backups) now read like `8 أيلول 2026 • 12:30 ص` instead of 24-hour times.
+  - *Benefit:* the owner reads times the way Iraqis speak them, and «مبيعات اليوم» truly means the Baghdad shop day.
+
+### Fixed
+- **Odometer digit columns** — amounts with grouped digits (e.g. 54,000) rendered collapsed columns rolling to wrong positions; digits are now flattened per glyph and freshly-mounted columns animate their roll-in correctly.
+
+---
+
+## [0.2.1] — 2026-09-09
+
+### Added
+- **Motion engine pass** — position-aware animations inspired by Magic UI / Aceternity / ReactBits, rebuilt natively (zero libraries added):
+  - **Click sparks** — every tap on a button, chip, keypad key, or dock tab bursts brand-colored particles and a gold ring from the *exact pointer position*.
+  - **Odometer tickers** — dashboard numbers now roll digit-by-digit like a mechanical counter (CSS spring columns) and flash gold whenever a value settles; no more plain count-ups.
+  - **Direction-aware screen transitions** — screens slide in *from the side of the tab you tapped* with a blur-clearing settle; moving to a tab on the left slides from the left, and so on.
+  - **Spring physics everywhere** — bottom sheets overshoot-settle like real springs, confirm cards pop with back-out easing, toasts drop in bouncy.
+  - **Magnetic keypad** — lock-screen keys lean toward your finger as it approaches, and the whole pad rises in a staggered wave.
+  - **3D tilt** — the lock-screen logo and dashboard alert cards respond to pointer position with a perspective tilt.
+  - **Spotlight stat cards** — a light follows your pointer across the dashboard numbers.
+  - **Border beam** — a gold light runs continuously around the hero card frame (Magic-UI signature).
+  - **Shimmer wordmark** — GHAZALA BOUTIQUE on the lock screen carries a traveling gold sheen.
+  - **Origin-aware celebrations** — the sale confetti now erupts from the exact button you pressed, not from mid-screen.
+  - All motion respects `prefers-reduced-motion`.
+
+---
+
 ## [0.2.0] — 2026-09-09
 
 ### Added

@@ -5,21 +5,58 @@ const nf = new Intl.NumberFormat('en-US');
 export const fmtNum = (n) => nf.format(Math.round(Number(n) || 0));
 export const fmtIQD = (n) => fmtNum(n) + ' د.ع';
 
+/* ---------- Baghdad time (UTC+3) ----------
+   Every clock face and "today" boundary in the app follows Baghdad
+   wall-clock time, not the device's timezone. 12-hour display with ص/م. */
+
+const BAGHDAD_TZ = 'Asia/Baghdad';
+const bagFmt = new Intl.DateTimeFormat('en-US', {
+  timeZone: BAGHDAD_TZ, hour12: false,
+  year: 'numeric', month: '2-digit', day: '2-digit',
+  hour: '2-digit', minute: '2-digit', second: '2-digit'
+});
+
+function baghdadWall(d) {
+  const o = {};
+  for (const p of bagFmt.formatToParts(d)) if (p.type !== 'literal') o[p.type] = p.value;
+  return o;
+}
+
+/* Baghdad's UTC offset at a given instant (ms) — ICU tzdata-driven,
+   so if Iraq ever reinstates DST this still stays correct */
+function baghdadOffsetMs(d = new Date()) {
+  const p = baghdadWall(d);
+  const asUTC = Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour % 24, +p.minute, +p.second);
+  return asUTC - d.getTime();
+}
+
 export function fmtDate(iso) {
   if (!iso) return '—';
-  const d = new Date(iso);
-  const date = `${d.getDate()} ${MONTHS_AR[d.getMonth()]} ${d.getFullYear()}`;
-  const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-  return `${date} • ${time}`;
+  const p = baghdadWall(new Date(iso));
+  const h24 = +p.hour % 24;
+  const period = h24 < 12 ? 'ص' : 'م';
+  const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
+  const date = `${+p.day} ${MONTHS_AR[+p.month - 1]} ${p.year}`;
+  return `${date} • ${h12}:${p.minute} ${period}`;
 }
 
 const MONTHS_AR = ['كانون الثاني', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران', 'تموز', 'آب', 'أيلول', 'تشرين الأول', 'تشرين الثاني', 'كانون الأول'];
 
-export const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
-export const daysAgoStart = (n) => { const d = startOfToday(); d.setDate(d.getDate() - n); return d; };
+/* "Today" starts at Baghdad midnight — a real instant computed from
+   the current Baghdad offset (DST-proof). Used by dashboard, reports. */
+export const startOfToday = () => {
+  const now = new Date();
+  const off = baghdadOffsetMs(now);
+  const wall = new Date(now.getTime() + off);
+  wall.setUTCHours(0, 0, 0, 0);
+  return new Date(wall.getTime() - off);
+};
+export const daysAgoStart = (n) => new Date(startOfToday().getTime() - n * 86400000);
 export const isSameDay = (iso, ref = new Date()) => {
-  const d = new Date(iso);
-  return d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth() && d.getDate() === ref.getDate();
+  const off = baghdadOffsetMs();
+  const a = new Date((iso instanceof Date ? iso : new Date(iso)).getTime() + off);
+  const b = new Date((ref instanceof Date ? ref : new Date(ref)).getTime() + off);
+  return a.getUTCFullYear() === b.getUTCFullYear() && a.getUTCMonth() === b.getUTCMonth() && a.getUTCDate() === b.getUTCDate();
 };
 
 export function downloadFile(filename, content, type = 'application/json') {

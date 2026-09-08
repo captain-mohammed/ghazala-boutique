@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
-  import { fade, fly } from 'svelte/transition';
+  import { fade } from 'svelte/transition';
+  import { screenIn } from './lib/motion.js';
   import Lock from './lib/components/Lock.svelte';
   import BottomNav from './lib/components/BottomNav.svelte';
   import Dashboard from './lib/screens/Dashboard.svelte';
@@ -44,9 +45,14 @@
 
   function goto(id) {
     if (screen === id) return;
+    // position-aware: content slides in from the tapped tab's side
+    const from = NAV_TABS.findIndex((t) => t.id === screen);
+    const to = NAV_TABS.findIndex((t) => t.id === id);
+    slideX = from !== -1 && to !== -1 ? (to > from ? 1 : -1) * 52 : 0;
     screen = id;
     window.scrollTo({ top: 0 });
   }
+  let slideX = $state(0);
 
   /* PWA update prompt */
   let needRefresh = $state(false);
@@ -75,7 +81,7 @@
 {:else}
   <main class="app" in:fade={{ duration: 250 }}>
     {#key screen}
-      <div class="screen" in:fly={{ x: 34, duration: 300, delay: 40 }}>
+      <div class="screen" in:screenIn={{ x: slideX, y: 14, duration: 430 }}>
         {#if screen !== 'home'}
           <header class="head">
             <h1 class="h1">{SUBTITLES[screen] || ''}</h1>

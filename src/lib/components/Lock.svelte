@@ -3,6 +3,7 @@
   import { getSetting, setSetting, allSettings } from '../db.js';
   import { hashPin, buzz } from '../utils.js';
   import { toastErr, toastOk } from '../store.js';
+  import { magnet, tilt } from '../motion.js';
   import Icon from './Icon.svelte';
   import Logo from './Logo.svelte';
 
@@ -83,8 +84,8 @@
 
 <div class="lock" class:shake={error}>
   <div class="lock-inner" in:fade={{ duration: 300 }}>
-    <div class="floaty"><Logo size={86} /></div>
-    <div class="wordmark">GHAZALA BOUTIQUE</div>
+    <div class="floaty" use:tilt={{ max: 14, scale: 1.06 }}><Logo size={86} /></div>
+    <div class="wordmark shimmer-text">GHAZALA BOUTIQUE</div>
     <div class="divider-gold" style="width:150px"></div>
     <div class="tag">أناقة تمشي بخطى واثقة</div>
 
@@ -98,23 +99,23 @@
 
     <div class="dots" class:err={error}>
       {#each Array(4) as _, i}
-        <span class="dot" class:fill={i < pin.length}></span>
+        <span class="dot" class:fill={i < pin.length} style={i < pin.length ? 'animation: dot-in .32s cubic-bezier(.34,1.56,.64,1) both' : ''}></span>
       {/each}
     </div>
 
     {#if cool > 0}
       <p class="muted small">انتظر {cool} ثانية…</p>
     {:else}
-      <div class="pad" in:fly={{ y: 26, duration: 400, delay: 120 }}>
+      <div class="pad">
         {#each KEYS as k, i (i)}
           {#if k === 'del'}
-            <button class="key" aria-label="حذف" onclick={() => press('del')}>
+            <button class="key" use:magnet={{ strength: 0.22, max: 6 }} in:fly={{ y: 22, duration: 380, delay: 220 + i * 45 }} aria-label="حذف" onclick={() => press('del')}>
               <Icon name="back" size={22} style="transform:scaleX(-1)" />
             </button>
           {:else if k === ''}
             <div></div>
           {:else}
-            <button class="key ripple" onclick={() => press(k)}>{k}</button>
+            <button class="key ripple" use:magnet={{ strength: 0.22, max: 6 }} in:fly={{ y: 22, duration: 380, delay: 220 + i * 45 }} onclick={() => press(k)}>{k}</button>
           {/if}
         {/each}
       </div>
@@ -162,7 +163,7 @@
     width: 100%;
     max-width: 340px;
   }
-  .wordmark { font-size: 15px; font-weight: 800; letter-spacing: 4px; color: var(--ink); }
+  .wordmark { font-size: 15px; font-weight: 800; letter-spacing: 4px; }
   .tag { font-size: 12.5px; color: var(--ink-2); }
   .prompt { margin: 12px 0 2px; color: var(--ink-2); font-size: 14px; font-weight: 600; }
   .dots { display: flex; gap: 14px; margin: 8px 0 18px; }

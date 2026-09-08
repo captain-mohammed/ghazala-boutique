@@ -1,5 +1,6 @@
 <script>
   import { fade, fly } from 'svelte/transition';
+  import { sheetSpring } from '../motion.js';
   let { open = false, title = '', onclose = () => {}, children, footer = null } = $props();
 </script>
 
@@ -9,7 +10,7 @@
     transition:fade={{ duration: 180 }}
     onclick={(e) => { if (e.target === e.currentTarget) onclose(); }}
   ></div>
-  <div class="sheet" transition:fly={{ y: 420, duration: 340, opacity: 1 }}>
+  <div class="sheet" in:sheetSpring out:fly={{ y: 460, duration: 260, opacity: 1 }}>
     <div class="sheet-grab"></div>
     {#if title}
       <div class="sheet-head">

@@ -1,5 +1,6 @@
 <script>
-  import { fade, fly } from 'svelte/transition';
+  import { fade } from 'svelte/transition';
+  import { springPop } from '../motion.js';
   import { confirmState, resolveConfirm } from '../store.js';
   import { buzz } from '../utils.js';
 
@@ -8,7 +9,7 @@
 
 {#if c}
   <div class="backdrop" transition:fade={{ duration: 150 }} onclick={() => resolveConfirm(false)}>
-    <div class="card glass-strong" transition:fly={{ y: 60, duration: 260 }} onclick={(e) => e.stopPropagation()}>
+    <div class="card glass-strong" in:springPop out:fade={{ duration: 140 }} onclick={(e) => e.stopPropagation()}>
       <h3>{c.title}</h3>
       {#if c.body}<p>{c.body}</p>{/if}
       <div class="row" style="gap:10px; margin-top:16px">
