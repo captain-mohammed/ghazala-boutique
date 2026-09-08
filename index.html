@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <title>بوتيك غزالة — GHAZALA BOUTIQUE</title>
+    <meta name="description" content="نظام إدارة مخزون ومبيعات بوتيك غزالة — يعمل بدون إنترنت" />
+    <meta name="theme-color" content="#FBF3EE" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="icon" type="image/png" href="./icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="preload" as="font" type="font/woff2" href="./fonts/NotoSansArabic-Arabic.woff2" crossorigin /><link rel="preload" as="font" type="font/woff2" href="./fonts/NotoSansArabic-Latin.woff2" crossorigin />
+    <link rel="stylesheet" href="./src/styles/glass.css" />
+    <style>
+      html, body { margin: 0; padding: 0; background: #FBF3EE; font-family: 'Noto Sans Arabic', sans-serif; }
+      #app { min-height: 100dvh; }
+      .boot-splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; background: #FBF3EE; z-index: 1; }
+      .boot-splash .logo { width: 130px; height: auto; filter: drop-shadow(0 14px 30px rgba(122,46,58,.25)); animation: bootpulse 1.6s ease-in-out infinite; }
+      .boot-splash .name { font-size: 20px; color: #7A2E3A; letter-spacing: 3px; font-weight: 700; }
+      .boot-splash .tag { font-size: 13px; color: #9C7B6B; }
+      @keyframes bootpulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="boot-splash">
+        <img class="logo" src="./brand/wordmark.png" alt="بوتيك غزالة" />
+        <div class="name">GHAZALA BOUTIQUE</div>
+        <div class="tag">بوتيك غزالة — أناقة تمشي بخطى واثقة</div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function () {
+          navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function () {});
+        });
+      }
+    </script>
+  </body>
+</html>

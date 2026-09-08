@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.freebuff/
+logo-512.png
+logo-1024.png
+logo-capture.png
+readme-header.png
+assets-manifest.json
+dev-dist/
+*.log

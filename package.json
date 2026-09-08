@@ -1,0 +1,26 @@
+{
+  "name": "ghazala-boutique",
+  "private": true,
+  "version": "0.2.0",
+  "type": "module",
+  "description": "بوتيك غزالة — نظام إدارة المخزون والمبيعات — offline-first PWA",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "icons": "node scripts/gen-icons.mjs"
+  },
+  "dependencies": {
+    "dexie": "^4.0.11",
+    "svelte": "^5.35.5",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^6.0.0",
+    "@vitejs/plugin-legacy": "^7.0.0",
+    "@zxing/browser": "^0.1.5",
+    "sharp": "^0.34.2",
+    "vite": "^7.0.0",
+    "vite-plugin-pwa": "^1.0.0"
+  }
+}
