@@ -2,13 +2,14 @@
   import { onMount } from 'svelte';
   import Icon from '../components/Icon.svelte';
   import Ticker from '../components/Ticker.svelte';
-  import { db, allSettings } from '../db.js';
+  import { db, allSettings, getSetting, WOMENS_TYPES } from '../db.js';
   import Glass from '../components/Glass.svelte';
-  import { fmtIQD, fmtNum, startOfToday, daysAgoStart, lastSaleMap } from '../utils.js';
+  import { fmtIQD, fmtNum, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR } from '../utils.js';
 
   let products = $state([]);
   let sales = $state([]);
   let expenses = $state([]);
+  let closings = $state([]);
   let settings = $state(null);
   let period = $state('today');
 
@@ -22,11 +23,12 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, s, e] = await Promise.all([db.products.toArray(), db.sales.toArray(), db.expenses.toArray()]);
+      const [p, s, e, c] = await Promise.all([db.products.toArray(), db.sales.toArray(), db.expenses.toArray(), getSetting('monthClosing', [])]);
       if (!alive) return;
       products = p;
       sales = s;
       expenses = e;
+      closings = Array.isArray(c) ? c : [];
     };
     grab();
     const t = setInterval(grab, 5000);
@@ -87,6 +89,53 @@
   const low = $derived(products.filter((p) => p.qty > 0 && p.qty <= (settings?.lowStockThreshold ?? 3)));
 
   const stockValue = $derived(products.reduce((a, p) => a + (p.qty || 0) * (p.cost || 0), 0));
+
+  /* ---- Profit by type (بوت vs سلامبر vs موال vs كعب) ----
+     Type lives on the product; older sale lines carry the name too, so we
+     match by name keyword for legacy sales whose SKU no longer exists. */
+  const byType = $derived.by(() => {
+    const typeBySku = new Map();
+    for (const p of products) typeBySku.set(p.sku, p.type || (p.category !== 'نسائية' ? p.category : ''));
+    const guess = (sku, name) => {
+      if (typeBySku.has(sku)) return typeBySku.get(sku) || 'غير محدد';
+      const n = String(name || '');
+      return WOMENS_TYPES.find((t) => n.includes(t)) || 'غير محدد';
+    };
+    const m = new Map();
+    for (const s of inPeriod) for (const it of s.items) {
+      const t = guess(it.sku, it.name);
+      const cur = m.get(t) || { type: t, qty: 0, revenue: 0, profit: 0 };
+      cur.qty += it.qty;
+      cur.revenue += it.price * it.qty;
+      cur.profit += (it.price - (it.cost || 0)) * it.qty;
+      m.set(t, cur);
+    }
+    return [...m.values()].sort((a, b) => b.profit - a.profit);
+  });
+  const bestType = $derived(byType.find((t) => t.type !== 'غير محدد'));
+  const typeMax = $derived(Math.max(1, ...byType.map((t) => t.profit)));
+  const typeRevenue = $derived(byType.reduce((a, t) => a + t.revenue, 0));
+
+  /* ---- Sell-through rate: % of each model sold since it arrived ----
+     arrived = current qty + ever sold. Real buyer's metric — the shoe that
+     turns fast is worth more than the shoe that looks nice on the shelf. */
+  const sellThrough = $derived.by(() => {
+    const soldQty = new Map();
+    for (const s of sales) {
+      if (s.status === 'returned') continue;
+      for (const it of s.items) soldQty.set(it.sku, (soldQty.get(it.sku) || 0) + (Number(it.qty) || 0));
+    }
+    return products
+      .map((p) => {
+        const sold = soldQty.get(p.sku) || 0;
+        const arrived = sold + (p.qty || 0);
+        return { p, sold, arrived, rate: arrived ? Math.round((sold / arrived) * 100) : 0 };
+      })
+      .filter((x) => x.arrived > 0)
+      .sort((a, b) => b.rate - a.rate);
+  });
+  const movingFast = $derived(sellThrough.filter((x) => x.rate >= 60 && x.sold >= 3).slice(0, 4));
+  const movingSlow = $derived(sellThrough.filter((x) => x.rate < 25 && x.arrived >= 3).slice(-4).reverse());
 </script>
 
 <div class="stack" style="gap:12px">
@@ -127,6 +176,78 @@
               <div class="muted small">{fmtNum(b.qty)} قطعة</div>
             </div>
             <div class="money small">{fmtIQD(b.revenue)}</div>
+          </div>
+        {/each}
+      </div>
+    </Glass>
+  {/if}
+
+  {#if byType.length && period !== 'today'}
+    <Glass class="rise" style="animation-delay:0.18s; padding:16px">
+      <div class="row" style="justify-content:space-between; margin-bottom:10px">
+        <h2 class="h2"><Icon name="chart" size={17} color="var(--gold)" /> الربح حسب النوع</h2>
+        {#if bestType}<span class="tiny bold" style="color:var(--gold)">زيّدي من {bestType.type} 💛</span>{/if}
+      </div>
+      <div class="stack" style="gap:10px">
+        {#each byType as t (t.type)}
+          <div class="tp-row">
+            <div class="row" style="justify-content:space-between; margin-bottom:5px">
+              <span class="bold small">{t.type} <span class="muted" style="font-weight:600">• {fmtNum(t.qty)} قطعة</span></span>
+              <span class="money small" style="color:{t.profit >= 0 ? 'var(--good)' : 'var(--burgundy)'}">{fmtIQD(t.profit)}</span>
+            </div>
+            <div class="tp-bar"><i style="width:{Math.max(3, (t.profit / typeMax) * 100)}%"></i></div>
+            <div class="muted tiny" style="margin-top:4px">{typeRevenue ? Math.round((t.revenue / typeRevenue) * 100) : 0}% من الإيراد — {fmtIQD(t.revenue)}</div>
+          </div>
+        {/each}
+      </div>
+    </Glass>
+  {/if}
+
+  {#if sellThrough.length}
+    <Glass class="rise" style="animation-delay:0.2s; padding:16px">
+      <h2 class="h2" style="margin-bottom:4px"><Icon name="flame" size={17} color="var(--burgundy)" /> نسبة التصريف</h2>
+      <p class="muted small" style="margin:0 0 10px">كم٪ من كل موديل انباع منذ وصل — مقياس التاجر الحقيقي.</p>
+      {#if movingFast.length}
+        <div class="st-head good">يدور بسرعة — ما يلبث على الرف</div>
+        {#each movingFast as x (x.p.sku)}
+          <div class="brow" style="margin-bottom:6px">
+            <div class="a-body">
+              <div class="bold small">{x.p.name}</div>
+              <div class="muted small">{x.p.color || x.p.category}{x.p.size ? ' • ' + x.p.size : ''} — انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
+            </div>
+            <span class="qbadge hot">{x.rate}%</span>
+          </div>
+        {/each}
+      {/if}
+      {#if movingSlow.length}
+        <div class="st-head slow">يتثاقل — فكّري بعرض أو تصفية</div>
+        {#each movingSlow as x (x.p.sku)}
+          <div class="brow" style="margin-bottom:6px">
+            <div class="a-body">
+              <div class="bold small">{x.p.name}</div>
+              <div class="muted small">{x.p.color || x.p.category}{x.p.size ? ' • ' + x.p.size : ''} — انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
+            </div>
+            <span class="qbadge cold">{x.rate}%</span>
+          </div>
+        {/each}
+      {/if}
+    </Glass>
+  {/if}
+
+  {#if closings.length}
+    <Glass class="rise" style="animation-delay:0.22s; padding:16px">
+      <h2 class="h2" style="margin-bottom:10px"><Icon name="list" size={17} color="var(--gold)" /> دفتر الشهر</h2>
+      <div class="stack" style="gap:8px">
+        {#each [...closings].reverse() as c (c.month)}
+          <div class="brow">
+            <div class="a-body">
+              <div class="bold small">{MONTHS_AR[+c.month.split('-')[1] - 1]} {c.month.split('-')[0]}</div>
+              <div class="muted tiny">{fmtNum(c.count)} عملية • {fmtNum(c.pieces)} قطعة • {fmtNum(c.modelsAdded)} موديل وصل</div>
+            </div>
+            <div style="text-align:left">
+              <div class="money" style="color:var(--gold); font-size:13.5px">{fmtIQD(c.net)}</div>
+              <div class="muted tiny">صافي بعد المصاريف</div>
+            </div>
           </div>
         {/each}
       </div>
@@ -229,4 +350,28 @@
     font-size: 12.5px;
   }
   .qbadge.low { background: rgba(192, 127, 58, 0.15); color: var(--warn); }
+  .qbadge.hot { background: rgba(78, 138, 95, 0.15); color: var(--good); }
+  .qbadge.cold { background: rgba(122, 46, 58, 0.12); color: var(--burgundy-deep); }
+
+  .tp-row { padding: 2px 0; }
+  .tp-bar {
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(122, 46, 58, 0.08);
+    overflow: hidden;
+  }
+  .tp-bar i {
+    display: block; height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--burgundy), var(--gold));
+    animation: grow-x 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+    transform-origin: right;
+  }
+  @keyframes grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+  .st-head {
+    font-size: 11.5px; font-weight: 800;
+    padding: 4px 2px 6px;
+  }
+  .st-head.good { color: var(--good); }
+  .st-head.slow { color: var(--warn); margin-top: 6px; }
 </style>

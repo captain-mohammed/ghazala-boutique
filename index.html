@@ -6,6 +6,23 @@
     <title>بوتيك غزالة — GHAZALA BOUTIQUE</title>
     <meta name="description" content="نظام إدارة مخزون ومبيعات بوتيك غزالة — يعمل بدون إنترنت" />
     <meta name="theme-color" content="#FBF3EE" />
+    <script>
+      /* theme before first paint — no ivory flash on a dark Baghdad morning */
+      (function () {
+        try {
+          var m = localStorage.getItem('ghazala.theme') || 'light';
+          var e = m;
+          if (m === 'auto') {
+            var h = +new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Baghdad', hour: '2-digit', hour12: false }).format(new Date()) % 24;
+            e = (h >= 18 || h < 6) ? 'dark' : 'light';
+          }
+          if (e === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+            document.querySelector('meta[name=theme-color]').setAttribute('content', '#171013');
+          }
+        } catch (x) { /* noop */ }
+      })();
+    </script>
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -21,6 +38,9 @@
       .boot-splash .name { font-size: 20px; color: #7A2E3A; letter-spacing: 3px; font-weight: 700; }
       .boot-splash .tag { font-size: 13px; color: #9C7B6B; }
       @keyframes bootpulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+      html[data-theme="dark"] body, html[data-theme="dark"] .boot-splash { background: #171013; }
+      html[data-theme="dark"] .boot-splash .name { color: #d97b8a; }
+      html[data-theme="dark"] .boot-splash .tag { color: #b79b8d; }
     </style>
   </head>
   <body>

@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import { startOfToday } from './utils.js';
+import { startOfToday, baghdadMonthKey, monthRange, salePieces } from './utils.js';
 
 export const db = new Dexie('ghazala_boutique');
 
@@ -58,6 +58,7 @@ export const DEFAULT_SETTINGS = {
   pin: null,
   categories: DEFAULT_CATEGORIES,
   backupReminderAt: null,
+  theme: 'light', // 'light' | 'dark' | 'auto' (auto = ليل بغداد)
   waTemplate: null // null → app default (see DEFAULT_WA_TEMPLATE in utils.js)
 };
 
@@ -440,6 +441,42 @@ export async function upcomingOccasions(windowDays = 30) {
     .map((o) => ({ ...o, inDays: daysUntil(o.month, o.day) }))
     .filter((o) => o.inDays <= windowDays)
     .sort((a, b) => a.inDays - b.inDays);
+}
+
+/* ---------------- Monthly closing (دفتر الشهر) ----------------
+   Once the Baghdad month rolls over, the previous month is auto-saved
+   as an immutable mini-ledger: profit, revenue, pieces, additions,
+   stock value at closing. Runs at app boot; never rewrites a closed month. */
+export async function sweepMonthClosing() {
+  try {
+    const key = baghdadMonthKey(1); // last month — this one is still open
+    const list = await getSetting('monthClosing', null);
+    if (Array.isArray(list) && list.some((s) => s.month === key)) return;
+    const [start, end] = monthRange(key);
+    const inMonth = (iso) => { const t = new Date(iso).getTime(); return t >= start.getTime() && t < end.getTime(); };
+    const [allSales, allProducts, allExpenses] = await Promise.all([db.sales.toArray(), db.products.toArray(), db.expenses.toArray()]);
+    const active = allSales.filter((s) => s.status !== 'returned' && inMonth(s.date));
+    const expenses = allExpenses.filter((e) => inMonth(e.date)).reduce((a, e) => a + (Number(e.amount) || 0), 0);
+    const added = allProducts.filter((p) => inMonth(p.createdAt || p.updatedAt));
+    if (!active.length && !added.length && !expenses) return; // nothing happened — nothing to close
+    const snap = {
+      month: key,
+      closedAt: new Date().toISOString(),
+      count: active.length,
+      pieces: active.reduce((a, s) => a + salePieces(s), 0),
+      revenue: active.reduce((a, s) => a + (Number(s.subtotal) || 0), 0),
+      profit: active.reduce((a, s) => a + (Number(s.profit) || 0), 0),
+      expenses,
+      modelsAdded: added.length,
+      unitsAdded: added.reduce((a, p) => a + (Number(p.qty) || 0), 0),
+      stockValue: allProducts.reduce((a, p) => a + (p.qty || 0) * (p.cost || 0), 0),
+      stockUnits: allProducts.reduce((a, p) => a + (p.qty || 0), 0)
+    };
+    snap.net = snap.profit - snap.expenses;
+    await setSetting('monthClosing', [...(list || []), snap].slice(-36));
+  } catch (e) {
+    console.error('sweepMonthClosing', e);
+  }
 }
 
 /* ---------------- Demo data (اختياري للتجربة) ---------------- */

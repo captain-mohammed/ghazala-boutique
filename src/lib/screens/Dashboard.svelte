@@ -6,7 +6,7 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import { db, allSettings, upcomingOccasions } from '../db.js';
-  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz } from '../utils.js';
+  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
   import { invoicePreset, sellPrefill } from '../store.js';
 
@@ -113,6 +113,35 @@
     buzz(10);
     goto('sell');
   }
+
+  /* ---- Streak badges — quiet little medals under the hero ---- */
+  const dayPieces = $derived.by(() => {
+    const m = new Map();
+    for (const s of sales) {
+      if (s.status === 'returned') continue;
+      const k = baghdadDayKey(s.date);
+      m.set(k, (m.get(k) || 0) + salePieces(s));
+    }
+    return m;
+  });
+  const bestDay = $derived.by(() => {
+    const todayK = baghdadDayKey(new Date());
+    const ym = todayK.slice(0, todayK.lastIndexOf('-'));
+    let best = null;
+    for (const [k, v] of dayPieces) if (k.startsWith(ym) && (!best || v > best.v)) best = { k, v };
+    return best && best.v >= 3 ? best : null;
+  });
+  const streak = $derived.by(() => {
+    let n = 0;
+    for (let i = 0; i < 90; i++) {
+      if ((dayPieces.get(baghdadDayKey(daysAgoStart(i))) || 0) > 0) n++;
+      else if (i !== 0) break; // an in-progress today doesn't break the streak
+    }
+    return n;
+  });
+  /* Backup health: days since the last JSON export */
+  const bkDays = $derived(settings?.lastBackupAt ? Math.floor((Date.now() - new Date(settings.lastBackupAt).getTime()) / 86400000) : null);
+  const bkKind = $derived(bkDays === null ? 'none' : bkDays >= 14 ? 'bad' : bkDays >= 7 ? 'warn' : 'good');
 
   const recent = $derived([...sales].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 4));
 
@@ -223,6 +252,25 @@
       </div>
     </div>
   </Glass>
+
+  {#if bestDay || streak >= 3 || bkKind === 'warn' || bkKind === 'bad' || bkKind === 'none'}
+    <div class="medals">
+      {#if bestDay}
+        <button class="medal gold-medal" onclick={() => { buzz(6); goto('reports'); }} title="أحسن يوم هذا الشهر">
+          <Icon name="sparkle" size={13} /> أحسن يوم: {fmtNum(bestDay.v)} قطعة — {dayLabelFromKey(bestDay.k)}
+        </button>
+      {/if}
+      {#if streak >= 3}
+        <span class="medal" title="أيام متتالية فيها بيع">
+          <Icon name="flame" size={13} /> سلسلة {fmtNum(streak)} يوم
+        </span>
+      {/if}
+      <button class="medal bk-{bkKind}" onclick={() => { buzz(6); goto('backup'); }} title="صحة النسخ الاحتياطي">
+        <Icon name="shield" size={13} />
+        {bkKind === 'none' ? 'لا نسخة بعد' : bkKind === 'bad' ? `نسخة منذ ${fmtNum(bkDays)} يوم` : bkKind === 'warn' ? `نسخة منذ ${fmtNum(bkDays)} يوم` : 'نسخة حديثة'}
+      </button>
+    </div>
+  {/if}
 
   <section class="alerts">
     {#if smartOn}
@@ -423,6 +471,28 @@
   }
 
   :global(.smart) { padding: 13px 15px; display: flex; flex-direction: column; gap: 10px; }
+
+  .medals { display: flex; flex-wrap: wrap; gap: 8px; margin-top: -4px; }
+  .medal {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: inherit; font-size: 11.5px; font-weight: 800;
+    color: var(--ink-2);
+    background: rgba(255, 255, 255, 0.35);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 11px;
+  }
+  button.medal { cursor: pointer; transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  button.medal:active { transform: scale(0.94); }
+  .gold-medal {
+    color: #8a6a35;
+    background: var(--gold-soft);
+    border-color: rgba(201, 161, 90, 0.35);
+  }
+  .medal.bk-good { color: var(--good); }
+  .medal.bk-warn { color: var(--warn); background: rgba(192, 127, 58, 0.12); border-color: rgba(192, 127, 58, 0.35); }
+  .medal.bk-bad { color: #fff; background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep)); border-color: transparent; }
+  .medal.bk-none { color: var(--burgundy-deep); background: var(--accent-soft); border-color: rgba(181, 73, 91, 0.3); }
   .sm-head {
     display: flex; align-items: center; gap: 8px;
     margin: 0; font-size: 14px; font-weight: 800; color: var(--ink);

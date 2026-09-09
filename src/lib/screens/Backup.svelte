@@ -98,21 +98,25 @@
   }
 
   const reminder = $derived.by(() => {
-    if (!lastBackup) return { on: true, msg: 'لم تأخذ نسخة احتياطية بعد — يُنصح بأخذ نسخة أسبوعياً.' };
+    if (!lastBackup) return { on: true, level: 'bad', days: null, score: 0, msg: 'لم تأخذ نسخة احتياطية بعد — خُذ أول نسخة الآن.' };
     const days = Math.floor((Date.now() - new Date(lastBackup)) / 86400000);
-    if (days >= 7) return { on: true, msg: `آخر نسخة منذ ${days} يوم — خُذ نسخة جديدة.` };
-    return { on: false, msg: `آخر نسخة: ${fmtDate(lastBackup)}` };
+    if (days >= 14) return { on: true, level: 'bad', days, score: 1, msg: `آخر نسخة منذ ${days} يوم — بياناتك في خطر لو انمسحت. خذ نسخة جديدة الحين.` };
+    if (days >= 7) return { on: true, level: 'gold', days, score: 2, msg: `التذكير الأسبوعي: آخر نسخة منذ ${days} يوم — جِدِّد نسختك.` };
+    return { on: false, level: 'good', days, score: 3, msg: `آخر نسخة: ${fmtDate(lastBackup)}` };
   });
 </script>
 
 <div class="stack" style="gap:12px">
-  <Glass class="rise" style="padding:16px; animation-delay:0s; {reminder.on ? 'border-color:rgba(192,127,58,0.4)' : ''}">
+  <Glass class="rise bk-card bk-{reminder.level}" style="padding:16px; animation-delay:0s; border-radius:var(--r-lg)">
     <div class="row" style="gap:10px; margin-bottom:10px">
-      <Icon name={reminder.on ? 'alert' : 'check'} size={19} color={reminder.on ? 'var(--warn)' : 'var(--good)'} />
-      <span class="bold small" style="flex:1">{reminder.on ? 'تذكير النسخ الاحتياطي' : 'نسختك حديثة'}</span>
+      <Icon name={reminder.on ? 'alert' : 'check'} size={19} color={reminder.level === 'good' ? 'var(--good)' : reminder.level === 'gold' ? 'var(--gold)' : 'var(--burgundy)'} />
+      <span class="bold small" style="flex:1">{reminder.level === 'good' ? 'نسختك حديثة' : reminder.level === 'gold' ? 'تذكير أسبوعي' : 'النسخة متأخرة'}</span>
+      <span class="health" title="درجة صحة النسخ الاحتياطي">
+        {#each [3, 2, 1] as n (n)}<i class={reminder.score >= n ? 'on' : ''}></i>{/each}
+      </span>
     </div>
     <p class="muted small" style="margin:0 0 12px">{reminder.msg} بياناتك محفوظة في هذا الجهاز فقط — النسخة الاحتياطية هي حمايتك الوحيدة من مسح بيانات المتصفح.</p>
-    <button class="btn primary block" onclick={doBackup}>
+    <button class="btn {reminder.level === 'good' ? 'primary' : 'gold'} block" onclick={doBackup}>
       <Icon name="download" size={18} /> أخذ نسخة احتياطية الآن
     </button>
   </Glass>
@@ -149,3 +153,17 @@
     <button class="btn ghost block" onclick={() => { restoreOpen = false; pendingData = null; }}>إلغاء</button>
   </div>
 </Sheet>
+
+<style>
+  :global(.bk-card) { position: relative; }
+  :global(.bk-card.bk-gold) { border-color: rgba(201, 161, 90, 0.55) !important; box-shadow: 0 8px 26px rgba(164, 128, 62, 0.18); }
+  :global(.bk-card.bk-bad) { border-color: rgba(181, 73, 91, 0.5) !important; }
+  .health { display: inline-flex; gap: 4px; align-items: center; }
+  .health i {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: var(--line-2);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .health i.on { background: var(--gold); box-shadow: 0 0 8px rgba(201, 161, 90, 0.5); }
+</style>

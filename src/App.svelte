@@ -21,6 +21,8 @@
   import PasteToSell from './lib/screens/PasteToSell.svelte';
   import ReceiveInvoice from './lib/screens/ReceiveInvoice.svelte';
   import Occasions from './lib/screens/Occasions.svelte';
+  import { loadTheme } from './lib/theme.js';
+  import { sweepMonthClosing } from './lib/db.js';
 
   let locked = $state(true);
   let screen = $state('home');
@@ -71,6 +73,8 @@
   let wbUpdate = null;
 
   onMount(async () => {
+    loadTheme();
+    sweepMonthClosing();
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredInstall = e;

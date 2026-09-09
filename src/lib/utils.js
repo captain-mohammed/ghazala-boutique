@@ -44,7 +44,34 @@ export function fmtDate(iso) {
   return `${date} • ${h12}:${p.minute} ${period}`;
 }
 
-const MONTHS_AR = ['كانون الثاني', 'شباط', 'آذار', 'نيسان', 'أيار', 'حزيران', 'تموز', 'آب', 'أيلول', 'تشرين الأول', 'تشرين الثاني', 'كانون الأول'];
+export const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+
+/* Baghdad wall-clock hour (0-23) and the night window auto theme uses */
+export const baghdadHour = (d = new Date()) => +baghdadWall(d).hour % 24;
+export const isNightBaghdad = (d = new Date()) => { const h = baghdadHour(d); return h >= 18 || h < 6; };
+
+/* Baghdad calendar keys — stable day/month buckets for stats */
+export function baghdadDayKey(when) {
+  const p = baghdadWall(new Date(when));
+  return `${p.year}-${+p.month}-${+p.day}`;
+}
+/* 'YYYY-MM' for the Baghdad month `back` months ago (0 = current) */
+export function baghdadMonthKey(back = 0) {
+  const p = baghdadWall(new Date());
+  let y = +p.year, m = +p.month - back;
+  while (m < 1) { m += 12; y -= 1; }
+  return `${y}-${String(m).padStart(2, '0')}`;
+}
+/* [year, month] bounds (as Dates) for a 'YYYY-MM' key: [start, nextMonthStart) */
+export function monthRange(key) {
+  const [y, m] = key.split('-').map(Number);
+  return [new Date(y, m - 1, 1), new Date(y, m, 1)];
+}
+/* '5 أيلول' from a dayKey */
+export function dayLabelFromKey(key) {
+  const [, m, d] = String(key).split('-');
+  return `${+d} ${MONTHS_AR[+m - 1] || ''}`;
+}
 
 /* "Today" starts at Baghdad midnight — a real instant computed from
    the current Baghdad offset (DST-proof). Used by dashboard, reports. */

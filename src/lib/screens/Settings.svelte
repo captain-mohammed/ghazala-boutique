@@ -5,6 +5,7 @@
   import { db, allSettings, setSetting, seedDemo, wipeAll, DEFAULT_CATEGORIES } from '../db.js';
   import { fmtIQD, buzz, hashPin, WA_VARS, DEFAULT_WA_TEMPLATE, buildSalesMessage } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
+  import { applyTheme } from '../theme.js';
 
   let fee = $state('');
   let low = $state(3);
@@ -12,6 +13,7 @@
   let cats = $state([]);
   let newCat = $state('');
   let loaded = $state(false);
+  let themeMode = $state('light');
 
   /* WhatsApp message template */
   let waText = $state(DEFAULT_WA_TEMPLATE);
@@ -24,12 +26,26 @@
     low = s.lowStockThreshold;
     deadDays = s.deadStockDays;
     cats = [...(s.categories || DEFAULT_CATEGORIES)];
+    themeMode = s.theme || 'light';
     if (typeof s.waTemplate === 'string' && s.waTemplate.trim()) {
       waText = s.waTemplate;
       waTouched = true;
     }
     loaded = true;
   });
+
+  const THEMES = [
+    { id: 'light', label: 'فاتح', icon: 'sparkle' },
+    { id: 'dark', label: 'ليلي', icon: 'moon' },
+    { id: 'auto', label: 'تلقائي', icon: 'clock' }
+  ];
+  async function pickTheme(id) {
+    themeMode = id;
+    await setSetting('theme', id);
+    applyTheme(id);
+    buzz(10);
+    toastOk(id === 'auto' ? 'تلقائي — يغلق بالليل بتوقيت بغداد' : id === 'dark' ? 'الوضع الليلي مفعّل' : 'الوضع النهاري مفعّل');
+  }
 
   async function saveFee() {
     await setSetting('deliveryFee', Math.max(0, Number(fee) || 0));
@@ -132,6 +148,19 @@
 <div class="stack" style="gap:12px">
   {#if loaded}
     <Glass class="rise" style="padding:16px">
+      <h2 class="h2" style="margin-bottom:6px"><Icon name="moon" size={17} color="var(--burgundy)" /> المظهر</h2>
+      <p class="muted small" style="margin:0 0 12px">«تلقائي» يلبس غزالة نظارة الليل من 6 المغرب إلى 6 الصباح بتوقيت بغداد.</p>
+      <div class="theme-seg">
+        {#each THEMES as t (t.id)}
+          <button type="button" class="th-btn" class:on={themeMode === t.id} onclick={() => pickTheme(t.id)}>
+            <Icon name={t.icon} size={16} />
+            {t.label}
+          </button>
+        {/each}
+      </div>
+    </Glass>
+
+    <Glass class="rise" style="padding:16px; animation-delay:0.05s">
       <h2 class="h2" style="margin-bottom:12px"><Icon name="truck" size={17} color="var(--burgundy)" /> التوصيل</h2>
       <div class="field">
         <label>أجور التوصيل (د.ع) — لكل المحافظات</label>
@@ -254,5 +283,30 @@
     resize: vertical;
     line-height: 1.7;
     font-family: inherit;
+  }
+  .theme-seg {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+  }
+  .th-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+    min-height: 46px;
+    border-radius: 14px;
+    border: 1px solid var(--line-2);
+    background: rgba(255, 255, 255, 0.5);
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 800;
+    color: var(--ink-2);
+    cursor: pointer;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, color 0.2s, border-color 0.2s;
+  }
+  .th-btn:active { transform: scale(0.95); }
+  .th-btn.on {
+    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
+    border-color: rgba(255, 255, 255, 0.35);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(122, 46, 58, 0.25);
   }
 </style>
