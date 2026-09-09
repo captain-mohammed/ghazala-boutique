@@ -1,6 +1,5 @@
 <script>
   import Icon from '../components/Icon.svelte';
-  import Logo from '../components/Logo.svelte';
   import Glass from '../components/Glass.svelte';
   import { buzz } from '../utils.js';
 
@@ -15,24 +14,14 @@
     { id: 'expenses', icon: 'wallet', label: 'المصاريف', desc: 'الإيجار والنقل والتغليف — تُخصم من الربح' },
     { id: 'stocktake', icon: 'check', label: 'الجرد', desc: 'مطابقة الكميات مع الرفوف' },
     { id: 'modelopts', icon: 'sliders', label: 'خيارات الموديلات', desc: 'التصنيفات، الأنواع، المواسم، المواد، والألوان — عدّليها كما تحبين' },
-    { id: 'logo', icon: 'sparkle', label: 'شعار التطبيق', desc: 'تغيير شعار بوتيك غزالة أو استعادة الافتراضي' },
     { id: 'settings', icon: 'settings', label: 'الإعدادات', desc: 'التوصيل، التنبيهات، الرقم السري' },
     { id: 'backup', icon: 'shield', label: 'النسخ الاحتياطي', desc: 'حماية بياناتك — نسخة واستعادة' },
     { id: 'about', icon: 'info', label: 'عن التطبيق', desc: 'بوتيك غزالة ومعلومات النسخة' }
   ];
 </script>
 
-<div class="stack" style="gap:12px">
-  <Glass class="brand rise">
-    <Logo size={54} />
-    <div>
-      <div class="bold">بوتيك غزالة</div>
-      <div class="muted small">أناقة تمشي بخطى واثقة</div>
-    </div>
-  </Glass>
-
-  <div class="stack" style="gap:10px">
-    {#each items as it, i (it.id)}
+<div class="stack" style="gap:10px">
+  {#each items as it, i (it.id)}
       <Glass
         as="button"
         class="menu rise"
@@ -48,15 +37,8 @@
       </Glass>
     {/each}
   </div>
-</div>
 
 <style>
-  :global(.brand) {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 16px;
-  }
   :global(.menu) {
     display: flex;
     align-items: center;

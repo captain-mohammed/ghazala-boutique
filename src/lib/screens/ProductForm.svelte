@@ -3,32 +3,62 @@
   import Glass from '../components/Glass.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
-  import { db, addProduct, updateProduct, modelOptions, SIZE_RUNS, modelKey } from '../db.js';
+  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey } from '../db.js';
   import { fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
-  import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
+  import { toastOk, toastErr, celebrateAt } from '../store.js';
 
   let { product = null, photo = null, ondone = () => {} } = $props();
 
   const editing = !!product;
+  const NOCOLOR = 'بلا لون';
 
   let name = $state(product?.name ?? '');
   let category = $state(product?.category ?? '');
   let type = $state(product?.type ?? '');
   let brand = $state(product?.brand ?? '');
-  let color = $state(product?.color ?? '');
   let season = $state(product?.season ?? '');
   let material = $state(product?.material ?? '');
-  let size = $state(product?.size ?? '');
   let cost = $state(product?.cost ?? '');
   let price = $state(product?.price ?? '');
-  let qty = $state(product?.qty ?? 1);
   let notes = $state(product?.notes ?? '');
 
-  /* owner vocabulary — المزيد ← خيارات الموديلات */
-  let opts = $state({ categories: [], types: [], seasons: [], materials: [], colors: [] });
-  (async () => { opts = await modelOptions(); if (!category) category = opts.categories[0] || 'نسائية'; })();
+  /* multi-color × multi-size: one card per selected color */
+  let selColors = $state([]); // color labels ('' stored as NOCOLOR)
+  let byColor = $state({});   // label → { size: qty }
+  let siblings = $state([]);  // loaded existing variants (edit mode)
 
-  /* photo-first: the picture rides the whole form, sitting beside the name */
+  let opts = $state({ categories: [], types: [], seasons: [], materials: [], colors: [] });
+  (async () => {
+    opts = await modelOptions();
+    if (!category) category = opts.categories[0] || 'نسائية';
+    if (product) {
+      const all = await db.products.toArray();
+      const group = all.filter((x) =>
+        x.name.trim().toLowerCase() === product.name.trim().toLowerCase() &&
+        x.category === product.category
+      );
+      const cs = [];
+      const bc = {};
+      for (const x of group) {
+        const c = (x.color || '').trim() || NOCOLOR;
+        const s = String(x.size || '').trim() || '—';
+        if (!bc[c]) { bc[c] = {}; cs.push(c); }
+        bc[c][s] = x.qty || 0;
+      }
+      selColors = cs;
+      byColor = bc;
+      siblings = group;
+    }
+  })();
+
+  /* legacy free-typed colors not in the owner palette — still selectable/removable */
+  const palette = $derived([
+    ...opts.colors,
+    ...selColors
+      .filter((c) => c !== NOCOLOR && !opts.colors.some((o) => o.label === c))
+      .map((c) => ({ label: c, hex: '#9C7B6B' }))
+  ]);
+
   let img = $state(photo || product?.photo || null);
   let camInput;
 
@@ -42,30 +72,38 @@
     } catch { toastErr('تعذّرت قراءة الصورة'); }
   }
 
-  let multi = $state(!product);
-  let sizeQtys = $state({});
+  function toggleColor(label) {
+    if (selColors.includes(label)) {
+      selColors = selColors.filter((c) => c !== label);
+      const m = { ...byColor };
+      delete m[label];
+      byColor = m;
+    } else {
+      selColors = [...selColors, label];
+      byColor = { ...byColor, [label]: byColor[label] || {} };
+    }
+  }
+
   const baseSizes = $derived(SIZE_RUNS[category] || SIZE_RUNS['نسائية']);
+  const colorPieces = (c) => Object.values(byColor[c] || {}).reduce((a, n) => a + (Number(n) || 0), 0);
+  const totalPieces = $derived(selColors.reduce((a, c) => a + colorPieces(c), 0));
+  const totalSizes = $derived(selColors.reduce((a, c) => a + Object.values(byColor[c] || {}).filter((n) => n > 0).length, 0));
 
   const profit = $derived(Math.max(0, iqd(price) - iqd(cost)));
   const margin = $derived(iqd(price) > 0 ? Math.round((profit / iqd(price)) * 100) : 0);
-  const multiTotal = $derived(Object.values(sizeQtys).reduce((a, n) => a + (Number(n) || 0), 0));
-  const multiSizes = $derived(Object.keys(sizeQtys).filter((s) => sizeQtys[s] > 0));
-  const hasSizes = $derived(multi ? multiSizes.length > 0 : qty > 0 && String(size).trim().length > 0);
 
-  /* everything is required except الملاحظات (add mode only) */
+  /* everything is required except notes (and the photo is optional) */
   const missing = $derived.by(() => {
-    if (editing) return name.trim() ? [] : ['اسم الموديل'];
     const m = [];
-    if (!img) m.push('الصورة');
     if (!name.trim()) m.push('اسم الموديل');
     if (!category) m.push('التصنيف');
     if (!type) m.push('النوع');
     if (!season) m.push('الموسم');
-    if (!color) m.push('اللون');
+    if (!selColors.length) m.push('اللون');
     if (!material) m.push('المادة');
     if (iqd(cost) <= 0) m.push('التكلفة');
     if (iqd(price) <= 0) m.push('سعر البيع');
-    if (!hasSizes) m.push('المقاسات');
+    if (totalPieces <= 0) m.push('مقاس واحد بكمية على الأقل');
     return m;
   });
   const valid = $derived(missing.length === 0);
@@ -74,46 +112,6 @@
   const isMissing = (label) => tried && missing.includes(label);
   const bad = (label) => (isMissing(label) ? { 'border-color': 'rgba(181,73,91,0.6)', 'box-shadow': '0 0 0 3px rgba(181,73,91,0.1)' } : {});
 
-  function payload(sizeKey, q) {
-    return {
-      name: name.trim(), category, type, brand: brand.trim(), color: color.trim(),
-      season, material, size: String(sizeKey).trim(),
-      cost: iqd(cost), price: iqd(price),
-      qty: Math.max(0, Math.round(Number(q) || 0)), notes: notes.trim(), photo: img
-    };
-  }
-
-  async function saveMulti() {
-    try {
-      const all = await db.products.toArray();
-      const idx = new Map(all.map((p) => [modelKey(p), p]));
-      let created = 0, merged = 0;
-      const names = [];
-      for (const s of multiSizes) {
-        const data = payload(s, sizeQtys[s]);
-        const twin = idx.get(modelKey(data));
-        if (twin) {
-          await updateProduct(twin.sku, { qty: (twin.qty || 0) + data.qty, cost: data.cost, price: data.price, type: data.type, season: data.season, material: data.material, photo: twin.photo || data.photo });
-          merged++;
-        } else {
-          const p = await addProduct(data);
-          idx.set(modelKey(p), p);
-          created++; names.push(s);
-        }
-      }
-      buzz([20, 50, 20]);
-      celebrateAt(window.innerWidth / 2, window.innerHeight / 2.5, '👠');
-      const parts = [];
-      if (created) parts.push(`${created} بطاقة (${names.sort((a, b) => parseFloat(a) - parseFloat(b)).join('، ')})`);
-      if (merged) parts.push(`${merged} اندمجت مع الموجود`);
-      toastOk(`تم الحفظ — ${multiTotal} قطعة • ${parts.join(' • ')}`);
-      ondone();
-    } catch (e) {
-      toastErr('حدث خطأ أثناء الحفظ');
-      console.error(e);
-    }
-  }
-
   async function save() {
     if (!valid) {
       tried = true;
@@ -121,43 +119,60 @@
       toastErr(`مطلوب: ${missing.slice(0, 3).join('، ')}${missing.length > 3 ? '…' : ''}`);
       return;
     }
-    if (editing) {
-      try {
-        await updateProduct(product.sku, payload(product.size, qty));
-        toastOk('تم حفظ التعديلات');
-        ondone();
-      } catch (e) {
-        toastErr('حدث خطأ أثناء الحفظ');
-        console.error(e);
-      }
-      return;
-    }
-    if (multi) { saveMulti(); return; }
     try {
-      const data = payload(size, qty);
-      /* Same-kind detection: identical name + category + size + color means
-         it's more stock of a model we already have — offer to merge. */
+      const base = {
+        name: name.trim(), category, type, brand: brand.trim(),
+        season, material, cost: iqd(cost), price: iqd(price), photo: img, notes: notes.trim()
+      };
       const all = await db.products.toArray();
-      const twin = all.find((p) => p.name.trim().toLowerCase() === data.name.toLowerCase() && p.category === data.category && String(p.size || '').trim() === data.size && (p.color || '').trim() === data.color);
-      if (twin) {
-        const merge = await askConfirm({
-          title: 'موديل مطابق موجود',
-          body: `«${twin.name}» مقاس ${twin.size || '—'} موجود بالكود ${twin.sku} وكميته ${twin.qty}.\n«دمج» يزيد كميته بـ ${data.qty} ويحدّث السعر — «إلغاء» يضيفه كموديل منفصل.`,
-          okLabel: 'دمج'
-        });
-        if (merge) {
-          await updateProduct(twin.sku, { qty: twin.qty + data.qty, cost: data.cost, price: data.price, type: data.type || twin.type, season: data.season || twin.season, material: data.material || twin.material, photo: twin.photo || data.photo });
-          toastOk(`اندُمجت الكمية — ${twin.sku} أصبح ${twin.qty + data.qty} قطعة`);
-          buzz([20, 50, 20]);
-          celebrateAt(window.innerWidth / 2, window.innerHeight / 2.5, '👠');
-          ondone();
-          return;
+      const idx = new Map(all.map((p) => [modelKey(p), p]));
+      const touched = new Set();
+      let updated = 0, created = 0;
+
+      for (const c of selColors) {
+        const color = c === NOCOLOR ? '' : c;
+        for (const [rawSize, rawQty] of Object.entries(byColor[c] || {})) {
+          const q = Math.max(0, Math.round(Number(rawQty) || 0));
+          const size = String(rawSize).trim();
+          const sz = size === '—' ? '' : size;
+          const twin = idx.get(modelKey({ name: base.name, category: base.category, size: sz, color }));
+          if (twin) {
+            if (editing) {
+              await updateProduct(twin.sku, { ...base, color, size: sz, qty: q });
+            } else if (q > 0) {
+              await updateProduct(twin.sku, {
+                qty: (twin.qty || 0) + q, cost: base.cost, price: base.price,
+                type: twin.type || base.type, season: twin.season || base.season,
+                material: twin.material || base.material, photo: twin.photo || base.photo
+              });
+            } else continue;
+            touched.add(twin.sku);
+            updated++;
+          } else if (q > 0) {
+            const p = await addProduct({ ...base, color, size: sz, qty: q });
+            idx.set(modelKey(p), p);
+            touched.add(p.sku);
+            created++;
+          }
         }
       }
-      const p = await addProduct(data);
-      toastOk(`تمت الإضافة — كود: ${p.sku}`);
+
+      if (editing) {
+        /* the form is the truth — variants removed from the grid go to zero */
+        for (const x of siblings) {
+          if (!touched.has(x.sku) && (x.qty || 0) !== 0) {
+            await updateProduct(x.sku, { qty: 0 });
+            updated++;
+          }
+        }
+      }
+
       buzz([20, 50, 20]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.5, '👠');
+      const parts = [];
+      if (updated) parts.push(`${updated} بطاقة ${editing ? 'محفوظة' : 'اندماجت'}`);
+      if (created) parts.push(`${created} جديدة`);
+      toastOk(`${editing ? 'تم الحفظ' : 'تمت الإضافة'} — ${totalPieces} قطعة (${parts.join(' • ')})`);
       ondone();
     } catch (e) {
       toastErr('حدث خطأ أثناء الحفظ');
@@ -167,16 +182,16 @@
 </script>
 
 <div class="stack" style="gap:14px">
-  <!-- photo beside the name (right side in RTL) -->
-  <div class="row nm-row" style="gap:12px; align-items:flex-end">
+  <!-- photo beside the name (right side in RTL) — optional -->
+  <div class="row nm-row" style="gap:12px">
     <div class="field" style="flex:1">
       <label>اسم الموديل *</label>
       <input class="input" style={bad('اسم الموديل')} bind:value={name} placeholder="مثال: بوت جلد أسود" />
     </div>
     <div class="field" style="flex:none">
-      <label>صورة الموديل *</label>
+      <label>الصورة <span class="muted tiny">(اختياري)</span></label>
       <div class="photo-wrap">
-        <button type="button" class="photo-tile" class:has={!!img} class:bad={isMissing('الصورة')} onclick={() => camInput?.click()}>
+        <button type="button" class="photo-tile" class:has={!!img} onclick={() => camInput?.click()}>
           {#if img}
             <img src={img} alt="preview" />
             <span class="re-take"><Icon name="image" size={12} /> تغيير</span>
@@ -195,7 +210,7 @@
     <label>التصنيف *</label>
     <div class="row wrap" style="gap:8px">
       {#each opts.categories as c (c)}
-        <button type="button" class="chip" class:on={category === c} onclick={() => { category = c; }}>{c}</button>
+        <button type="button" class="chip" class:on={category === c} onclick={() => (category = c)}>{c}</button>
       {/each}
     </div>
   </div>
@@ -204,7 +219,7 @@
     <label>النوع *</label>
     <div class="row wrap" style="gap:8px">
       {#each opts.types as t (t)}
-        <button type="button" class="chip gold-on" class:on={type === t} onclick={() => (type = type === t ? '' : t)}>{t}</button>
+        <button type="button" class="chip" class:on={type === t} onclick={() => (type = type === t ? '' : t)}>{t}</button>
       {/each}
     </div>
   </div>
@@ -218,7 +233,23 @@
     </div>
   </div>
 
-  <ColorSwatches bind:value={color} colors={opts.colors} label="اللون *" hint="اختاري لون المنتج بدقّة" />
+  <ColorSwatches
+    colors={palette}
+    multi={true}
+    selected={selColors}
+    onselect={toggleColor}
+    label="اللون *"
+    hint="اختاري لون أو أكثر"
+  />
+  {#if selColors.includes(NOCOLOR)}
+    <div class="row" style="gap:6px">
+      <span class="sp-nocolor">
+        {NOCOLOR}
+        <button onclick={() => toggleColor(NOCOLOR)} aria-label="إزالة بلا لون"><Icon name="x" size={11} /></button>
+      </span>
+    </div>
+  {/if}
+  {#if isMissing('اللون')}<span class="err-line">اختاري لوناً واحداً على الأقل</span>{/if}
 
   <div class="field">
     <label>المادة المصنوع منها *</label>
@@ -249,53 +280,28 @@
     </Glass>
   {/if}
 
-  {#if editing}
-    <div class="row" style="gap:10px">
-      <div class="field" style="flex:1">
-        <label>المقاس</label>
-        <input class="input" bind:value={size} placeholder="37" inputmode="numeric" />
-      </div>
-      <div class="field" style="flex:1">
-        <label>الكمية</label>
-        <Glass class="stepper" radius="var(--r-md)">
-          <button class="step" onclick={() => { if (qty > 0) { qty--; buzz(6); } }} aria-label="نقصان">−</button>
-          <div class="qty-num">{qty}</div>
-          <button class="step" onclick={() => { qty++; buzz(6); }} aria-label="زيادة">+</button>
-        </Glass>
-      </div>
-    </div>
-  {:else}
-    <div class="field" style={isMissing('المقاسات') ? 'background: rgba(181,73,91,0.04); border-radius:16px; padding:10px' : ''}>
-      <div class="mode-row">
-        <label>المقاسات والكميات *</label>
-        <div class="seg">
-          <button type="button" class="sg" class:on={!multi} onclick={() => (multi = false)}>مقاس واحد</button>
-          <button type="button" class="sg" class:on={multi} onclick={() => (multi = true)}>عدة مقاسات</button>
-        </div>
-      </div>
-      {#if multi}
-        <SizeQtyGrid sizes={baseSizes} bind:value={sizeQtys} />
-      {:else}
-        <div class="row" style="gap:10px">
-          <div class="field" style="flex:1">
-            <label>المقاس</label>
-            <input class="input" bind:value={size} placeholder="37" inputmode="numeric" />
+  <div class="field">
+    <label>المقاسات والكميات * {selColors.length > 1 ? '— لكل لون شبكة مقاساته' : ''}</label>
+    {#if selColors.length}
+      <div class="stack" style="gap:12px">
+        {#each selColors as c (c)}
+          <div class="color-block" class:bad={isMissing('مقاس واحد بكمية على الأقل') && totalPieces === 0}>
+            <div class="cb-head">
+              <i class="cb-dot" style="background:{c === NOCOLOR ? 'transparent' : hexForColor(c, palette)}"></i>
+              <span class="bold">{c}</span>
+              <span class="cb-count" class:has={colorPieces(c) > 0}>{colorPieces(c) > 0 ? `${colorPieces(c)} قطعة` : 'حدّدي الكميات'}</span>
+            </div>
+            <SizeQtyGrid sizes={baseSizes} bind:value={byColor[c]} />
           </div>
-          <div class="field" style="flex:1">
-            <label>الكمية</label>
-            <Glass class="stepper" radius="var(--r-md)">
-              <button class="step" onclick={() => { if (qty > 0) { qty--; buzz(6); } }} aria-label="نقصان">−</button>
-              <div class="qty-num">{qty}</div>
-              <button class="step" onclick={() => { qty++; buzz(6); }} aria-label="زيادة">+</button>
-            </Glass>
-          </div>
-        </div>
-      {/if}
-    </div>
-  {/if}
+        {/each}
+      </div>
+    {:else}
+      <div class="cb-empty">اختاري لوناً من الدوائر أولاً — ثم تحدّدين مقاسات كل لون وكمياته</div>
+    {/if}
+  </div>
 
   <div class="field">
-    <label>ملاحظات <span class="muted tiny">(اختياري — الوحيد)</span></label>
+    <label>ملاحظات <span class="muted tiny">(اختياري)</span></label>
     <textarea class="input" bind:value={notes} rows="2" placeholder="اختياري…"></textarea>
   </div>
 
@@ -305,7 +311,7 @@
 
   <button class="btn primary lg block" onclick={save}>
     <Icon name="check" size={20} />
-    {editing ? 'حفظ التعديلات' : multi && multiSizes.length ? `حفظ ${multiTotal} قطعة (${multiSizes.length} مقاس)` : 'إضافة الموديل'}
+    {editing ? 'حفظ التعديلات' : totalPieces > 0 ? `حفظ ${totalPieces} قطعة (${selColors.length} لون • ${totalSizes} مقاس)` : 'إضافة الموديل'}
   </button>
 </div>
 
@@ -323,7 +329,6 @@
     overflow: hidden;
     transition: border-color 0.2s, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .photo-tile.bad { border-color: rgba(181, 73, 91, 0.7); }
   .photo-tile:active { transform: scale(0.95); }
   .photo-tile.has { border-style: solid; border-color: rgba(181, 73, 91, 0.45); }
   .photo-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -346,24 +351,36 @@
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
   }
-  .mode-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
-  .mode-row label { margin: 0; }
-  .seg {
-    display: inline-flex;
-    border: 1px solid var(--line-2);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.5);
-    padding: 3px;
-    gap: 3px;
+  .sp-nocolor {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 11.5px; font-weight: 800; color: var(--burgundy-deep);
+    background: var(--accent-soft);
+    border-radius: 999px; padding: 4px 10px;
   }
-  .sg {
-    border: none; background: none; cursor: pointer;
-    font-family: inherit; font-size: 12px; font-weight: 800;
-    color: var(--taupe);
-    padding: 6px 12px; border-radius: 9px;
-    transition: background 0.2s, color 0.2s;
+  .sp-nocolor button { background: none; border: none; color: var(--burgundy); cursor: pointer; padding: 0; display: inline-flex; }
+  .err-line { font-size: 11px; color: var(--burgundy); font-weight: 700; }
+  .color-block {
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.28);
   }
-  .sg.on { background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep)); color: #fff; }
+  .color-block.bad { border-color: rgba(181, 73, 91, 0.5); }
+  .cb-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .cb-dot { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; }
+  .cb-count {
+    margin-inline-start: auto;
+    font-size: 10.5px; font-weight: 800; color: var(--taupe);
+    background: rgba(122, 46, 58, 0.07);
+    border-radius: 999px; padding: 3px 9px;
+  }
+  .cb-count.has { color: var(--good); background: rgba(78, 138, 95, 0.12); }
+  .cb-empty {
+    font-size: 12.5px; font-weight: 700; color: var(--taupe);
+    border: 1.5px dashed var(--line-2);
+    border-radius: var(--r-md);
+    padding: 14px; text-align: center;
+  }
   .miss {
     font-size: 12px; font-weight: 800; color: var(--burgundy-deep);
     background: var(--accent-soft);
@@ -397,12 +414,4 @@
     transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   .step:active { transform: scale(0.86); }
-  .qty-num {
-    font-size: 24px;
-    font-weight: 800;
-    color: var(--ink);
-    min-width: 60px;
-    text-align: center;
-    font-variant-numeric: tabular-nums;
-  }
 </style>

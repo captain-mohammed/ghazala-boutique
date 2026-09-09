@@ -8,6 +8,14 @@
 
   let open = $state(false);
 
+  /* Portal: the FAB lives directly on <body> — a transform/filter on the
+     screen wrapper (slide-in) must NEVER turn it into the FAB's containing
+     block. The FAB is pinned to the viewport, centered to the dock. */
+  let host = $state(null);
+  $effect(() => {
+    if (host && host.parentNode !== document.body) document.body.appendChild(host);
+  });
+
   function toggle() {
     open = !open;
     buzz(open ? [12, 26, 12] : 8);
@@ -20,34 +28,37 @@
   }
 </script>
 
-{#if open}
-  <div class="sd-backdrop" transition:fade={{ duration: 180 }} onclick={() => { open = false; buzz(6); }} aria-hidden="true"></div>
-{/if}
-
-<div class="sd-root" class:lift>
+<div class="sd-portal" bind:this={host}>
   {#if open}
-    <div class="sd-items">
-      {#each actions as a, i (a.id)}
-        <button
-          class="sd-item glass-strong"
-          in:fly={{ y: 18, duration: 340, delay: 60 + i * 55, easing: backOut }}
-          out:fade={{ duration: 110 }}
-          onclick={() => pick(a)}
-          aria-label={a.label}
-        >
-          <span class="sd-ic"><Icon name={a.icon} size={19} color="#fff" /></span>
-          <span class="sd-txt">{a.label}</span>
-        </button>
-      {/each}
-    </div>
+    <div class="sd-backdrop" transition:fade={{ duration: 180 }} onclick={() => { open = false; buzz(6); }} aria-hidden="true"></div>
   {/if}
 
-  <button class="sd-fab" class:open aria-expanded={open} aria-label={label} onclick={toggle}>
-    <span class="sd-plus"><Icon name="plus" size={25} color="#fff" /></span>
-  </button>
+  <div class="sd-root" class:lift>
+    {#if open}
+      <div class="sd-items">
+        {#each actions as a, i (a.id)}
+          <button
+            class="sd-item glass-strong"
+            in:fly={{ y: 18, duration: 340, delay: 60 + i * 55, easing: backOut }}
+            out:fade={{ duration: 110 }}
+            onclick={() => pick(a)}
+            aria-label={a.label}
+          >
+            <span class="sd-ic"><Icon name={a.icon} size={19} color="#fff" /></span>
+            <span class="sd-txt">{a.label}</span>
+          </button>
+        {/each}
+      </div>
+    {/if}
+
+    <button class="sd-fab" class:open aria-expanded={open} aria-label={label} onclick={toggle}>
+      <span class="sd-plus"><Icon name="plus" size={25} color="#fff" /></span>
+    </button>
+  </div>
 </div>
 
 <style>
+  .sd-portal { display: contents; }
   /* Frosted-glass veil — same blur language as the app's glass, no dark dim */
   .sd-backdrop {
     position: fixed;

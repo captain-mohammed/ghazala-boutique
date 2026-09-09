@@ -14,7 +14,6 @@
   import Settings from './lib/screens/Settings.svelte';
   import Backup from './lib/screens/Backup.svelte';
   import About from './lib/screens/About.svelte';
-  import LogoScreen from './lib/screens/LogoScreen.svelte';
   import DeliveryLedger from './lib/screens/DeliveryLedger.svelte';
   import Expenses from './lib/screens/Expenses.svelte';
   import Reservations from './lib/screens/Reservations.svelte';
@@ -22,7 +21,6 @@
   import ReceiveInvoice from './lib/screens/ReceiveInvoice.svelte';
   import ModelOptions from './lib/screens/ModelOptions.svelte';
   import Occasions from './lib/screens/Occasions.svelte';
-  import { loadTheme } from './lib/theme.js';
   import { sweepMonthClosing } from './lib/db.js';
 
   let locked = $state(true);
@@ -48,7 +46,6 @@
     stocktake: 'الجرد',
     settings: 'الإعدادات',
     backup: 'النسخ الاحتياطي',
-    logo: 'شعار التطبيق',
     about: 'عن التطبيق',
     ledger: 'حساب شركات التوصيل',
     expenses: 'المصاريف',
@@ -75,7 +72,6 @@
   let wbUpdate = null;
 
   onMount(async () => {
-    loadTheme();
     sweepMonthClosing();
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
@@ -114,7 +110,6 @@
         {:else if screen === 'stocktake'}<Stocktake />
         {:else if screen === 'settings'}<Settings {goto} />
         {:else if screen === 'backup'}<Backup />
-        {:else if screen === 'logo'}<LogoScreen />
         {:else if screen === 'about'}<About />
         {:else if screen === 'ledger'}<DeliveryLedger />
         {:else if screen === 'expenses'}<Expenses />

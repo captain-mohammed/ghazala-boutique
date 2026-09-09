@@ -56,7 +56,7 @@
 
   function addToCart(m) {
     const p = m.p;
-    cart = [...cart, { sku: p.sku, name: p.name, price: p.price, cost: p.cost, qty: 1, max: p.qty }];
+    cart = [...cart, { sku: p.sku, name: p.name, price: p.price, cost: p.cost, qty: 1, max: p.qty, color: p.color || '', size: String(p.size || '').trim() }];
     buzz(8);
     toast(`${p.name} أُضيف للسلة`);
   }
@@ -76,7 +76,7 @@
     saving = true;
     try {
       const sale = await recordSale({
-        items: cart.map((c) => ({ sku: c.sku, name: c.name, price: c.price, cost: c.cost, qty: c.qty })),
+        items: cart.map((c) => ({ sku: c.sku, name: c.name, price: c.price, cost: c.cost, qty: c.qty, color: c.color || '', size: c.size || '' })),
         customerName,
         customerPhone,
         province: customerProvince,

@@ -68,7 +68,7 @@ export const DEFAULT_SETTINGS = {
   materials: DEFAULT_MATERIALS,
   modelColors: COLOR_SWATCHES,
   backupReminderAt: null,
-  theme: 'light', // 'light' | 'dark' | 'auto' (auto = ليل بغداد)
+  deliveryCompanies: [],
   waTemplate: null // null → app default (see DEFAULT_WA_TEMPLATE in utils.js)
 };
 
@@ -341,7 +341,7 @@ export async function convertReservation(id, { deliveryFee, barcode, deliveryCom
   if (!r || r.status !== 'active') throw new Error('الحجز غير صالح');
   const p = await db.products.get(r.sku);
   const sale = await recordSale({
-    items: [{ sku: r.sku, name: r.name, price: r.price, cost: p?.cost ?? 0, qty: 1 }],
+    items: [{ sku: r.sku, name: r.name, price: r.price, cost: p?.cost ?? 0, qty: 1, color: p?.color || '', size: String(p?.size || '').trim() }],
     customerName: r.customerName,
     customerPhone: r.customerPhone,
     province,

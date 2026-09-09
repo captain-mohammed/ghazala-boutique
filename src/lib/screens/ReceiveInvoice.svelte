@@ -141,7 +141,7 @@
             <label>النوع</label>
             <div class="row wrap" style="gap:8px">
               {#each opts.types as t (t)}
-                <button type="button" class="chip gold-on" class:on={l.type === t} onclick={() => (l.type = l.type === t ? '' : t)}>{t}</button>
+                <button type="button" class="chip" class:on={l.type === t} onclick={() => (l.type = l.type === t ? '' : t)}>{t}</button>
               {/each}
             </div>
           </div>

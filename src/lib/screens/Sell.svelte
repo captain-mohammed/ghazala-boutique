@@ -145,7 +145,10 @@
     for (const c of cart) {
       const p = products.find((x) => x.sku === c.sku);
       if (!p || p.qty === 0) { changed = true; gone.push(c.name); continue; }
-      if (c.qty > p.qty || c.max !== p.qty) { changed = true; next.push({ ...c, qty: p.qty, max: p.qty }); }
+      if (c.qty > p.qty || c.max !== p.qty || (!c.color && p.color) || (!c.size && p.size)) {
+        changed = true;
+        next.push({ ...c, qty: Math.min(c.qty, p.qty), max: p.qty, color: c.color || p.color || '', size: c.size || String(p.size || '').trim() });
+      }
       else next.push(c);
     }
     if (changed) {
@@ -181,7 +184,7 @@
       found.qty++;
       cart = cart;
     } else {
-      cart = [...cart, { sku: p.sku, name: p.name, price: p.price, cost: p.cost, qty: 1, max: p.qty }];
+      cart = [...cart, { sku: p.sku, name: p.name, price: p.price, cost: p.cost, qty: 1, max: p.qty, color: p.color || '', size: String(p.size || '').trim() }];
     }
     buzz(8);
     toast(`${p.name} أُضيف للسلة`);
@@ -212,6 +215,12 @@
   let saving = $state(false);
   let tried = $state(false);
 
+  /* cart bar portal — pinned to the viewport, immune to the screen transform */
+  let barHost = $state(null);
+  $effect(() => {
+    if (barHost && barHost.parentNode !== document.body) document.body.appendChild(barHost);
+  });
+
   /* the three required client fields: الاسم، الهاتف، المحافظة */
   const clientValid = $derived(cname.trim().length > 0 && cphone.trim().length >= 7 && cprovince !== '');
 
@@ -228,7 +237,7 @@
     saving = true;
     try {
       const sale = await recordSale({
-        items: cart.map((c) => ({ sku: c.sku, name: c.name, price: c.price, cost: c.cost, qty: c.qty })),
+        items: cart.map((c) => ({ sku: c.sku, name: c.name, price: c.price, cost: c.cost, qty: c.qty, color: c.color || '', size: c.size || '' })),
         customerName: cname,
         customerPhone: cphone,
         province: cprovince,
@@ -347,36 +356,38 @@
   {/if}
 </div>
 
-<!-- Floating cart bar -->
-{#if cart.length}
-  <div class="cartbar glass-strong">
-    <button class="cart-info" onclick={() => { buzz(8); checkout = true; }}>
-      <span class="cart-badge pop">{cartCount}</span>
-      <div class="cart-txt">
-        <div class="bold">متابعة البيع</div>
-        <div class="muted small">{fmtIQD(subtotal)}</div>
-      </div>
-      <Icon name="back" size={18} color="var(--burgundy)" />
-    </button>
-    <button class="cart-x" onclick={() => { archiveLast(); cart = []; buzz(10); }} aria-label="إفراغ السلة">
-      <Icon name="trash" size={17} />
-    </button>
-  </div>
-{:else if lastCart}
-  <!-- Last-cart quick reopen -->
-  <div class="cartbar glass-strong">
-    <button class="cart-info" onclick={restoreLast}>
-      <span class="cart-badge pop undo"><Icon name="undo" size={18} color="#fff" /></span>
-      <div class="cart-txt">
-        <div class="bold">استرجاع آخر سلة</div>
-        <div class="muted small">{fmtNum(lastCount)} عناصر • {fmtIQD(lastSum)}</div>
-      </div>
-    </button>
-    <button class="cart-x" onclick={dismissLast} aria-label="تجاهل">
-      <Icon name="x" size={17} />
-    </button>
-  </div>
-{/if}
+<!-- Floating cart bar — portaled to <body> so the screen slide-in never drags it -->
+<div class="bar-portal" bind:this={barHost}>
+  {#if cart.length}
+    <div class="cartbar glass-strong">
+      <button class="cart-info" onclick={() => { buzz(8); checkout = true; }}>
+        <span class="cart-badge pop">{cartCount}</span>
+        <div class="cart-txt">
+          <div class="bold">متابعة البيع</div>
+          <div class="muted small">{fmtIQD(subtotal)}</div>
+        </div>
+        <Icon name="back" size={18} color="var(--burgundy)" />
+      </button>
+      <button class="cart-x" onclick={() => { archiveLast(); cart = []; buzz(10); }} aria-label="إفراغ السلة">
+        <Icon name="trash" size={17} />
+      </button>
+    </div>
+  {:else if lastCart}
+    <!-- Last-cart quick reopen -->
+    <div class="cartbar glass-strong">
+      <button class="cart-info" onclick={restoreLast}>
+        <span class="cart-badge pop undo"><Icon name="undo" size={18} color="#fff" /></span>
+        <div class="cart-txt">
+          <div class="bold">استرجاع آخر سلة</div>
+          <div class="muted small">{fmtNum(lastCount)} عناصر • {fmtIQD(lastSum)}</div>
+        </div>
+      </button>
+      <button class="cart-x" onclick={dismissLast} aria-label="تجاهل">
+        <Icon name="x" size={17} />
+      </button>
+    </div>
+  {/if}
+</div>
 
 <SpeedDial actions={dialActions} onselect={onDial} label="إجراءات البيع" lift={cart.length > 0 || !!lastCart} />
 
@@ -405,6 +416,7 @@
       <Glass class="citem" radius="var(--r-md)">
         <div class="ci-info">
           <div class="bold">{c.name}</div>
+          {#if c.color || c.size}<div class="ci-variant">{c.color ? `● ${c.color}` : ''}{c.color && c.size ? ' • ' : ''}{c.size ? `مقاس ${c.size}` : ''}</div>{/if}
           <div class="muted small">{fmtIQD(c.price)} × {c.qty} = <span class="money">{fmtIQD(c.price * c.qty)}</span></div>
         </div>
         <div class="stepper">
@@ -560,6 +572,7 @@
     box-shadow: 0 4px 12px rgba(181, 73, 91, 0.35);
   }
 
+  .bar-portal { display: contents; }
   .cartbar {
     position: fixed;
     bottom: calc(var(--nav-h) + 22px + var(--sab));
@@ -620,6 +633,7 @@
     border-radius: var(--r-md);
   }
   .stepper { display: flex; align-items: center; gap: 8px; flex: none; }
+  .ci-variant { font-size: 11.5px; font-weight: 800; color: var(--burgundy-deep); }
   .stp {
     width: 34px; height: 34px;
     border-radius: 11px;

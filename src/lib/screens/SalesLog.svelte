@@ -218,6 +218,7 @@
           <Glass class="row" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
             <div>
               <div class="bold small">{it.name}</div>
+              {#if it.color || it.size}<div class="sl-variant">{it.color ? `● ${it.color}` : ''}{it.color && it.size ? ' • ' : ''}{it.size ? `مقاس ${it.size}` : ''}</div>{/if}
               <div class="muted small">{fmtIQD(it.price)} × {it.qty}</div>
             </div>
             <div class="money small">{fmtIQD(it.price * it.qty)}</div>
@@ -290,6 +291,7 @@
   }
   .sw-btn.ok { background: linear-gradient(135deg, #4e8a5f, #3c7050); }
   .sw-btn.ret { background: linear-gradient(135deg, var(--burgundy), var(--burgundy-deep)); }
+  .sl-variant { font-size: 11.5px; font-weight: 800; color: var(--burgundy-deep); }
   .swipe-wrap :global(.sale) {
     position: relative;
     z-index: 1;

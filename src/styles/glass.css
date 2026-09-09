@@ -1,10 +1,10 @@
-/* ============================================================
-   Ghazala Boutique — Glass Design System
-   Palette: burgundy #B5495B · dark burgundy #7A2E3A · gold #C9A15A
-            ivory #FBF3EE · taupe #9C7B6B
+﻿/* ============================================================
+   Ghazala Boutique â€” Glass Design System
+   Palette: burgundy #B5495B Â· dark burgundy #7A2E3A Â· gold #C9A15A
+            ivory #FBF3EE Â· taupe #9C7B6B
    ============================================================ */
 
-/* Noto Sans Arabic — bundled locally, zero internet needed.
+/* Noto Sans Arabic â€” bundled locally, zero internet needed.
    Three unicode-range subsets: Arabic script, symbols2, latin+digits (1234). */
 @font-face {
   font-family: 'Noto Sans Arabic';
@@ -75,7 +75,7 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Living background — soft drifting brand aurora behind the glass */
+/* Living background â€” soft drifting brand aurora behind the glass */
 .aurora {
   position: fixed;
   inset: -20%;
@@ -204,7 +204,7 @@ button { font-family: inherit; }
 }
 @keyframes ripple-wave { to { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
 
-/* Premium filter card — wraps a filter row (chips / dropdowns / search).
+/* Premium filter card â€” wraps a filter row (chips / dropdowns / search).
    z-index lifts the whole card above the product grid: every .glass card
    is its own stacking context (backdrop-filter), and later DOM siblings
    would otherwise paint over the dropdown popovers. */
@@ -611,74 +611,3 @@ textarea.input { min-height: 84px; resize: vertical; }
     transition-duration: 0.01ms !important;
   }
 }
-
-/* ============================================================
-   «ليل الغزالة» — Dark theme (manual or Baghdad-night auto)
-   ============================================================ */
-html[data-theme="dark"] {
-  --ivory: #171013;
-  --bg: #171013;
-  --ink: #f3e6da;
-  --ink-2: #c2a497;
-  --taupe: #b79b8d;
-  --burgundy: #d97b8a;
-  --burgundy-deep: #b34d5f;
-  --gold: #d6b077;
-
-  --line: rgba(255, 255, 255, 0.08);
-  --line-2: rgba(255, 255, 255, 0.16);
-
-  --glass: rgba(255, 255, 255, 0.06);
-  --glass-strong: rgba(40, 26, 31, 0.78);
-  --glass-border: rgba(255, 255, 255, 0.12);
-  --glass-shadow: 0 10px 34px rgba(0, 0, 0, 0.5);
-
-  --accent-soft: rgba(217, 123, 138, 0.14);
-  --gold-soft: rgba(214, 176, 119, 0.13);
-  --good: #7fc493;
-  --warn: #e0a866;
-
-  color-scheme: dark;
-}
-html[data-theme="dark"] body { transition: background 0.3s ease; }
-html[data-theme="dark"] .aurora { opacity: 0.32; }
-
-/* global surfaces with baked-in light fills */
-html[data-theme="dark"] .chip { background: rgba(255, 255, 255, 0.07); }
-html[data-theme="dark"] .input,
-html[data-theme="dark"] select.input,
-html[data-theme="dark"] textarea.input { background: rgba(255, 255, 255, 0.07); }
-html[data-theme="dark"] .input:focus { background: rgba(255, 255, 255, 0.11); }
-html[data-theme="dark"] select.input option { background: #241a1e; color: var(--ink); }
-html[data-theme="dark"] .sheet { background: rgba(26, 18, 22, 0.9); }
-html[data-theme="dark"] .sheet-backdrop { background: rgba(0, 0, 0, 0.45); }
-html[data-theme="dark"] .toast { background: rgba(246, 230, 218, 0.94); color: #241419; }
-html[data-theme="dark"] .toast.success { background: rgba(178, 235, 195, 0.95); }
-html[data-theme="dark"] .toast.error { background: rgba(255, 190, 200, 0.95); }
-html[data-theme="dark"] .ripple > .ripple-wave { background: radial-gradient(circle, rgba(255, 255, 255, 0.22) 0%, rgba(217, 123, 138, 0.2) 45%, transparent 70%); }
-
-/* component-scoped surfaces (specificity of this selector beats .x.svelte-hash) */
-html[data-theme="dark"] .dd-btn { background: rgba(255, 255, 255, 0.07); }
-html[data-theme="dark"] .dd-btn:hover, html[data-theme="dark"] .dd-btn.active { background: rgba(255, 255, 255, 0.12); }
-html[data-theme="dark"] .dd-pop { background: rgba(36, 24, 29, 0.88); border-color: rgba(255, 255, 255, 0.14); }
-html[data-theme="dark"] .stp, html[data-theme="dark"] .step, html[data-theme="dark"] .m-btn,
-html[data-theme="dark"] .qo-btn, html[data-theme="dark"] .cart-x, html[data-theme="dark"] .ph-x,
-html[data-theme="dark"] .ln-x, html[data-theme="dark"] .take-bg { background: rgba(255, 255, 255, 0.08); }
-html[data-theme="dark"] .stat, html[data-theme="dark"] .brow, html[data-theme="dark"] .sale-row,
-html[data-theme="dark"] .sm-row, html[data-theme="dark"] .ln-photo,
-html[data-theme="dark"] .photo-tile { background: rgba(255, 255, 255, 0.05); }
-html[data-theme="dark"] .ln-head { background: rgba(217, 123, 138, 0.1); }
-html[data-theme="dark"] .pthumb, html[data-theme="dark"] .thumb {
-  background: linear-gradient(150deg, rgba(255, 255, 255, 0.06), rgba(217, 123, 138, 0.07));
-}
-html[data-theme="dark"] .qp-backdrop, html[data-theme="dark"] .sd-backdrop { background: rgba(8, 4, 6, 0.5); }
-html[data-theme="dark"] .gate-cam { background: rgba(255, 255, 255, 0.04); }
-html[data-theme="dark"] .sw.on {
-  box-shadow:
-    inset 0 2px 5px rgba(255, 255, 255, 0.2),
-    inset 0 -3px 6px rgba(0, 0, 0, 0.35),
-    0 0 0 2.5px #171013,
-    0 0 0 5px var(--burgundy);
-}
-html[data-theme="dark"] .re-take { background: rgba(0, 0, 0, 0.55); }
-html[data-theme="dark"] .update { color: var(--ink); }

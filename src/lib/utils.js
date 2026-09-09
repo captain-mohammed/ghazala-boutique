@@ -220,7 +220,10 @@ export const DEFAULT_WA_TEMPLATE =
 
 export function buildSalesMessage(sale, template = DEFAULT_WA_TEMPLATE) {
   const itemLines = (sale.items || [])
-    .map((it) => `• ${it.name} × ${fmtNum(it.qty)} — ${fmtIQD(it.price * it.qty)}`)
+    .map((it) => {
+      const v = [it.color, it.size ? `مقاس ${it.size}` : ''].filter(Boolean).join(' • ');
+      return `• ${it.name}${v ? ` (${v})` : ''} × ${fmtNum(it.qty)} — ${fmtIQD(it.price * it.qty)}`;
+    })
     .join('\n');
   const map = {
     '{customer}': sale.customerName || 'زبوننا العزيز',

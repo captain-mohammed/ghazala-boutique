@@ -5,7 +5,6 @@
   import { db, allSettings, setSetting, seedDemo, wipeAll } from '../db.js';
   import { fmtIQD, buzz, hashPin, iqd, WA_VARS, DEFAULT_WA_TEMPLATE, buildSalesMessage } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
-  import { applyTheme } from '../theme.js';
 
   let { goto = () => {} } = $props();
 
@@ -13,7 +12,8 @@
   let low = $state(3);
   let deadDays = $state(30);
   let loaded = $state(false);
-  let themeMode = $state('light');
+  let companies = $state([]);
+  let newCo = $state('');
 
   /* WhatsApp message template */
   let waText = $state(DEFAULT_WA_TEMPLATE);
@@ -25,7 +25,7 @@
     fee = s.deliveryFee;
     low = s.lowStockThreshold;
     deadDays = s.deadStockDays;
-    themeMode = s.theme || 'light';
+    companies = Array.isArray(s.deliveryCompanies) ? [...s.deliveryCompanies] : [];
     if (typeof s.waTemplate === 'string' && s.waTemplate.trim()) {
       waText = s.waTemplate;
       waTouched = true;
@@ -33,17 +33,20 @@
     loaded = true;
   });
 
-  const THEMES = [
-    { id: 'light', label: 'فاتح', icon: 'sparkle' },
-    { id: 'dark', label: 'ليلي', icon: 'moon' },
-    { id: 'auto', label: 'تلقائي', icon: 'clock' }
-  ];
-  async function pickTheme(id) {
-    themeMode = id;
-    await setSetting('theme', id);
-    applyTheme(id);
-    buzz(10);
-    toastOk(id === 'auto' ? 'تلقائي — يغلق بالليل بتوقيت بغداد' : id === 'dark' ? 'الوضع الليلي مفعّل' : 'الوضع النهاري مفعّل');
+  async function addCo() {
+    const name = newCo.trim();
+    if (!name) return;
+    if (companies.includes(name)) { toastErr('الشركة موجودة مسبقاً'); return; }
+    companies = [...companies, name];
+    await setSetting('deliveryCompanies', companies);
+    newCo = '';
+    toastOk('أُضيفت شركة التوصيل');
+    buzz(8);
+  }
+  async function rmCo(name) {
+    companies = companies.filter((c) => c !== name);
+    await setSetting('deliveryCompanies', companies);
+    toastOk('حُذفت الشركة');
   }
 
   async function saveFee() {
@@ -129,20 +132,27 @@
 <div class="stack" style="gap:12px">
   {#if loaded}
     <Glass class="rise" style="padding:16px">
-      <h2 class="h2" style="margin-bottom:6px"><Icon name="moon" size={17} color="var(--burgundy)" /> المظهر</h2>
-      <p class="muted small" style="margin:0 0 12px">«تلقائي» يلبس غزالة نظارة الليل من 6 المغرب إلى 6 الصباح بتوقيت بغداد.</p>
-      <div class="theme-seg">
-        {#each THEMES as t (t.id)}
-          <button type="button" class="th-btn" class:on={themeMode === t.id} onclick={() => pickTheme(t.id)}>
-            <Icon name={t.icon} size={16} />
-            {t.label}
-          </button>
+      <h2 class="h2" style="margin-bottom:4px"><Icon name="truck" size={17} color="var(--burgundy)" /> شركات التوصيل</h2>
+      <p class="muted small" style="margin:0 0 12px">ضيفي شركات التوصيل اللي تتعاملين معها — عند إتمام البيع تختارين الشركة من القائمة بدل الكتابة.</p>
+      <div class="row wrap" style="gap:8px; margin-bottom:10px">
+        {#each companies as c (c)}
+          <span class="chip on">
+            {c}
+            <button class="chip-x" onclick={() => rmCo(c)} aria-label="حذف {c}">
+              <Icon name="x" size={12} color="#fff" />
+            </button>
+          </span>
         {/each}
+        {#if !companies.length}<span class="muted small">لا شركات بعد — ضيفي الأولى</span>{/if}
+      </div>
+      <div class="row" style="gap:8px">
+        <input class="input" style="flex:1" bind:value={newCo} placeholder="اسم الشركة…" onkeydown={(e) => e.key === 'Enter' && addCo()} />
+        <button class="btn" onclick={addCo}><Icon name="plus" size={16} /> إضافة</button>
       </div>
     </Glass>
 
     <Glass class="rise" style="padding:16px; animation-delay:0.05s">
-      <h2 class="h2" style="margin-bottom:12px"><Icon name="truck" size={17} color="var(--burgundy)" /> التوصيل</h2>
+      <h2 class="h2" style="margin-bottom:12px"><Icon name="truck" size={17} color="var(--burgundy)" /> أجور التوصيل</h2>
       <div class="field">
         <label>أجور التوصيل (د.ع) — لكل المحافظات <span class="muted tiny">— الآلاف: اكتب 5 = 5,000</span></label>
         <div class="row" style="gap:8px">
@@ -272,30 +282,5 @@
     resize: vertical;
     line-height: 1.7;
     font-family: inherit;
-  }
-  .theme-seg {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-  }
-  .th-btn {
-    display: inline-flex; align-items: center; justify-content: center; gap: 7px;
-    min-height: 46px;
-    border-radius: 14px;
-    border: 1px solid var(--line-2);
-    background: rgba(255, 255, 255, 0.5);
-    font-family: inherit;
-    font-size: 13.5px;
-    font-weight: 800;
-    color: var(--ink-2);
-    cursor: pointer;
-    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s, color 0.2s, border-color 0.2s;
-  }
-  .th-btn:active { transform: scale(0.95); }
-  .th-btn.on {
-    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
-    border-color: rgba(255, 255, 255, 0.35);
-    color: #fff;
-    box-shadow: 0 4px 12px rgba(122, 46, 58, 0.25);
   }
 </style>
