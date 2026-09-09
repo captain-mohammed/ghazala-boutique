@@ -56,6 +56,29 @@
 
   const recent = $derived([...sales].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 4));
 
+  /* Money currently held by delivery companies (not yet settled) */
+  const transit = $derived(
+    sales
+      .filter((s) => s.status !== 'returned' && !s.settledAt)
+      .reduce((a, s) => a + (Number(s.total) || 0), 0)
+  );
+  const transitCount = $derived(sales.filter((s) => s.status !== 'returned' && !s.settledAt).length);
+
+  /* One-shot border beam: runs only when a headline number actually changes,
+     then removes itself — nothing loops on its own. */
+  let beamOn = $state(false);
+  let beamTimer;
+  const headline = $derived(`${today.total}|${today.profit}|${stock.value}|${stock.units}`);
+  let prevHeadline = headline;
+  $effect(() => {
+    if (headline === prevHeadline) { prevHeadline = headline; return; }
+    prevHeadline = headline;
+    beamOn = true;
+    clearTimeout(beamTimer);
+    beamTimer = setTimeout(() => (beamOn = false), 2500);
+    return () => clearTimeout(beamTimer);
+  });
+
 </script>
 
 <div class="stack" style="gap:14px">
@@ -66,7 +89,18 @@
     <h1 class="h1">بوتيك غزالة</h1>
   </header>
 
-  <Glass class="hero rise beam-host" style="animation-delay:0.03s">
+  {#if transit > 0}
+    <button class="transit glass rise" style="animation-delay:0.06s" onclick={() => { buzz(6); goto('ledger'); }}>
+      <span class="tr-ic"><Icon name="truck" size={18} color="#fff" /></span>
+      <div class="a-body">
+        <div class="bold">عند شركات التوصيل: {fmtIQD(transit)}</div>
+        <div class="muted small">{fmtNum(transitCount)} عملية — اضغط للحساب والتسوية</div>
+      </div>
+      <Icon name="back" size={16} color="var(--taupe)" />
+    </button>
+  {/if}
+
+  <Glass class="hero rise beam-host {beamOn ? 'beam-run' : ''}" style="animation-delay:0.03s">
     <div class="grid2">
       <div class="stat spot" use:spotlight>
         <div class="muted small">مبيعات اليوم</div>
@@ -163,6 +197,22 @@
   .brand :global(.h1) { margin: 0; }
 
   .hero { padding: 18px; }
+
+  .transit {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: var(--r-md);
+    text-align: right; width: 100%; cursor: pointer;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .transit:active { transform: scale(0.98); }
+  .tr-ic {
+    flex: none; width: 40px; height: 40px;
+    border-radius: 13px;
+    background: linear-gradient(150deg, var(--gold), #a4803e);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(164, 128, 62, 0.3);
+  }
+  .a-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .stat {

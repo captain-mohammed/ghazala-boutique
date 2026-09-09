@@ -15,6 +15,10 @@
   import Backup from './lib/screens/Backup.svelte';
   import About from './lib/screens/About.svelte';
   import LogoScreen from './lib/screens/LogoScreen.svelte';
+  import DeliveryLedger from './lib/screens/DeliveryLedger.svelte';
+  import Expenses from './lib/screens/Expenses.svelte';
+  import Reservations from './lib/screens/Reservations.svelte';
+  import PasteToSell from './lib/screens/PasteToSell.svelte';
 
   let locked = $state(true);
   let screen = $state('home');
@@ -40,7 +44,11 @@
     settings: 'الإعدادات',
     backup: 'النسخ الاحتياطي',
     logo: 'شعار التطبيق',
-    about: 'عن التطبيق'
+    about: 'عن التطبيق',
+    ledger: 'حساب شركات التوصيل',
+    expenses: 'المصاريف',
+    reservations: 'الحجوزات',
+    pastesell: 'بيع من رسالة'
   };
 
   function goto(id) {
@@ -98,6 +106,10 @@
         {:else if screen === 'backup'}<Backup />
         {:else if screen === 'logo'}<LogoScreen />
         {:else if screen === 'about'}<About />
+        {:else if screen === 'ledger'}<DeliveryLedger />
+        {:else if screen === 'expenses'}<Expenses />
+        {:else if screen === 'reservations'}<Reservations />
+        {:else if screen === 'pastesell'}<PasteToSell />
         {/if}
       </div>
     {/key}

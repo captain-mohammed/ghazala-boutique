@@ -435,6 +435,7 @@ textarea.input { min-height: 84px; resize: vertical; }
 .stack { display: flex; flex-direction: column; gap: 12px; }
 .muted { color: var(--ink-2); }
 .small { font-size: 12.5px; }
+.tiny { font-size: 11px; }
 .bold { font-weight: 800; }
 .money { font-weight: 800; font-variant-numeric: tabular-nums; }
 .gold-text { color: var(--gold); }
@@ -506,7 +507,9 @@ textarea.input { min-height: 84px; resize: vertical; }
 }
 .spot:hover::after { opacity: 1; }
 
-/* ---------- Border beam (Magic-UI style running light) ---------- */
+/* ---------- Border beam (Magic-UI style running light) ----------
+   One-shot: the beam only runs when .beam-run is added (a value changed),
+   never loops on its own. */
 @keyframes beam-travel {
   0% { offset-distance: 0%; opacity: 0; }
   6% { opacity: 1; }
@@ -531,8 +534,12 @@ textarea.input { min-height: 84px; resize: vertical; }
   -webkit-mask-composite: xor;
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask-composite: exclude;
-  animation: beam-rotate 5.5s linear infinite;
   pointer-events: none;
+  opacity: 0;
+}
+.beam-host.beam-run::before {
+  animation: beam-rotate 2.4s linear 1 both;
+  opacity: 1;
 }
 @property --beam-angle {
   syntax: '<angle>';

@@ -64,6 +64,8 @@
   let cphone = $state('');
   let fee = $state(5000);
   let barcode = $state('');
+  let company = $state('');
+  let companies = $state([]);
   let scanOpen = $state(false);
   let itemScanOpen = $state(false);
   let saving = $state(false);
@@ -71,6 +73,7 @@
   async function openCheckout() {
     if (!cart.length) return;
     fee = await getSetting('deliveryFee', 5000);
+    companies = await getSetting('deliveryCompanies', []);
     checkout = true;
     buzz(10);
   }
@@ -85,11 +88,12 @@
         customerPhone: cphone,
         deliveryFee: Number(fee) || 0,
         barcode,
+        deliveryCompany: company,
         status: 'pending'
       });
       checkout = false;
       cart = [];
-      cname = ''; cphone = ''; barcode = ''; q = '';
+      cname = ''; cphone = ''; barcode = ''; company = ''; q = '';
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.8, '🛍️');
       toastOk(`تم البيع #${sale.id} — ${fmtIQD(sale.total)}`);
@@ -212,6 +216,19 @@
         <label>أجور التوصيل (د.ع)</label>
         <input class="input" bind:value={fee} inputmode="numeric" />
       </div>
+      <div class="field" style="flex:1">
+        <label>شركة التوصيل</label>
+        {#if companies.length}
+          <select class="input" bind:value={company} style="height:50px">
+            <option value="">بدون</option>
+            {#each companies as co (co)}<option value={co}>{co}</option>{/each}
+          </select>
+        {:else}
+          <input class="input" bind:value={company} placeholder="اسم الشركة (اختياري)" />
+        {/if}
+      </div>
+    </div>
+    <div class="row" style="gap:10px">
       <div class="field" style="flex:1">
         <label>باركود شركة التوصيل</label>
         <div class="row" style="gap:6px">

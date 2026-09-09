@@ -9,14 +9,12 @@
     const v = value;
     if (first) {
       first = false;
-      // first paint shows 0, then the digits roll up to the target
-      // (double rAF: let the 0-state paint before transitioning)
-      let r2;
-      const r1 = requestAnimationFrame(() => {
-        r2 = requestAnimationFrame(() => (shown = v));
-      });
-      return () => { cancelAnimationFrame(r1); if (r2) cancelAnimationFrame(r2); };
+      // first paint renders the final value directly — silent, no roll,
+      // no flash. Motion belongs to *changes*, not to opening the page.
+      shown = v;
+      return;
     }
+    if (v === shown) return; // nothing changed → nothing moves
     shown = v;
     flash = true;
     const t = setTimeout(() => (flash = false), duration + 150);

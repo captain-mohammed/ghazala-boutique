@@ -7,6 +7,7 @@
 
   let products = $state([]);
   let sales = $state([]);
+  let expenses = $state([]);
   let settings = $state(null);
   let period = $state('today');
 
@@ -20,10 +21,11 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, s] = await Promise.all([db.products.toArray(), db.sales.toArray()]);
+      const [p, s, e] = await Promise.all([db.products.toArray(), db.sales.toArray(), db.expenses.toArray()]);
       if (!alive) return;
       products = p;
       sales = s;
+      expenses = e;
     };
     grab();
     const t = setInterval(grab, 5000);
@@ -40,6 +42,7 @@
     revenue: inPeriod.reduce((a, s) => a + s.total, 0),
     profit: inPeriod.reduce((a, s) => a + s.profit, 0),
     fees: inPeriod.reduce((a, s) => a + (s.deliveryFee || 0), 0),
+    expenses: expenses.filter((e) => new Date(e.date) >= from).reduce((a, e) => a + (Number(e.amount) || 0), 0),
     returned: sales.filter((s) => s.status === 'returned').length
   });
 
@@ -94,7 +97,7 @@
 
   <section class="cards">
     <div class="stat glass rise"><span class="muted small">الإيرادات</span><div class="big"><Ticker value={totals.revenue} /> <span class="cur">د.ع</span></div></div>
-    <div class="stat glass rise" style="animation-delay:0.05s"><span class="muted small">صافي الربح</span><div class="big gold"><Ticker value={totals.profit} /> <span class="cur">د.ع</span></div></div>
+    <div class="stat glass rise" style="animation-delay:0.05s"><span class="muted small">صافي الربح</span><div class="big gold"><Ticker value={totals.profit - totals.expenses} /> <span class="cur">د.ع</span></div><span class="muted tiny">بعد خصم {fmtIQD(totals.expenses)} مصاريف</span></div>
     <div class="stat glass rise" style="animation-delay:0.1s"><span class="muted small">عدد العمليات</span><div class="big"><Ticker value={totals.count} /></div></div>
     <div class="stat glass rise" style="animation-delay:0.15s"><span class="muted small">قيمة المخزون</span><div class="big"><Ticker value={stockValue} /> <span class="cur">د.ع</span></div></div>
   </section>

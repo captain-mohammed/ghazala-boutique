@@ -221,3 +221,28 @@ export async function copyText(text) {
     }
   }
 }
+
+/* ---------- Paste-to-sell: parse a customer's WhatsApp order text ---------- */
+
+/* Extracts size candidates (2-digit 30-45) and search keywords from free
+   Arabic text. Returns { sizes: [], keywords: [] }. */
+export function parseOrderText(text) {
+  const t = String(text || '');
+  const out = { sizes: [], keywords: [] };
+
+  // sizes: standalone 2-digit numbers 30–45 (avoid phone fragments by
+  // requiring non-digit boundaries)
+  const sizeMatches = t.match(/(?<!\d)(3[0-9]|4[0-5])(?!\d)/g) || [];
+  out.sizes = [...new Set(sizeMatches)];
+
+  // keywords: meaningful words (drop stopwords, numbers, punctuation)
+  const STOP = new Set(['من', 'على', 'في', 'عن', 'الى', 'إلى', 'مع', 'هذا', 'هذه', 'اردت', 'أريد', 'ابي', 'أبي', 'المطلوب', 'ممكن', 'لو', 'سماح', 'بس', 'اكو', 'ماكو', 'شكرا', 'هاي', 'الا', 'اللي']);
+  const words = t
+    .replace(/[^\u0600-\u06FFa-zA-Z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .map((w) => w.trim())
+    .filter((w) => w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w));
+  out.keywords = [...new Set(words)];
+
+  return out;
+}

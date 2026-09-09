@@ -54,6 +54,31 @@ Each version below lists **what was added and why it matters to the shop**.
 
 ---
 
+## [0.3.0] — 2026-09-09 — «طيّبة الدرج» دفعة شركات التوصيل والحجوزات
+
+The COD-selling cockpit: reserve → manifest for the driver → reconcile what came back → settle the cash → track expenses → sell straight from a customer's message.
+
+### Added
+- **حساب شركات التوصيل (delivery ledger)** — every pending sale is grouped by delivery company (companies are set per-sale at checkout). Shows the total money sitting with the companies («عند شركات التوصيل»), per-company breakdown, and a **تسوية** button that marks the group's cash as received into «آخر التسويات» history.
+  - *Benefit:* the app finally answers the most important COD question: «شكد عندي عند التوصيل؟»
+- **كشف التسليم (delivery manifest)** — inside each company's details: a formatted driver manifest (customer, amount per package, total) with **نسخ الكشف** and **إرسال للسائق** (WhatsApp) buttons.
+- **المصاريف (expenses tracker)** — quick add with categories (إيجار / نقل / تغليف / كهرباء / أخرى) + note, today/30-day/all totals, and full backup coverage. Net profit in التقارير now subtracts them and shows the deduction line.
+  - *Benefit:* «صافي الربح» is now the honest number that hits your pocket.
+- **الحجوزات (reservations)** — reserve a piece for a customer from the model page: stock decrements immediately with a movement entry, a 48-hour expiry countdown shows on the card, auto-expiry releases the stock back, إلغاء also restores it, and **تحويل لبيع** converts the reservation into a real sale in one tap (no double stock decrement — the reservation already deducted it).
+  - *Benefit:* «احجزيها لي أوصلك بكرا» finally has a workflow, not a sticky note.
+- **بيع من رسالة (paste-to-sell)** — paste the customer's WhatsApp text; the parser extracts size candidates (36–45) and keywords, matches inventory live, and matching models go straight into a qty-editable draft cart with تأكيد البيع.
+  - *Benefit:* a sale that starts as a message becomes a sale record in ~3 taps.
+- **شركة التوصيل at checkout** — a company select (from إعدادات) on every sale, feeding the ledger.
+
+### Changed
+- **Animations only on real change** — dashboard tickers stay silent on mount and animate + flash gold only when a value actually changes; the hero border-beam now runs once per data change instead of looping forever.
+  - *Benefit:* the dashboard feels calm; motion means something moved.
+
+### Fixed
+- **Reservation conversion double-decrement** — converting a reservation to a sale decremented stock twice (once at reservation, once at sale). Now the sale records without touching stock again.
+
+---
+
 ## [0.2.7] — 2026-09-09
 
 ### Added

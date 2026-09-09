@@ -6,6 +6,10 @@
   let { goto } = $props();
 
   const items = [
+    { id: 'pastesell', icon: 'cart', label: 'بيع من رسالة', desc: 'الصق رسالة الزبونة — يطابق الموديلات تلقائياً' },
+    { id: 'reservations', icon: 'clock', label: 'الحجوزات', desc: 'قطع محجوزة لزبوناتك — تحويل لبيع بأمان' },
+    { id: 'ledger', icon: 'truck', label: 'حساب الشركات', desc: 'المبالغ عند شركات التوصيل والتسوية' },
+    { id: 'expenses', icon: 'wallet', label: 'المصاريف', desc: 'الإيجار والنقل والتغليف — تُخصم من الربح' },
     { id: 'stocktake', icon: 'check', label: 'الجرد', desc: 'مطابقة الكميات مع الرفوف' },
     { id: 'logo', icon: 'sparkle', label: 'شعار التطبيق', desc: 'تغيير شعار بوتيك غزالة أو استعادة الافتراضي' },
     { id: 'settings', icon: 'settings', label: 'الإعدادات', desc: 'التوصيل، التنبيهات، الرقم السري' },

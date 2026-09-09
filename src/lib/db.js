@@ -2,11 +2,15 @@ import Dexie from 'dexie';
 
 export const db = new Dexie('ghazala_boutique');
 
-db.version(1).stores({
+/* v2: + expenses, + reservations, sales gain deliveryCompany/settledAt/fromReservation.
+   v1 installs upgrade in place (old sales get company '' = untracked). */
+db.version(2).stores({
   products: 'sku, name, category, brand, color, size, qty, updatedAt',
-  sales: '++id, date, status, customerName, customerPhone, barcode',
+  sales: '++id, date, status, customerName, customerPhone, barcode, deliveryCompany, settledAt, fromReservation',
   movements: '++id, sku, date, type',
-  settings: 'key'
+  settings: 'key',
+  expenses: '++id, date, category',
+  reservations: '++id, sku, createdAt, expiresAt, status'
 });
 
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
@@ -105,7 +109,7 @@ export async function logMovement({ sku, type, qty, note }) {
 
 /* ---------------- Sales ---------------- */
 
-export async function recordSale({ items, customerName, customerPhone, deliveryFee, barcode, status }) {
+export async function recordSale({ items, customerName, customerPhone, deliveryFee, barcode, status, deliveryCompany, fromReservation, stockDeducted }) {
   const now = new Date().toISOString();
   let subtotal = 0, cost = 0;
   for (const it of items) {
@@ -118,19 +122,34 @@ export async function recordSale({ items, customerName, customerPhone, deliveryF
     date: now, items, subtotal, cost, profit: subtotal - cost,
     deliveryFee: fee, total,
     customerName: customerName || '', customerPhone: customerPhone || '',
-    barcode: barcode || '', status: status || 'pending', createdAt: now
+    barcode: barcode || '', status: status || 'pending',
+    deliveryCompany: deliveryCompany || '', settledAt: null,
+    fromReservation: fromReservation ?? null, createdAt: now
   };
   const id = await db.sales.add(sale);
   for (const it of items) {
     const p = await db.products.get(it.sku);
-    if (p) await db.products.update(it.sku, { qty: Math.max(0, p.qty - it.qty), updatedAt: now });
-    await logMovement({ sku: it.sku, type: 'out', qty: it.qty, note: `بيع #${id}` });
+    if (p && !stockDeducted) await db.products.update(it.sku, { qty: Math.max(0, p.qty - it.qty), updatedAt: now });
+    await logMovement({ sku: it.sku, type: 'out', qty: it.qty, note: `بيع #${id}${fromReservation ? ' • من حجز' : ''}` });
   }
   return { ...sale, id };
 }
 
 export async function setSaleStatus(id, status) {
   await db.sales.update(id, { status });
+}
+
+/* تسوية — the delivery company handed over the cash for this package */
+export async function settleSale(id) {
+  await db.sales.update(id, { settledAt: new Date().toISOString() });
+}
+
+/* Money currently held by delivery companies (delivered but not yet settled) */
+export async function moneyInTransit() {
+  const sales = await db.sales.toArray();
+  return sales
+    .filter((s) => s.status !== 'returned' && !s.settledAt)
+    .reduce((a, s) => a + (Number(s.total) || 0), 0);
 }
 
 export async function returnSale(id) {
@@ -143,6 +162,94 @@ export async function returnSale(id) {
     await logMovement({ sku: it.sku, type: 'in', qty: it.qty, note: `إرجاع بيع #${id}` });
   }
   await db.sales.update(id, { status: 'returned' });
+}
+
+/* ---------------- Reservations (حجز) ----------------
+   Stock is deducted immediately so no one else can sell it; if the
+   reservation expires or is cancelled, the pieces go back to the shelf. */
+
+export const RESERVATION_HOURS = 48;
+
+export async function createReservation({ sku, customerName, customerPhone, note, hours = RESERVATION_HOURS }) {
+  const p = await db.products.get(sku);
+  if (!p) throw new Error('الموديل غير موجود');
+  if (p.qty <= 0) throw new Error('لا توجد قطع متوفرة للحجز');
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + hours * 3600000).toISOString();
+  await db.products.update(sku, { qty: p.qty - 1, updatedAt: now.toISOString() });
+  await logMovement({ sku, type: 'out', qty: 1, note: `حجز لـ ${customerName || 'زبونة'}` });
+  const id = await db.reservations.add({
+    sku, name: p.name, price: p.price,
+    customerName: customerName || '', customerPhone: customerPhone || '',
+    note: note || '',
+    createdAt: now.toISOString(), expiresAt, status: 'active'
+  });
+  return id;
+}
+
+/* restore stock for an expired/cancelled reservation */
+async function releaseReservation(r, note) {
+  const p = await db.products.get(r.sku);
+  if (p) await db.products.update(r.sku, { qty: p.qty + 1, updatedAt: new Date().toISOString() });
+  await logMovement({ sku: r.sku, type: 'in', qty: 1, note });
+}
+
+export async function cancelReservation(id) {
+  const r = await db.reservations.get(id);
+  if (!r || r.status !== 'active') return;
+  await releaseReservation(r, `إلغاء حجز #${id}`);
+  await db.reservations.update(id, { status: 'cancelled' });
+}
+
+export async function expireReservation(id) {
+  const r = await db.reservations.get(id);
+  if (!r || r.status !== 'active') return;
+  await releaseReservation(r, `انتهاء حجز #${id}`);
+  await db.reservations.update(id, { status: 'expired' });
+}
+
+/* Convert an active reservation into a real sale (already-deducted stock stays deducted) */
+export async function convertReservation(id, { deliveryFee, barcode, deliveryCompany } = {}) {
+  const r = await db.reservations.get(id);
+  if (!r || r.status !== 'active') throw new Error('الحجز غير صالح');
+  const p = await db.products.get(r.sku);
+  const sale = await recordSale({
+    items: [{ sku: r.sku, name: r.name, price: r.price, cost: p?.cost ?? 0, qty: 1 }],
+    customerName: r.customerName,
+    customerPhone: r.customerPhone,
+    deliveryFee,
+    barcode,
+    deliveryCompany,
+    status: 'pending',
+    fromReservation: id,
+    stockDeducted: true
+  });
+  await db.reservations.update(id, { status: 'sold' });
+  return sale;
+}
+
+/* Auto-expire overdue active reservations (call when listing them) */
+export async function sweepExpiredReservations() {
+  const now = Date.now();
+  const active = await db.reservations.where('status').equals('active').toArray();
+  for (const r of active) if (new Date(r.expiresAt).getTime() < now) await expireReservation(r.id);
+}
+
+/* ---------------- Expenses (المصاريف) ---------------- */
+
+export const EXPENSE_CATEGORIES = ['إيجار', 'نقل', 'تغليف', 'كهرباء', 'أخرى'];
+
+export async function addExpense({ amount, category, note }) {
+  return db.expenses.add({
+    amount: Math.max(0, Number(amount) || 0),
+    category: category || 'أخرى',
+    note: note || '',
+    date: new Date().toISOString()
+  });
+}
+
+export async function deleteExpense(id) {
+  await db.expenses.delete(id);
 }
 
 /* ---------------- Stocktake ---------------- */
@@ -163,20 +270,21 @@ export async function stocktakeApply(corrections) {
 /* ---------------- Backup / Restore ---------------- */
 
 export async function backupJSON() {
-  const [products, sales, movements, settings] = await Promise.all([
-    db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray()
+  const [products, sales, movements, settings, expenses, reservations] = await Promise.all([
+    db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray(),
+    db.expenses.toArray(), db.reservations.toArray()
   ]);
   return {
-    app: 'ghazala-boutique', version: 1, exportedAt: new Date().toISOString(),
-    products, sales, movements, settings
+    app: 'ghazala-boutique', version: 2, exportedAt: new Date().toISOString(),
+    products, sales, movements, settings, expenses, reservations
   };
 }
 
 export async function restoreJSON(data, { merge = false } = {}) {
   if (!data || data.app !== 'ghazala-boutique') throw new Error('ملف النسخة غير صالح');
   if (!merge) {
-    await db.transaction('rw', db.products, db.sales, db.movements, async () => {
-      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear()]);
+    await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, async () => {
+      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear()]);
     });
   }
   await db.products.bulkPut(data.products || []);
@@ -185,11 +293,13 @@ export async function restoreJSON(data, { merge = false } = {}) {
   if (Array.isArray(data.settings)) {
     await db.settings.bulkPut(data.settings.filter((s) => s.key !== 'waTemplate'));
   }
+  if (Array.isArray(data.expenses)) await db.expenses.bulkPut(data.expenses);
+  if (Array.isArray(data.reservations)) await db.reservations.bulkPut(data.reservations);
 }
 
 export async function wipeAll() {
-  await db.transaction('rw', db.products, db.sales, db.movements, async () => {
-    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear()]);
+  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, async () => {
+    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear()]);
   });
 }
 

@@ -1,10 +1,15 @@
 <script>
   import Icon from '../components/Icon.svelte';
-  import { db, adjustQty, deleteProduct } from '../db.js';
+  import Sheet from '../components/Sheet.svelte';
+  import { db, adjustQty, deleteProduct, createReservation, RESERVATION_HOURS } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz } from '../utils.js';
-  import { toastOk, askConfirm, celebrateAt } from '../store.js';
+  import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
 
   let { product, onedit = () => {}, onclose = () => {} } = $props();
+
+  let reserving = $state(false);
+  let rName = $state('');
+  let rPhone = $state('');
 
   let p = $state(product);
   let moves = $state([]);
@@ -38,6 +43,21 @@
     await deleteProduct(p.sku);
     toastOk('تم الحذف');
     onclose();
+  }
+
+  async function doReserve() {
+    try {
+      await createReservation({ sku: p.sku, customerName: rName, customerPhone: rPhone });
+      reserving = false;
+      rName = '';
+      rPhone = '';
+      const q = await db.products.get(p.sku);
+      p = { ...p, qty: q.qty };
+      buzz([20, 50, 20]);
+      toastOk(`حُجزت القطعة ${RESERVATION_HOURS} ساعة — الكمية ${q.qty}`);
+    } catch (e) {
+      toastErr(e.message || 'تعذر الحجز');
+    }
   }
 </script>
 
@@ -81,6 +101,11 @@
     </button>
   </div>
   <div class="row" style="gap:10px">
+    <button class="btn gold" style="flex:1" disabled={p.qty <= 0} onclick={() => { buzz(8); reserving = true; }}>
+      <Icon name="clock" size={16} /> حجز لزبونة
+    </button>
+  </div>
+  <div class="row" style="gap:10px">
     <button class="btn primary" style="flex:1" onclick={() => { buzz(8); onedit(p); }}>
       <Icon name="edit" size={16} /> تعديل
     </button>
@@ -108,6 +133,23 @@
     </div>
   {/if}
 </div>
+
+<Sheet open={reserving} title="حجز قطعة" onclose={() => (reserving = false)}>
+  <div class="stack" style="gap:12px">
+    <div class="muted small">تُحجز قطعة واحدة من «{p.name}» لمدة {RESERVATION_HOURS} ساعة وتُخصم من المخزون الآن.</div>
+    <div class="field">
+      <label>اسم الزبونة</label>
+      <input class="input" bind:value={rName} placeholder="مثال: زينب" />
+    </div>
+    <div class="field">
+      <label>الهاتف (اختياري)</label>
+      <input class="input" bind:value={rPhone} inputmode="tel" placeholder="07xx…" />
+    </div>
+    <button class="btn primary lg block" onclick={doReserve}>
+      <Icon name="clock" size={20} /> تأكيد الحجز
+    </button>
+  </div>
+</Sheet>
 
 <style>
   .head { display: flex; gap: 12px; padding: 12px; align-items: center; }
