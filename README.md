@@ -54,6 +54,14 @@ Each version below lists **what was added and why it matters to the shop**.
 
 ---
 
+## [0.2.7] — 2026-09-09
+
+### Added
+- **Standalone brand header on the dashboard** — the logo + «بوتيك غزالة» no longer sit inside the stats card; they're a bigger, freestanding block directly on the drifting aurora. Space is reserved beside it for the upcoming **daily briefing** card.
+- **Shared `Glass` component** — one primitive for every card-like surface, with a configurable blur whose default (25px) is 40% stronger than the old standard 18px. Future surfaces migrate to it gradually.
+
+---
+
 ## [0.2.6] — 2026-09-09
 
 ### Fixed

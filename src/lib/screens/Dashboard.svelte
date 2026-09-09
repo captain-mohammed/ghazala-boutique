@@ -3,6 +3,7 @@
   import Icon from '../components/Icon.svelte';
   import Ticker from '../components/Ticker.svelte';
   import Logo from '../components/Logo.svelte';
+  import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import { db, allSettings } from '../db.js';
   import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces } from '../utils.js';
@@ -58,12 +59,14 @@
 </script>
 
 <div class="stack" style="gap:14px">
-  <section class="hero glass rise beam-host" style="animation-delay:0.03s">
-    <div class="row" style="gap:12px; align-items:center">
-      <Logo size={46} />
-      <h1 class="h1">بوتيك غزالة</h1>
-    </div>
+  <!-- Brand block: standalone on the aurora (no card) — the daily briefing
+       will live to its left in a future version -->
+  <header class="brand rise" style="animation-delay:0.03s">
+    <Logo size={56} />
+    <h1 class="h1">بوتيك غزالة</h1>
+  </header>
 
+  <Glass class="hero rise beam-host" style="animation-delay:0.03s">
     <div class="grid2">
       <div class="stat spot" use:spotlight>
         <div class="muted small">مبيعات اليوم</div>
@@ -86,7 +89,7 @@
         <div class="muted small">{stock.models} موديل</div>
       </div>
     </div>
-  </section>
+  </Glass>
 
   <section class="alerts">
     {#if stock.out > 0 || stock.low > 0}
@@ -151,9 +154,17 @@
   {/if}
 </div>
 
-<style>  .hero { padding: 18px; }
+<style>  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 4px 6px 0;
+  }
+  .brand :global(.h1) { margin: 0; }
 
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .hero { padding: 18px; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .stat {
     background: rgba(255, 255, 255, 0.4);
     border: 1px solid var(--line);
