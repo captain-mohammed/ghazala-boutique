@@ -18,7 +18,8 @@ export const DEFAULT_SETTINGS = {
   deadStockDays: 30,
   pin: null,
   categories: DEFAULT_CATEGORIES,
-  backupReminderAt: null
+  backupReminderAt: null,
+  waTemplate: null // null → app default (see DEFAULT_WA_TEMPLATE in utils.js)
 };
 
 export async function getSetting(key, fallback) {
@@ -181,7 +182,9 @@ export async function restoreJSON(data, { merge = false } = {}) {
   await db.products.bulkPut(data.products || []);
   await db.sales.bulkPut(data.sales || []);
   await db.movements.bulkPut(data.movements || []);
-  if (Array.isArray(data.settings)) await db.settings.bulkPut(data.settings);
+  if (Array.isArray(data.settings)) {
+    await db.settings.bulkPut(data.settings.filter((s) => s.key !== 'waTemplate'));
+  }
 }
 
 export async function wipeAll() {

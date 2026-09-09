@@ -122,29 +122,79 @@ export function lastSaleMap(sales) {
   return map;
 }
 
-/* ---------- WhatsApp delivery message ---------- */
+/* ---------- WhatsApp delivery message ----------
+   The template is stored as a setting ("waTemplate") and editable in
+   الإعدادات ← رسالة الواتساب. Variables: {customer} {order} {items}
+   {subtotal} {delivery} {total} {shop}. The shipment barcode stays in-app
+   on purpose — the customer never sees the parcel number in the message. */
 
-export function buildSalesMessage(sale) {
-  const lines = [];
-  lines.push(`مرحباً ${sale.customerName || 'زبوننا العزيز'} 🌸`);
-  lines.push('');
-  lines.push(`طلبك رقم #${sale.id} من بوتيك غزالة جاهز ✨`);
-  lines.push('');
-  lines.push('🛍️ تفاصيل الطلب:');
-  for (const it of sale.items || []) {
-    lines.push(`• ${it.name} × ${fmtNum(it.qty)} — ${fmtIQD(it.price * it.qty)}`);
-  }
-  lines.push('');
-  lines.push(`المجموع: ${fmtIQD(sale.subtotal)}`);
-  if (sale.deliveryFee) lines.push(`التوصيل: ${fmtIQD(sale.deliveryFee)}`);
-  lines.push(`الإجمالي: ${fmtIQD(sale.total)}`);
-  if (sale.barcode) {
-    lines.push('');
-    lines.push(`📦 باركود الشحنة: ${sale.barcode}`);
-  }
-  lines.push('');
-  lines.push('شكراً لثقتك بغزالة 🦌');
-  return lines.join('\n');
+export const WA_VARS = [
+  { token: '{customer}', label: 'اسم الزبون' },
+  { token: '{order}', label: 'رقم الطلب' },
+  { token: '{items}', label: 'تفاصيل القطع' },
+  { token: '{subtotal}', label: 'المجموع' },
+  { token: '{delivery}', label: 'أجور التوصيل' },
+  { token: '{total}', label: 'الإجمالي' },
+  { token: '{shop}', label: 'اسم البوتيك' }
+];
+
+export const DEFAULT_WA_TEMPLATE =
+  'مرحباً {customer} 🌸\n\n' +
+  'طلبك رقم {order} من {shop} جاهز ✨\n\n' +
+  '🛍️ تفاصيل الطلب:\n{items}\n\n' +
+  'المجموع: {subtotal}\n' +
+  'التوصيل: {delivery}\n' +
+  'الإجمالي: {total}\n\n' +
+  'شكراً لثقتك بغزالة 🦌';
+
+export function buildSalesMessage(sale, template = DEFAULT_WA_TEMPLATE) {
+  const itemLines = (sale.items || [])
+    .map((it) => `• ${it.name} × ${fmtNum(it.qty)} — ${fmtIQD(it.price * it.qty)}`)
+    .join('\n');
+  const map = {
+    '{customer}': sale.customerName || 'زبوننا العزيز',
+    '{order}': `#${sale.id}`,
+    '{items}': itemLines,
+    '{subtotal}': fmtIQD(sale.subtotal),
+    '{delivery}': fmtIQD(sale.deliveryFee || 0),
+    '{total}': fmtIQD(sale.total),
+    '{shop}': 'بوتيك غزالة'
+  };
+  let out = String(template || DEFAULT_WA_TEMPLATE);
+  for (const [k, v] of Object.entries(map)) out = out.split(k).join(v);
+  return out;
+}
+
+/* Normalize an Iraqi phone number for wa.me: keep digits only, and
+   07XXXXXXXXX (11 digits) becomes the Iraq country code 964 + the 10-digit
+   local number (7XXXXXXXX). Returns null when there's no usable number. */
+export function waPhone(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (!d) return null;
+  if (d.startsWith('00964')) d = d.slice(5);
+  else if (d.startsWith('964')) d = d.slice(3);
+  if (d.startsWith('0')) d = d.slice(1);
+  if (d.length === 10 && d.startsWith('7')) return '964' + d;
+  return null;
+}
+
+/* Open WhatsApp with the message prefilled (and the chat addressed to the
+   customer when we have a valid number). NOTE: no 'noopener' feature — the
+   spec makes window.open return null with it, which would break success
+   detection. The opener reference is severed manually instead. Falls back
+   to copying the text when the popup is blocked (e.g. desktop WebView). */
+export async function sendWhatsApp(message, phone, fallbackCopy = true) {
+  const text = encodeURIComponent(message);
+  const num = waPhone(phone);
+  const url = num ? `https://wa.me/${num}?text=${text}` : `https://wa.me/?text=${text}`;
+  let w = null;
+  try {
+    w = window.open(url, '_blank');
+    if (w) { try { w.opener = null; } catch { /* cross-origin: fine */ } }
+  } catch { w = null; }
+  if (w) return { opened: true, copied: false };
+  if (fallbackCopy) return { opened: false, copied: await copyText(message) };
+  return { opened: false, copied: false };
 }
 
 export async function copyText(text) {

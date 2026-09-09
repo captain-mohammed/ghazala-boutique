@@ -64,6 +64,7 @@
   let fee = $state(5000);
   let barcode = $state('');
   let scanOpen = $state(false);
+  let itemScanOpen = $state(false);
   let saving = $state(false);
 
   async function openCheckout() {
@@ -107,7 +108,7 @@
       <input placeholder="ابحث عن موديل…" bind:value={q} />
       {#if q}<button class="clr" onclick={() => (q = '')}><Icon name="x" size={14} /></button>{/if}
     </div>
-    <button class="iconbtn" style="width:50px; height:50px; flex:none" aria-label="مسح باركود" onclick={() => { buzz(8); q = ''; scanOpen = true; }}>
+    <button class="iconbtn" style="width:50px; height:50px; flex:none" aria-label="مسح باركود" onclick={() => { buzz(8); q = ''; itemScanOpen = true; }}>
       <Icon name="scan" size={20} />
     </button>
   </div>
@@ -156,13 +157,21 @@
   </div>
 {/if}
 
-<!-- Scanner -->
-<Scanner open={scanOpen} title="مسح باركود الموديل" onclose={() => (scanOpen = false)}
+<!-- Item scanner (finds a product by its barcode/SKU) -->
+<Scanner open={itemScanOpen} title="مسح باركود الموديل" onclose={() => (itemScanOpen = false)}
   onscan={(code) => {
-    scanOpen = false;
+    itemScanOpen = false;
     const p = products.find((x) => x.barcode === code || x.sku === code);
     if (p) addToCart(p);
     else toastErr('لا يوجد موديل بهذا الكود — أضف الباركود من تفاصيل الموديل');
+  }}
+/>
+
+<!-- Shipment scanner (captures the delivery company's barcode) -->
+<Scanner open={scanOpen} title="باركود شركة التوصيل" onclose={() => (scanOpen = false)}
+  onscan={(code) => {
+    scanOpen = false;
+    barcode = code;
   }}
 />
 
@@ -202,11 +211,18 @@
         <input class="input" bind:value={fee} inputmode="numeric" />
       </div>
       <div class="field" style="flex:1">
-        <label>باركود الشحنة</label>
-        <button class="btn" style="width:100%; justify-content:flex-start" onclick={() => { buzz(8); scanOpen = true; }}>
-          <Icon name="scan" size={18} color="var(--burgundy)" />
-          <span class="small">{barcode || 'مسح باركود شركة التوصيل'}</span>
-        </button>
+        <label>باركود شركة التوصيل</label>
+        <div class="row" style="gap:6px">
+          <button class="btn" style="flex:1; min-width:0; justify-content:flex-start" onclick={() => { buzz(8); scanOpen = true; }}>
+            <Icon name="scan" size={18} color="var(--burgundy)" />
+            <span class="small" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">{barcode || 'مسح الباركود…'}</span>
+          </button>
+          {#if barcode}
+            <button class="iconbtn" style="width:46px; height:46px; flex:none" aria-label="حذف الباركود" onclick={() => { barcode = ''; buzz(8); }}>
+              <Icon name="x" size={17} />
+            </button>
+          {/if}
+        </div>
       </div>
     </div>
 

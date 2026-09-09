@@ -167,7 +167,7 @@
   {#if totals.returned > 0}
     <section class="glass rise muted-card" style="animation-delay:0.3s; padding:14px 16px">
       <div class="row" style="justify-content:space-between">
-        <span class="muted"><Icon name="undo" size={15} /> مبيعات مرتجعة (كل الفترات)</span>
+        <span class="muted"><Icon name="undo" size={15} /> مبيعات راجع (كل الفترات)</span>
         <span class="money">{totals.returned}</span>
       </div>
     </section>

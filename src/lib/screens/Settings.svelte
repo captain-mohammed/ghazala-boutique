@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import Icon from '../components/Icon.svelte';
   import { db, allSettings, setSetting, seedDemo, wipeAll, DEFAULT_CATEGORIES } from '../db.js';
-  import { fmtIQD, buzz, hashPin } from '../utils.js';
+  import { fmtIQD, buzz, hashPin, WA_VARS, DEFAULT_WA_TEMPLATE, buildSalesMessage } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   let fee = $state('');
@@ -12,12 +12,21 @@
   let newCat = $state('');
   let loaded = $state(false);
 
+  /* WhatsApp message template */
+  let waText = $state(DEFAULT_WA_TEMPLATE);
+  let waTouched = $state(false);
+  let waBox = $state(false);
+
   onMount(async () => {
     const s = await allSettings();
     fee = s.deliveryFee;
     low = s.lowStockThreshold;
     deadDays = s.deadStockDays;
     cats = [...(s.categories || DEFAULT_CATEGORIES)];
+    if (typeof s.waTemplate === 'string' && s.waTemplate.trim()) {
+      waText = s.waTemplate;
+      waTouched = true;
+    }
     loaded = true;
   });
 
@@ -55,6 +64,32 @@
     cats = cats.filter((c) => c !== name);
     await setSetting('categories', cats);
     toastOk('حُذف التصنيف');
+  }
+
+  /* WhatsApp template save / reset */
+  function insertVar(token) {
+    waText = (waText || '') + token;
+    buzz(8);
+  }
+  async function saveWaTemplate() {
+    if (!waText.trim()) { toastErr('الرسالة لا يمكن أن تكون فارغة'); return; }
+    await setSetting('waTemplate', waText);
+    waTouched = true;
+    toastOk('تم حفظ رسالة الواتساب');
+    buzz([14, 30, 14]);
+  }
+  async function resetWaTemplate() {
+    const ok = await askConfirm({
+      title: 'استعادة الرسالة الافتراضية؟',
+      body: 'سيُستبدل النص الحالي بالرسالة الأصلية.',
+      okLabel: 'استعادة'
+    });
+    if (!ok) return;
+    waText = DEFAULT_WA_TEMPLATE;
+    await setSetting('waTemplate', waText);
+    waTouched = false;
+    toastOk('أُعيدت الرسالة الافتراضية');
+    buzz(10);
   }
 
   /* PIN change */
@@ -144,6 +179,34 @@
       </div>
     </section>
 
+    <section class="glass rise" style="padding:16px; animation-delay:0.12s">
+      <div class="row" style="justify-content:space-between; margin-bottom:12px">
+        <h2 class="h2"><Icon name="whatsapp" size={17} /> رسالة الواتساب</h2>
+        {#if waTouched}<span class="small muted">مُخصصة</span>{/if}
+      </div>
+      {#if waBox}
+        <div class="stack" style="gap:10px">
+          <div class="row wrap" style="gap:6px">
+            {#each WA_VARS as v (v.token)}
+              <button class="chip" onclick={() => insertVar(v.token)} title={v.label}>{v.token}</button>
+            {/each}
+          </div>
+          <textarea class="input wa-ta" bind:value={waText} rows="9" dir="rtl"></textarea>
+          <p class="muted small">اضغط على أي متغير لإضافته للنص — يتحول تلقائياً لبيانات كل عملية عند الإرسال.</p>
+          <div class="row" style="gap:8px">
+            <button class="btn ghost" style="flex:1" onclick={() => (waBox = false)}>إغلاق</button>
+            <button class="btn" style="flex:1" onclick={resetWaTemplate}>الافتراضية</button>
+            <button class="btn primary" style="flex:1" onclick={saveWaTemplate}>حفظ</button>
+          </div>
+        </div>
+      {:else}
+        <p class="muted small" style="margin-bottom:10px">نص الرسالة الجاهزة التي تُرسل للزبون عند البيع — عدّلها كما تحب.</p>
+        <button class="btn block" onclick={() => { waBox = true; buzz(8); }}>
+          <Icon name="edit" size={16} /> تعديل نص الرسالة
+        </button>
+      {/if}
+    </section>
+
     <section class="glass rise" style="padding:16px; animation-delay:0.15s">
       <h2 class="h2" style="margin-bottom:12px"><Icon name="lock" size={17} color="var(--burgundy)" /> الرقم السري</h2>
       {#if pinBox}
@@ -184,4 +247,11 @@
     padding: 0;
   }
   .danger-zone { border-color: rgba(181, 73, 91, 0.3); }
+  .wa-ta {
+    width: 100%;
+    min-height: 170px;
+    resize: vertical;
+    line-height: 1.7;
+    font-family: inherit;
+  }
 </style>

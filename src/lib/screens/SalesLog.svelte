@@ -2,19 +2,20 @@
   import Icon from '../components/Icon.svelte';
   import Sheet from '../components/Sheet.svelte';
   import { db, setSaleStatus, returnSale } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, buzz, buildSalesMessage, copyText } from '../utils.js';
-  import { toastOk, askConfirm } from '../store.js';
+  import { fmtIQD, fmtNum, fmtDate, buzz, buildSalesMessage, sendWhatsApp } from '../utils.js';
+  import { toastOk, toastErr, askConfirm } from '../store.js';
 
   const FILTERS = [
     { id: 'all', label: 'الكل' },
     { id: 'pending', label: 'قيد التوصيل' },
     { id: 'delivered', label: 'تم التسليم' },
-    { id: 'returned', label: 'مرتجع' }
+    { id: 'returned', label: 'راجع' }
   ];
 
   let sales = $state([]);
   let filter = $state('all');
   let detail = $state(null);
+  let waTemplate = $state(null); // loaded once from settings
 
   $effect(() => {
     let alive = true;
@@ -27,13 +28,30 @@
     return () => { alive = false; clearInterval(t); };
   });
 
+  /* Pick up a template edited in الإعدادات live (SalesLog polls too, but the
+     template only needs a cheap one-shot read per screen mount). */
+  $effect(() => {
+    let alive = true;
+    const grab = async () => {
+      const row = await db.settings.get('waTemplate');
+      if (alive) waTemplate = row?.value || null;
+    };
+    grab();
+    const t = setInterval(grab, 4000);
+    return () => { alive = false; clearInterval(t); };
+  });
+
   const filtered = $derived(filter === 'all' ? sales : sales.filter((s) => s.status === filter));
 
   const STATUS = {
     pending: { label: 'قيد التوصيل', cls: 'st-pending' },
     delivered: { label: 'تم التسليم', cls: 'st-delivered' },
-    returned: { label: 'مرتجع', cls: 'st-returned' }
+    returned: { label: 'راجع', cls: 'st-returned' }
   };
+
+  /* The WhatsApp action belongs to sales still in play — قيد التوصيل أو راجع.
+     A delivered sale's notification was already sent. */
+  const waEligible = (s) => s.status === 'pending' || s.status === 'returned';
 
   async function markDelivered(s) {
     await setSaleStatus(s.id, 'delivered');
@@ -45,7 +63,7 @@
   async function doReturn(s) {
     const ok = await askConfirm({
       title: 'إرجاع البيع؟',
-      body: 'ستُعاد الكميات إلى المخزون وتُحدَّث حالة العملية إلى مرتجع.',
+      body: 'ستُعاد الكميات إلى المخزون وتُحدَّث حالة العملية إلى راجع.',
       okLabel: 'إرجاع',
       danger: true
     });
@@ -56,9 +74,16 @@
   }
 
   async function shareWhatsApp(s) {
-    const ok = await copyText(buildSalesMessage(s));
+    const msg = buildSalesMessage(s, waTemplate);
+    const { opened, copied } = await sendWhatsApp(msg, s.customerPhone);
     buzz([14, 30, 14]);
-    toastOk(ok ? 'تم نسخ رسالة الواتساب — الصقها وأرسلها 💬' : 'تعذّر النسخ — جرّب مرة أخرى');
+    if (opened) {
+      toastOk(s.customerPhone ? 'فُتح واتساب برسالة جاهزة — أرسلها 💬' : 'فُتح واتساب — اختر محادثة الزبون وأرسل 💬');
+    } else if (copied) {
+      toastOk('تعذر فتح واتساب — نُسخت الرسالة للصقها 💬');
+    } else {
+      toastErr('تعذر فتح واتساب أو النسخ');
+    }
   }
 </script>
 
@@ -88,16 +113,18 @@
           </div>
           <div class="col" style="align-items:flex-end; gap:6px">
             <div class="money">{fmtIQD(s.total)}</div>
-            <span
-              class="wa-chip"
-              role="button"
-              tabindex="0"
-              aria-label="نسخ رسالة الواتساب"
-              onclick={(e) => { e.stopPropagation(); shareWhatsApp(s); }}
-              onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); shareWhatsApp(s); } }}
-            >
-              <Icon name="whatsapp" size={14} /> واتساب
-            </span>
+            {#if waEligible(s)}
+              <span
+                class="wa-chip"
+                role="button"
+                tabindex="0"
+                aria-label="إرسال رسالة الواتساب"
+                onclick={(e) => { e.stopPropagation(); shareWhatsApp(s); }}
+                onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); shareWhatsApp(s); } }}
+              >
+                <Icon name="whatsapp" size={14} /> واتساب
+              </span>
+            {/if}
           </div>
         </button>
       {/each}
@@ -118,7 +145,7 @@
           <div class="row small muted"><Icon name="phone" size={14} /> {detail.customerPhone}</div>
         {/if}
         {#if detail.barcode}
-          <div class="row small muted"><Icon name="scan" size={14} /> باركود الشحنة: <span class="bold" style="letter-spacing:1px">{detail.barcode}</span></div>
+          <div class="row small muted"><Icon name="scan" size={14} /> باركود شركة التوصيل: <span class="bold" style="letter-spacing:1px">{detail.barcode}</span></div>
         {/if}
       </div>
 
@@ -142,9 +169,11 @@
         <div class="row" style="justify-content:space-between"><span class="muted small">الربح</span><span class="money" style="color:var(--good)">{fmtIQD(detail.profit)}</span></div>
       </div>
 
-      <button class="btn wa block" onclick={() => shareWhatsApp(detail)}>
-        <Icon name="whatsapp" size={18} /> نسخ رسالة الواتساب للزبون
-      </button>
+      {#if waEligible(detail)}
+        <button class="btn wa block" onclick={() => shareWhatsApp(detail)}>
+          <Icon name="whatsapp" size={18} /> إرسال رسالة الواتساب للزبون
+        </button>
+      {/if}
 
       {#if detail.status === 'pending'}
         <div class="row" style="gap:10px">
