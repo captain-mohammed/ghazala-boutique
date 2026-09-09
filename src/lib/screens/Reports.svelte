@@ -3,6 +3,7 @@
   import Icon from '../components/Icon.svelte';
   import Ticker from '../components/Ticker.svelte';
   import { db, allSettings } from '../db.js';
+  import Glass from '../components/Glass.svelte';
   import { fmtIQD, fmtNum, startOfToday, daysAgoStart, lastSaleMap } from '../utils.js';
 
   let products = $state([]);
@@ -96,13 +97,13 @@
   </div>
 
   <section class="cards">
-    <div class="stat glass rise"><span class="muted small">الإيرادات</span><div class="big"><Ticker value={totals.revenue} /> <span class="cur">د.ع</span></div></div>
-    <div class="stat glass rise" style="animation-delay:0.05s"><span class="muted small">صافي الربح</span><div class="big gold"><Ticker value={totals.profit - totals.expenses} /> <span class="cur">د.ع</span></div><span class="muted tiny">بعد خصم {fmtIQD(totals.expenses)} مصاريف</span></div>
-    <div class="stat glass rise" style="animation-delay:0.1s"><span class="muted small">عدد العمليات</span><div class="big"><Ticker value={totals.count} /></div></div>
-    <div class="stat glass rise" style="animation-delay:0.15s"><span class="muted small">قيمة المخزون</span><div class="big"><Ticker value={stockValue} /> <span class="cur">د.ع</span></div></div>
+    <Glass class="stat rise" style="animation-delay:0s; padding:13px 15px; display:flex; flex-direction:column; gap:3px"><span class="muted small">الإيرادات</span><div class="big"><Ticker value={totals.revenue} /> <span class="cur">د.ع</span></div></Glass>
+    <Glass class="stat rise" style="animation-delay:0.05s; padding:13px 15px; display:flex; flex-direction:column; gap:3px"><span class="muted small">صافي الربح</span><div class="big gold"><Ticker value={totals.profit - totals.expenses} /> <span class="cur">د.ع</span></div><span class="muted tiny">بعد خصم {fmtIQD(totals.expenses)} مصاريف</span></Glass>
+    <Glass class="stat rise" style="animation-delay:0.1s; padding:13px 15px; display:flex; flex-direction:column; gap:3px"><span class="muted small">عدد العمليات</span><div class="big"><Ticker value={totals.count} /></div></Glass>
+    <Glass class="stat rise" style="animation-delay:0.15s; padding:13px 15px; display:flex; flex-direction:column; gap:3px"><span class="muted small">قيمة المخزون</span><div class="big"><Ticker value={stockValue} /> <span class="cur">د.ع</span></div></Glass>
   </section>
 
-  <section class="glass chart rise" style="animation-delay:0.1s">
+  <Glass class="chart rise" style="animation-delay:0.1s; padding:16px">
     <h2 class="h2">مبيعات آخر 14 يوم</h2>
     <div class="bars">
       {#each daily as day, i (i)}
@@ -112,10 +113,10 @@
         </div>
       {/each}
     </div>
-  </section>
+  </Glass>
 
   {#if best.length}
-    <section class="glass rise" style="animation-delay:0.15s; padding:16px">
+    <Glass class="rise" style="animation-delay:0.15s; padding:16px">
       <h2 class="h2" style="margin-bottom:10px"><Icon name="flame" size={17} color="var(--burgundy)" /> الأكثر مبيعاً</h2>
       <div class="stack" style="gap:8px">
         {#each best as b, i (b.sku)}
@@ -129,11 +130,11 @@
           </div>
         {/each}
       </div>
-    </section>
+    </Glass>
   {/if}
 
   {#if low.length}
-    <section class="glass rise" style="animation-delay:0.2s; padding:16px">
+    <Glass class="rise" style="animation-delay:0.2s; padding:16px">
       <h2 class="h2" style="margin-bottom:10px"><Icon name="alert" size={17} color="var(--warn)" /> كمية قليلة ({low.length})</h2>
       <div class="stack" style="gap:8px">
         {#each low as p (p.sku)}
@@ -146,11 +147,11 @@
           </div>
         {/each}
       </div>
-    </section>
+    </Glass>
   {/if}
 
   {#if dead.length}
-    <section class="glass rise" style="animation-delay:0.25s; padding:16px">
+    <Glass class="rise" style="animation-delay:0.25s; padding:16px">
       <h2 class="h2" style="margin-bottom:10px"><Icon name="clock" size={17} color="var(--burgundy)" /> مخزون راكد ({dead.length})</h2>
       <p class="muted small" style="margin:0 0 10px">موديلات لم تُبع منذ {settings?.deadStockDays ?? 30} يوم أو أكثر — فكّر بعرض خاص عليها.</p>
       <div class="stack" style="gap:8px">
@@ -164,27 +165,25 @@
           </div>
         {/each}
       </div>
-    </section>
+    </Glass>
   {/if}
 
   {#if totals.returned > 0}
-    <section class="glass rise muted-card" style="animation-delay:0.3s; padding:14px 16px">
+    <Glass class="rise muted-card" style="animation-delay:0.3s; padding:14px 16px">
       <div class="row" style="justify-content:space-between">
         <span class="muted"><Icon name="undo" size={15} /> مبيعات راجع (كل الفترات)</span>
         <span class="money">{totals.returned}</span>
       </div>
-    </section>
+    </Glass>
   {/if}
 </div>
 
 <style>
   .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .stat { padding: 13px 15px; display: flex; flex-direction: column; gap: 3px; }
   .big { font-size: 20px; font-weight: 800; color: var(--ink); display: flex; align-items: baseline; gap: 4px; }
   .big .cur { font-size: 11px; color: var(--taupe); font-weight: 700; }
   .big.gold { color: var(--gold); }
 
-  .chart { padding: 16px; }
   .bars { display: flex; align-items: flex-end; gap: 5px; height: 130px; margin-top: 14px; }
   .bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; height: 100%; justify-content: flex-end; }
   .bar {

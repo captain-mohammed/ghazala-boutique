@@ -1,6 +1,7 @@
 <script>
   import Icon from '../components/Icon.svelte';
   import Sheet from '../components/Sheet.svelte';
+  import Glass from '../components/Glass.svelte';
   import { db, adjustQty, deleteProduct, createReservation, RESERVATION_HOURS } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
@@ -62,7 +63,7 @@
 </script>
 
 <div class="stack" style="gap:14px">
-  <div class="head glass">
+  <Glass class="head">
     <div class="thumb">
       {#if p.photo}
         <img src={p.photo} alt={p.name} />
@@ -77,19 +78,19 @@
       </div>
       <div class="sku">{p.sku}</div>
     </div>
-  </div>
+  </Glass>
 
   <div class="grid2">
-    <div class="cell glass"><span class="muted small">سعر البيع</span><div class="money">{fmtIQD(p.price)}</div></div>
-    <div class="cell glass"><span class="muted small">التكلفة</span><div class="money">{fmtIQD(p.cost)}</div></div>
-    <div class="cell glass">
+    <Glass class="cell" radius="var(--r-md)"><span class="muted small">سعر البيع</span><div class="money">{fmtIQD(p.price)}</div></Glass>
+    <Glass class="cell" radius="var(--r-md)"><span class="muted small">التكلفة</span><div class="money">{fmtIQD(p.cost)}</div></Glass>
+    <Glass class="cell" radius="var(--r-md)">
       <span class="muted small">الربح للقطعة</span>
       <div class="money" style="color:{profit >= 0 ? 'var(--good)' : 'var(--burgundy)'}">{fmtIQD(profit)}</div>
-    </div>
-    <div class="cell glass">
+    </Glass>
+    <Glass class="cell" radius="var(--r-md)">
       <span class="muted small">الكمية الحالية</span>
       <div class="money" style="color:{p.qty === 0 ? 'var(--burgundy-deep)' : 'var(--ink)'}">{fmtNum(p.qty)}</div>
-    </div>
+    </Glass>
   </div>
 
   <div class="row" style="gap:10px">
@@ -115,7 +116,7 @@
   </div>
 
   {#if moves.length}
-    <div class="glass moves">
+    <Glass class="moves">
       <h3 class="h3"><Icon name="history" size={16} /> سجل الحركات</h3>
       <div class="stack" style="gap:8px">
         {#each moves as m, i (m.id)}
@@ -130,7 +131,7 @@
           </div>
         {/each}
       </div>
-    </div>
+    </Glass>
   {/if}
 </div>
 
@@ -152,7 +153,7 @@
 </Sheet>
 
 <style>
-  .head { display: flex; gap: 12px; padding: 12px; align-items: center; }
+  :global(.head) { display: flex; gap: 12px; padding: 12px; align-items: center; }
   .thumb {
     width: 84px; height: 84px;
     border-radius: var(--r-md);
@@ -175,8 +176,8 @@
     border-radius: 999px;
   }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .cell { padding: 10px 14px; border-radius: var(--r-md); display: flex; flex-direction: column; gap: 2px; }
-  .moves { padding: 14px; }
+  :global(.cell) { padding: 10px 14px; border-radius: var(--r-md); display: flex; flex-direction: column; gap: 2px; }
+  :global(.moves) { padding: 14px; }
   .h3 { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 14.5px; color: var(--ink); }
   .move { display: flex; gap: 10px; align-items: center; }
   .m-ic {

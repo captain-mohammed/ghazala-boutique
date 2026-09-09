@@ -1,5 +1,6 @@
 <script>
   import Icon from './Icon.svelte';
+  import Glass from './Glass.svelte';
   import { buzz } from '../utils.js';
 
   let {
@@ -11,7 +12,7 @@
   } = $props();
 </script>
 
-<section class="glass premium rise">
+<Glass class="premium rise">
   <span class="glow g1" aria-hidden="true"></span>
   <span class="glow g2" aria-hidden="true"></span>
 
@@ -41,10 +42,10 @@
       <Icon name="plus" size={18} /> {actionLabel}
     </button>
   {/if}
-</section>
+</Glass>
 
 <style>
-  .premium {
+  :global(.premium) {
     position: relative;
     overflow: hidden;
     padding: 34px 24px 28px;

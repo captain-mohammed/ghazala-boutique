@@ -93,7 +93,7 @@
   {:else}
     <div class="stack" style="gap:8px">
       {#each expenses as e, i (e.id)}
-        <div class="exp glass rise" style="animation-delay:{Math.min(i * 0.03, 0.25)}s">
+        <Glass class="exp rise" style="animation-delay:{Math.min(i * 0.03, 0.25)}s">
           <span class="e-ic"><Icon name={CAT_ICONS[e.category] || 'dots'} size={18} color="var(--burgundy)" /></span>
           <div class="a-body">
             <div class="bold small">{e.category}{e.note ? ' — ' + e.note : ''}</div>
@@ -101,7 +101,7 @@
           </div>
           <div class="money small">-{fmtIQD(e.amount)}</div>
           <button class="e-x" aria-label="حذف" onclick={() => remove(e)}><Icon name="x" size={13} /></button>
-        </div>
+        </Glass>
       {/each}
     </div>
   {/if}
@@ -109,9 +109,9 @@
 
 <style>
   .sums { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
-  .sum { padding: 11px 13px; display: flex; flex-direction: column; gap: 2px; }
+  :global(.sum) { padding: 11px 13px; display: flex; flex-direction: column; gap: 2px; }
   .sum-n { font-weight: 800; font-size: 14.5px; color: var(--burgundy-deep); }
-  .exp {
+  :global(.exp) {
     display: flex; align-items: center; gap: 10px;
     padding: 10px 12px;
   }

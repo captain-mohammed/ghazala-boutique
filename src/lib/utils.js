@@ -139,6 +139,8 @@ export const WA_VARS = [
   { token: '{subtotal}', label: 'المجموع' },
   { token: '{delivery}', label: 'أجور التوصيل' },
   { token: '{total}', label: 'الإجمالي' },
+  { token: '{province}', label: 'المحافظة' },
+  { token: '{address}', label: 'العنوان الكامل' },
   { token: '{shop}', label: 'اسم البوتيك' }
 ];
 
@@ -162,6 +164,8 @@ export function buildSalesMessage(sale, template = DEFAULT_WA_TEMPLATE) {
     '{subtotal}': fmtIQD(sale.subtotal),
     '{delivery}': fmtIQD(sale.deliveryFee || 0),
     '{total}': fmtIQD(sale.total),
+    '{province}': sale.province || '—',
+    '{address}': sale.address || '—',
     '{shop}': 'بوتيك غزالة'
   };
   let out = String(template || DEFAULT_WA_TEMPLATE);

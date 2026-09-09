@@ -5,9 +5,12 @@
   import Logo from '../components/Logo.svelte';
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
-  import { db, allSettings } from '../db.js';
-  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces } from '../utils.js';
+  import { db, allSettings, upcomingOccasions } from '../db.js';
+  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
+
+  /* tilt for Glass-hosted alert buttons (Glass applies it via its action prop) */
+  const tiltAlert = (node) => tilt(node, { max: 5, scale: 1.01 });
 
   let { goto } = $props();
 
@@ -15,18 +18,28 @@
   let sales = $state([]);
   let settings = $state(null);
   let loaded = $state(false);
+  let occasions = $state([]);
+  let reservations = $state([]);
 
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, s] = await Promise.all([db.products.toArray(), db.sales.toArray()]);
+      const [p, s, r] = await Promise.all([db.products.toArray(), db.sales.toArray(), db.reservations.toArray()]);
       if (!alive) return;
       products = p;
       sales = s;
+      reservations = r.filter((x) => x.status === 'active');
       loaded = true;
     };
     grab();
     const t = setInterval(grab, 4000);
+    return () => { alive = false; clearInterval(t); };
+  });
+
+  $effect(() => {
+    let alive = true;
+    upcomingOccasions(7).then((o) => { if (alive) occasions = o; });
+    const t = setInterval(() => upcomingOccasions(7).then((o) => { if (alive) occasions = o; }), 60000);
     return () => { alive = false; clearInterval(t); };
   });
 
@@ -64,6 +77,31 @@
   );
   const transitCount = $derived(sales.filter((s) => s.status !== 'returned' && !s.settledAt).length);
 
+  /* ---- Daily briefing: one friendly morning line, parts assembled by importance ---- */
+  const greeting = $derived.by(() => {
+    const h = new Date().getHours();
+    if (h < 12) return 'صباح الخير 🌸';
+    if (h < 17) return 'مساء الخير 🌷';
+    return 'مساء الخير 🌙';
+  });
+  const expiringRes = $derived(
+    reservations.filter((r) => (new Date(r.expiresAt) - Date.now()) / 3600000 <= 12)
+  );
+  const briefing = $derived.by(() => {
+    const parts = [];
+    const y = daysAgoStart(1);
+    const yNext = new Date(y.getTime() + 86400000);
+    const yPieces = sales
+      .filter((s) => s.status !== 'returned' && new Date(s.date) >= y && new Date(s.date) < yNext)
+      .reduce((a, s) => a + salePieces(s), 0);
+    if (yPieces > 0) parts.push(`البارحة بيعنا ${fmtNum(yPieces)} قطعة`);
+    if (transit > 0) parts.push(`عند التوصيل ${fmtIQD(transit)}`);
+    if (expiringRes.length > 0) parts.push(`${fmtNum(expiringRes.length)} حجز راح يخلص قريباً`);
+    const occ = occasions[0];
+    if (occ) parts.push(occ.inDays === 0 ? `مناسبة ${occ.customerName} اليوم 🎉` : `مناسبة ${occ.customerName} بعد ${fmtNum(occ.inDays)} يوم`);
+    return parts;
+  });
+
   /* One-shot border beam: runs only when a headline number actually changes,
      then removes itself — nothing loops on its own. */
   let beamOn = $state(false);
@@ -82,25 +120,39 @@
 </script>
 
 <div class="stack" style="gap:14px">
-  <!-- Brand block: standalone on the aurora (no card) — the daily briefing
-       will live to its left in a future version -->
+  <!-- Brand block: standalone on the aurora -->
   <header class="brand rise" style="animation-delay:0.03s">
     <Logo size={56} />
     <h1 class="h1">بوتيك غزالة</h1>
   </header>
 
+  {#if loaded && briefing.length}
+    <Glass class="brief rise" style="animation-delay:0.045s" onclick={() => { buzz(6); goto('reports'); }} role="button" tabindex="0">
+      <span class="b-ic"><Icon name="sparkle" size={16} color="#fff" /></span>
+      <div class="a-body">
+        <div class="bold small">{greeting}</div>
+        <div class="muted small">{briefing.join(' • ')}</div>
+      </div>
+    </Glass>
+  {/if}
+
   {#if transit > 0}
-    <button class="transit glass rise" style="animation-delay:0.06s" onclick={() => { buzz(6); goto('ledger'); }}>
+    <Glass
+      as="button"
+      class="transit rise"
+      style="animation-delay:0.06s; border-radius:var(--r-md)"
+      onclick={() => { buzz(6); goto('ledger'); }}
+    >
       <span class="tr-ic"><Icon name="truck" size={18} color="#fff" /></span>
       <div class="a-body">
         <div class="bold">عند شركات التوصيل: {fmtIQD(transit)}</div>
         <div class="muted small">{fmtNum(transitCount)} عملية — اضغط للحساب والتسوية</div>
       </div>
       <Icon name="back" size={16} color="var(--taupe)" />
-    </button>
+    </Glass>
   {/if}
 
-  <Glass class="hero rise beam-host {beamOn ? 'beam-run' : ''}" style="animation-delay:0.03s">
+  <Glass class="hero rise beam-host {beamOn ? 'beam-run' : ''}" style="animation-delay:0.03s; padding:18px">
     <div class="grid2">
       <div class="stat spot" use:spotlight>
         <div class="muted small">مبيعات اليوم</div>
@@ -127,38 +179,50 @@
 
   <section class="alerts">
     {#if stock.out > 0 || stock.low > 0}
-      <button class="alert glass rise" use:tilt={{ max: 5, scale: 1.01 }} style="animation-delay:0.08s" onclick={() => goto('inventory')}>
+      <Glass
+        as="button"
+        class="alert rise"
+        style="animation-delay:0.08s; border-radius:var(--r-md)"
+        action={tiltAlert}
+        onclick={() => goto('inventory')}
+      >
         <span class="a-ic warn"><Icon name="alert" size={20} /></span>
         <div class="a-body">
           <div class="bold">{stock.out > 0 ? `${stock.out} موديل نفد من المخزون` : `${stock.low} موديل كمية قليلة`}</div>
           <div class="muted small">اضغط لمراجعة المخزون</div>
         </div>
         <Icon name="back" size={18} color="var(--taupe)" />
-      </button>
+      </Glass>
     {/if}
     {#if dead.length > 0}
-      <button class="alert glass rise" use:tilt={{ max: 5, scale: 1.01 }} style="animation-delay:0.12s" onclick={() => goto('reports')}>
+      <Glass
+        as="button"
+        class="alert rise"
+        style="animation-delay:0.12s; border-radius:var(--r-md)"
+        action={tiltAlert}
+        onclick={() => goto('reports')}
+      >
         <span class="a-ic dead"><Icon name="clock" size={20} /></span>
         <div class="a-body">
           <div class="bold">{dead.length} موديل بلا حركة منذ {settings?.deadStockDays ?? 30} يوم</div>
           <div class="muted small">شاهد تقرير المخزون الراكد</div>
         </div>
         <Icon name="back" size={18} color="var(--taupe)" />
-      </button>
+      </Glass>
     {/if}
     {#if stock.out === 0 && stock.low === 0 && dead.length === 0 && loaded && products.length > 0}
-      <div class="alert glass rise" style="animation-delay:0.08s">
+      <Glass class="alert rise" style="animation-delay:0.08s; border-radius:var(--r-md)">
         <span class="a-ic ok"><Icon name="check" size={20} /></span>
         <div class="a-body">
           <div class="bold">كل شيء تحت السيطرة</div>
           <div class="muted small">لا تنبيهات حالياً — ممتاز!</div>
         </div>
-      </div>
+      </Glass>
     {/if}
   </section>
 
   {#if recent.length}
-    <section class="glass rise" style="animation-delay:0.16s; padding:16px">
+    <Glass class="rise" style="animation-delay:0.16s; padding:16px">
       <div class="row" style="justify-content:space-between; margin-bottom:10px">
         <h2 class="h2">آخر العمليات</h2>
         <button class="btn ghost" style="min-height:36px; padding:0 12px" onclick={() => goto('saleslog')}>السجل الكامل</button>
@@ -175,7 +239,7 @@
           </div>
         {/each}
       </div>
-    </section>
+    </Glass>
   {:else if loaded && products.length === 0}
     <div style="animation-delay:0.16s">
       <EmptyState
@@ -196,15 +260,24 @@
   }
   .brand :global(.h1) { margin: 0; }
 
-  .hero { padding: 18px; }
-
-  .transit {
+  :global(.transit) {
     display: flex; align-items: center; gap: 12px;
     padding: 12px 14px; border-radius: var(--r-md);
     text-align: right; width: 100%; cursor: pointer;
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .transit:active { transform: scale(0.98); }
+  :global(.brief) {
+    display: flex; align-items: center; gap: 11px;
+    padding: 11px 14px; border-radius: var(--r-md);
+    cursor: pointer;
+  }
+  .b-ic {
+    flex: none; width: 34px; height: 34px;
+    border-radius: 11px;
+    background: linear-gradient(150deg, var(--gold), #a4803e);
+    display: flex; align-items: center; justify-content: center;
+  }
+  :global(.transit:active) { transform: scale(0.98); }
   .tr-ic {
     flex: none; width: 40px; height: 40px;
     border-radius: 13px;
@@ -227,14 +300,14 @@
   .big.gold { color: var(--gold); }
 
   .alerts { display: flex; flex-direction: column; gap: 10px; }
-  .alert {
+  :global(.alert) {
     display: flex; align-items: center; gap: 12px;
     padding: 13px 15px; border-radius: var(--r-md);
     text-align: right; width: 100%;
     cursor: pointer;
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .alert:active { transform: scale(0.98); }
+  :global(.alert:active) { transform: scale(0.98); }
   .a-ic {
     flex: none;
     width: 40px; height: 40px;
@@ -258,13 +331,5 @@
     display: flex; align-items: center; justify-content: center;
     border-radius: 12px;
     background: var(--accent-soft);
-  }
-  .empty { padding: 30px 22px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
-  .empty-ic {
-    width: 72px; height: 72px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 50%;
-    background: var(--accent-soft);
-    border: 1px solid rgba(181, 73, 91, 0.2);
   }
 </style>

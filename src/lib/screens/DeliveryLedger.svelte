@@ -65,7 +65,7 @@
     for (const s of group.sales) {
       lines.push(`#${s.id} — ${s.customerName || 'زبون'}`);
       if (s.customerPhone) lines.push(`   📞 ${s.customerPhone}`);
-      const area = s.address || '';
+      const area = [s.province, s.address].filter(Boolean).join(' — ');
       if (area) lines.push(`   📍 ${area}`);
       lines.push(`   💰 المبلغ: ${fmtIQD(s.total)}`);
       if (s.barcode) lines.push(`   #️⃣ ${s.barcode}`);
@@ -124,7 +124,12 @@
   {:else}
     <div class="stack" style="gap:10px">
       {#each byCompany as g, i (g.company)}
-        <button class="co glass rise" style="animation-delay:{0.06 + i * 0.05}s" onclick={() => { buzz(6); detail = g; }}>
+        <Glass
+          as="button"
+          class="co rise"
+          style="animation-delay:{0.06 + i * 0.05}s"
+          onclick={() => { buzz(6); detail = g; }}
+        >
           <span class="co-ic"><Icon name="truck" size={19} color="var(--burgundy)" /></span>
           <div class="a-body">
             <div class="bold">{g.company}</div>
@@ -134,7 +139,7 @@
             <div class="money">{fmtIQD(g.amount)}</div>
             <span class="muted tiny">اضغط للتفاصيل</span>
           </div>
-        </button>
+        </Glass>
       {/each}
     </div>
   {/if}
@@ -177,13 +182,13 @@
 
       <div class="stack" style="gap:8px">
         {#each detail.sales as s (s.id)}
-          <div class="row glass" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
+          <Glass class="row" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
             <div>
               <div class="bold small">#{s.id} {s.customerName || 'زبون'}</div>
               <div class="muted tiny">{s.status === 'delivered' ? 'تم التسليم' : 'قيد التوصيل'}{s.barcode ? ' • ' + s.barcode : ''}</div>
             </div>
             <div class="money small">{fmtIQD(s.total)}</div>
-          </div>
+          </Glass>
         {/each}
       </div>
 
@@ -204,7 +209,7 @@
 </Sheet>
 
 <style>
-  .transit { padding: 16px 18px; }
+  :global(.transit) { padding: 16px 18px; }
   .t-head { display: flex; align-items: center; gap: 14px; }
   .t-ic {
     width: 46px; height: 46px;
@@ -215,13 +220,13 @@
     flex: none;
   }
   .t-amount { font-size: 24px; font-weight: 800; color: var(--ink); line-height: 1.25; }
-  .co {
+  :global(.co) {
     display: flex; align-items: center; gap: 12px;
     padding: 12px 14px;
     cursor: pointer; text-align: right; width: 100%;
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .co:active { transform: scale(0.98); }
+  :global(.co:active) { transform: scale(0.98); }
   .co-ic {
     flex: none; width: 40px; height: 40px;
     display: flex; align-items: center; justify-content: center;
@@ -229,7 +234,7 @@
   }
   .a-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .tiny { font-size: 10.5px; }
-  .hist { padding: 12px 14px; }
+  :global(.hist) { padding: 12px 14px; }
   .hist-head {
     width: 100%; display: flex; align-items: center; justify-content: space-between;
     background: none; border: none; cursor: pointer; padding: 0; font-family: inherit;
@@ -241,7 +246,7 @@
     padding: 7px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.35);
     flex-wrap: wrap;
   }
-  .sum { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
+  :global(.sum) { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
   .wa {
     background: linear-gradient(135deg, #25d366, #1faf54);
     color: #fff; border: none;

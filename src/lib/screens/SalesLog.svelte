@@ -2,6 +2,7 @@
   import Icon from '../components/Icon.svelte';
   import Sheet from '../components/Sheet.svelte';
   import EmptyState from '../components/EmptyState.svelte';
+  import Glass from '../components/Glass.svelte';
   import { db, setSaleStatus, returnSale } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz, buildSalesMessage, sendWhatsApp, salePieces } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
@@ -80,6 +81,29 @@
     if (detail?.id === s.id) detail = { ...detail, status: 'returned' };
   }
 
+  /* ---- Swipe the sale row: pull left reveals quick actions (تم التسليم / راجع) ---- */
+  let swipedId = $state(null);
+  const swipe = { active: false, id: null, x0: 0, dx: 0 };
+
+  function swipeStart(e, id) {
+    if (e.pointerType === 'mouse') return;
+    swipe.active = true;
+    swipe.id = id;
+    swipe.x0 = e.clientX;
+    swipe.dx = 0;
+  }
+  function swipeMove(e) {
+    if (!swipe.active) return;
+    swipe.dx = e.clientX - swipe.x0;
+  }
+  function swipeEnd() {
+    if (!swipe.active) return;
+    swipe.active = false;
+    if (swipe.dx < -56) swipedId = swipe.id;
+    else if (swipe.dx > 40) swipedId = null;
+    swipe.dx = 0;
+  }
+
   async function shareWhatsApp(s) {
     const msg = buildSalesMessage(s, waTemplate);
     const { opened, copied } = await sendWhatsApp(msg, s.customerPhone);
@@ -113,7 +137,32 @@
   {:else}
     <div class="stack" style="gap:10px">
       {#each filtered as s, i (s.id)}
-        <button class="sale glass rise" style="animation-delay:{Math.min(i * 0.04, 0.3)}s" onclick={() => { buzz(6); detail = s; }}>
+        <div
+          class="swipe-wrap"
+          class:open={swipedId === s.id}
+          onpointerdown={(e) => swipeStart(e, s.id)}
+          onpointermove={swipeMove}
+          onpointerup={swipeEnd}
+          onpointercancel={swipeEnd}
+        >
+          <div class="swipe-actions">
+            {#if s.status !== 'delivered'}
+              <button class="sw-btn ok" onclick={() => { swipedId = null; markDelivered(s); }}>
+                <Icon name="check" size={17} /> تم التسليم
+              </button>
+            {/if}
+            {#if s.status !== 'returned'}
+              <button class="sw-btn ret" onclick={() => { swipedId = null; doReturn(s); }}>
+                <Icon name="undo" size={16} /> راجع
+              </button>
+            {/if}
+          </div>
+          <Glass
+            as="button"
+            class="sale rise"
+            style="animation-delay:{Math.min(i * 0.04, 0.3)}s"
+            onclick={() => { if (Math.abs(swipe.dx) < 8) { buzz(6); detail = s; } }}
+          >
           <span class="s-ic"><Icon name={s.status === 'returned' ? 'undo' : 'truck'} size={19} color="var(--burgundy)" /></span>
           <div class="a-body">
             <div class="row" style="gap:8px">
@@ -137,7 +186,8 @@
               </span>
             {/if}
           </div>
-        </button>
+          </Glass>
+        </div>
       {/each}
     </div>
   {/if}
@@ -146,7 +196,7 @@
 <Sheet open={!!detail} title="تفاصيل العملية" onclose={() => (detail = null)}>
   {#if detail}
     <div class="stack" style="gap:12px">
-      <div class="glass head-card">
+      <Glass class="head-card">
         <div class="row" style="justify-content:space-between">
           <span class="bold">#{detail.id} — {detail.customerName || 'زبون'}</span>
           <span class="st {STATUS[detail.status]?.cls}">{STATUS[detail.status]?.label}</span>
@@ -155,30 +205,33 @@
         {#if detail.customerPhone}
           <div class="row small muted"><Icon name="phone" size={14} /> {detail.customerPhone}</div>
         {/if}
+        {#if detail.province}
+          <div class="row small muted"><Icon name="flag" size={14} /> {detail.province}{detail.address ? ' — ' + detail.address : ''}</div>
+        {/if}
         {#if detail.barcode}
           <div class="row small muted"><Icon name="scan" size={14} /> باركود شركة التوصيل: <span class="bold" style="letter-spacing:1px">{detail.barcode}</span></div>
         {/if}
-      </div>
+      </Glass>
 
       <div class="stack" style="gap:8px">
         {#each detail.items as it (it.sku)}
-          <div class="row glass" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
+          <Glass class="row" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
             <div>
               <div class="bold small">{it.name}</div>
               <div class="muted small">{fmtIQD(it.price)} × {it.qty}</div>
             </div>
             <div class="money small">{fmtIQD(it.price * it.qty)}</div>
-          </div>
+          </Glass>
         {/each}
       </div>
 
-      <div class="glass" style="padding:12px 16px; display:flex; flex-direction:column; gap:5px">
+      <Glass style="padding:12px 16px; display:flex; flex-direction:column; gap:5px">
         <div class="row" style="justify-content:space-between"><span class="muted small">المجموع</span><span class="money">{fmtIQD(detail.subtotal)}</span></div>
         <div class="row" style="justify-content:space-between"><span class="muted small">التوصيل</span><span class="money">{fmtIQD(detail.deliveryFee)}</span></div>
         <hr class="divider-gold" style="margin:2px 0" />
         <div class="row" style="justify-content:space-between"><span class="bold">الإجمالي</span><span class="money" style="color:var(--burgundy)">{fmtIQD(detail.total)}</span></div>
         <div class="row" style="justify-content:space-between"><span class="muted small">الربح</span><span class="money" style="color:var(--good)">{fmtIQD(detail.profit)}</span></div>
-      </div>
+      </Glass>
 
       {#if waEligible(detail)}
         <button class="btn wa block" onclick={() => shareWhatsApp(detail)}>
@@ -205,7 +258,50 @@
 </Sheet>
 
 <style>
-  .sale {
+  .swipe-wrap {
+    position: relative;
+    border-radius: var(--r-lg);
+    overflow: hidden;
+    touch-action: pan-y;
+  }
+  .swipe-actions {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 0 12px;
+    align-items: center;
+    z-index: 0;
+  }
+  .sw-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 800;
+    font-size: 12px;
+    padding: 10px 12px;
+    border-radius: 14px;
+    color: #fff;
+    white-space: nowrap;
+  }
+  .sw-btn.ok { background: linear-gradient(135deg, #4e8a5f, #3c7050); }
+  .sw-btn.ret { background: linear-gradient(135deg, var(--burgundy), var(--burgundy-deep)); }
+  .swipe-wrap :global(.sale) {
+    position: relative;
+    z-index: 1;
+    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  /* .rise uses fill-mode both — release it so the open-translate applies */
+  .swipe-wrap.open :global(.sale) {
+    animation: none;
+    transform: translateX(-96px);
+  }
+
+  :global(.sale) {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -215,7 +311,7 @@
     width: 100%;
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .sale:active { transform: scale(0.98); }
+  :global(.sale:active) { transform: scale(0.98); }
   .s-ic {
     flex: none;
     width: 40px; height: 40px;
@@ -270,12 +366,5 @@
   .chip-n.dim { background: rgba(122, 46, 58, 0.08); color: var(--taupe); }
   .st-delivered { background: rgba(78, 138, 95, 0.14); color: var(--good); }
   .st-returned { background: rgba(122, 46, 58, 0.12); color: var(--burgundy-deep); }
-  .head-card { padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
-  .empty { padding: 26px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-  .empty-ic {
-    width: 64px; height: 64px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 50%;
-    background: var(--accent-soft);
-  }
+  :global(.head-card) { padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
 </style>

@@ -1,4 +1,5 @@
 import Dexie from 'dexie';
+import { startOfToday } from './utils.js';
 
 export const db = new Dexie('ghazala_boutique');
 
@@ -11,6 +12,17 @@ db.version(2).stores({
   settings: 'key',
   expenses: '++id, date, category',
   reservations: '++id, sku, createdAt, expiresAt, status'
+});
+
+/* v3: + occasions (birthday/anniversary notes per customer) */
+db.version(3).stores({
+  products: 'sku, name, category, brand, color, size, qty, updatedAt',
+  sales: '++id, date, status, customerName, customerPhone, barcode, deliveryCompany, settledAt, fromReservation',
+  movements: '++id, sku, date, type',
+  settings: 'key',
+  expenses: '++id, date, category',
+  reservations: '++id, sku, createdAt, expiresAt, status',
+  occasions: '++id, customerName, customerPhone, month, day, date'
 });
 
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
@@ -109,7 +121,7 @@ export async function logMovement({ sku, type, qty, note }) {
 
 /* ---------------- Sales ---------------- */
 
-export async function recordSale({ items, customerName, customerPhone, deliveryFee, barcode, status, deliveryCompany, fromReservation, stockDeducted }) {
+export async function recordSale({ items, customerName, customerPhone, province, address, deliveryFee, barcode, status, deliveryCompany, fromReservation, stockDeducted }) {
   const now = new Date().toISOString();
   let subtotal = 0, cost = 0;
   for (const it of items) {
@@ -122,6 +134,7 @@ export async function recordSale({ items, customerName, customerPhone, deliveryF
     date: now, items, subtotal, cost, profit: subtotal - cost,
     deliveryFee: fee, total,
     customerName: customerName || '', customerPhone: customerPhone || '',
+    province: province || '', address: address || '',
     barcode: barcode || '', status: status || 'pending',
     deliveryCompany: deliveryCompany || '', settledAt: null,
     fromReservation: fromReservation ?? null, createdAt: now
@@ -137,6 +150,15 @@ export async function recordSale({ items, customerName, customerPhone, deliveryF
 
 export async function setSaleStatus(id, status) {
   await db.sales.update(id, { status });
+}
+
+/* Pieces sold today (non-returned) — drives milestone celebrations */
+export async function piecesSoldToday() {
+  const from = startOfToday().getTime();
+  const todays = await db.sales.where('date').above(new Date(from).toISOString()).toArray();
+  return todays
+    .filter((s) => s.status !== 'returned')
+    .reduce((a, s) => a + (s.items || []).reduce((x, it) => x + (Number(it.qty) || 0), 0), 0);
 }
 
 /* تسوية — the delivery company handed over the cash for this package */
@@ -209,7 +231,7 @@ export async function expireReservation(id) {
 }
 
 /* Convert an active reservation into a real sale (already-deducted stock stays deducted) */
-export async function convertReservation(id, { deliveryFee, barcode, deliveryCompany } = {}) {
+export async function convertReservation(id, { deliveryFee, barcode, deliveryCompany, province, address } = {}) {
   const r = await db.reservations.get(id);
   if (!r || r.status !== 'active') throw new Error('الحجز غير صالح');
   const p = await db.products.get(r.sku);
@@ -217,6 +239,8 @@ export async function convertReservation(id, { deliveryFee, barcode, deliveryCom
     items: [{ sku: r.sku, name: r.name, price: r.price, cost: p?.cost ?? 0, qty: 1 }],
     customerName: r.customerName,
     customerPhone: r.customerPhone,
+    province,
+    address,
     deliveryFee,
     barcode,
     deliveryCompany,
@@ -270,21 +294,21 @@ export async function stocktakeApply(corrections) {
 /* ---------------- Backup / Restore ---------------- */
 
 export async function backupJSON() {
-  const [products, sales, movements, settings, expenses, reservations] = await Promise.all([
+  const [products, sales, movements, settings, expenses, reservations, occasions] = await Promise.all([
     db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray(),
-    db.expenses.toArray(), db.reservations.toArray()
+    db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray()
   ]);
   return {
-    app: 'ghazala-boutique', version: 2, exportedAt: new Date().toISOString(),
-    products, sales, movements, settings, expenses, reservations
+    app: 'ghazala-boutique', version: 3, exportedAt: new Date().toISOString(),
+    products, sales, movements, settings, expenses, reservations, occasions
   };
 }
 
 export async function restoreJSON(data, { merge = false } = {}) {
   if (!data || data.app !== 'ghazala-boutique') throw new Error('ملف النسخة غير صالح');
   if (!merge) {
-    await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, async () => {
-      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear()]);
+    await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, async () => {
+      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear()]);
     });
   }
   await db.products.bulkPut(data.products || []);
@@ -295,12 +319,52 @@ export async function restoreJSON(data, { merge = false } = {}) {
   }
   if (Array.isArray(data.expenses)) await db.expenses.bulkPut(data.expenses);
   if (Array.isArray(data.reservations)) await db.reservations.bulkPut(data.reservations);
+  if (Array.isArray(data.occasions)) await db.occasions.bulkPut(data.occasions);
 }
 
 export async function wipeAll() {
-  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, async () => {
-    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear()]);
+  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, async () => {
+    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear()]);
   });
+}
+
+/* ---------------- Occasions (birthday / anniversary notes) ---------------- */
+
+/* An occasion repeats yearly: { customerName, customerPhone, label, month (1-12), day }.
+   `label` examples: عيد ميلاد · ذكرى زواج · مناسبة خاصة. Upcoming 30-day list drives
+   the daily briefing + a reminder chip; WhatsApp greeting opens from the row. */
+export async function addOccasion({ customerName, customerPhone, label, month, day, note }) {
+  return db.occasions.add({
+    customerName: customerName || '',
+    customerPhone: customerPhone || '',
+    label: label || 'عيد ميلاد',
+    month: Number(month),
+    day: Number(day),
+    note: note || '',
+    createdAt: new Date().toISOString()
+  });
+}
+
+export async function deleteOccasion(id) {
+  return db.occasions.delete(id);
+}
+
+/* Days from today until the next occurrence of a (month, day) — 0 = today */
+export function daysUntil(month, day, ref = new Date()) {
+  const y = ref.getFullYear();
+  let next = new Date(y, month - 1, day);
+  const today = new Date(y, ref.getMonth(), ref.getDate());
+  if (next < today) next = new Date(y + 1, month - 1, day);
+  return Math.round((next - today) / 86400000);
+}
+
+/* Occasions in the next `window` days, soonest first */
+export async function upcomingOccasions(windowDays = 30) {
+  const all = await db.occasions.toArray();
+  return all
+    .map((o) => ({ ...o, inDays: daysUntil(o.month, o.day) }))
+    .filter((o) => o.inDays <= windowDays)
+    .sort((a, b) => a.inDays - b.inDays);
 }
 
 /* ---------------- Demo data (اختياري للتجربة) ---------------- */

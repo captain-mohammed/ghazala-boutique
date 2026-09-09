@@ -3,9 +3,9 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
-  import { db, sweepExpiredReservations, cancelReservation, convertReservation } from '../db.js';
+  import { db, sweepExpiredReservations, cancelReservation, convertReservation, piecesSoldToday } from '../db.js';
   import { fmtIQD, fmtDate, fmtNum, buzz } from '../utils.js';
-  import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
+  import { toastOk, toastErr, askConfirm, celebrateAt, milestoneFor } from '../store.js';
 
   let reservations = $state([]);
   let converting = $state(null); // reservation in the convert sheet
@@ -43,18 +43,43 @@
     toastOk('أُلغي الحجز وعادت القطعة للمخزون');
   }
 
+  /* العراق 18 محافظة */
+  const PROVINCES = ['بغداد', 'البصرة', 'نينوى', 'أربيل', 'السليمانية', 'دهوك', 'كركوك', 'الأنبار', 'بابل', 'كربلاء', 'النجف', 'القادسية', 'ذي قار', 'ميسان', 'مثنى', 'واسط', 'ديالى', 'صلاح الدين'];
+
+  let cName = $state('');
+  let cPhone = $state('');
+  let cProvince = $state('');
+  let cAddress = $state('');
+  let tried = $state(false);
+  const clientValid = $derived(cName.trim().length > 0 && cPhone.trim().length >= 7 && cProvince !== '');
+
   async function openConvert(r) {
     converting = r;
+    cName = r.customerName || '';
+    cPhone = r.customerPhone || '';
+    cProvince = '';
+    cAddress = '';
+    tried = false;
     buzz(8);
   }
 
   async function doConvert() {
+    if (!clientValid) { tried = true; buzz([30, 40, 30]); return; }
     try {
-      const sale = await convertReservation(converting.id, { deliveryFee: Number(fee) || 0 });
+      const sale = await convertReservation(converting.id, { deliveryFee: Number(fee) || 0, province: cProvince, address: cAddress });
       converting = null;
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.8, '🛍️');
       toastOk(`تم البيع #${sale.id} — ${fmtIQD(sale.total)}`);
+      const sold = await piecesSoldToday();
+      const ms = milestoneFor(sold);
+      if (ms) {
+        setTimeout(() => {
+          celebrateAt(window.innerWidth / 2, window.innerHeight / 2.4, '🏆');
+          buzz([40, 80, 40, 80, 40]);
+          toastOk(ms.text, 'success', 4200);
+        }, 700);
+      }
     } catch (e) {
       toastErr('تعذر تحويل الحجز');
       console.error(e);
@@ -72,7 +97,7 @@
   {:else}
     <div class="stack" style="gap:10px">
       {#each active as r, i (r.id)}
-        <div class="glass res rise" style="animation-delay:{Math.min(i * 0.05, 0.3)}s">
+        <Glass class="res rise" style="animation-delay:{Math.min(i * 0.05, 0.3)}s">
           <div class="row" style="justify-content:space-between">
             <span class="bold">{r.name}</span>
             <span class="chip-n warn-chip">{hoursLeft(r) < 6 ? '⏳' : ''} {fmtNum(Math.floor(hoursLeft(r)))} ساعة</span>
@@ -87,7 +112,7 @@
               </button>
             </div>
           </div>
-        </div>
+        </Glass>
       {/each}
     </div>
   {/if}
@@ -114,9 +139,34 @@
     <div class="stack" style="gap:12px">
       <Glass class="sum">
         <div class="row" style="justify-content:space-between"><span class="muted small">الموديل</span><span class="bold">{converting.name}</span></div>
-        <div class="row" style="justify-content:space-between"><span class="muted small">الزبونة</span><span class="bold">{converting.customerName || 'زبونة'}</span></div>
         <div class="row" style="justify-content:space-between"><span class="muted small">السعر</span><span class="money">{fmtIQD(converting.price)}</span></div>
       </Glass>
+      <div class="row" style="gap:8px">
+        <div class="field" style="flex:1">
+          <label>الاسم <span class="req">*</span></label>
+          <input class="input" bind:value={cName} class:invalid={tried && !cName.trim()} />
+          {#if tried && !cName.trim()}<span class="err">مطلوب</span>{/if}
+        </div>
+        <div class="field" style="flex:1">
+          <label>الهاتف <span class="req">*</span></label>
+          <input class="input" bind:value={cPhone} class:invalid={tried && cPhone.trim().length < 7} inputmode="tel" />
+          {#if tried && cPhone.trim().length < 7}<span class="err">رقم صحيح مطلوب</span>{/if}
+        </div>
+      </div>
+      <div class="row" style="gap:8px">
+        <div class="field" style="flex:1">
+          <label>المحافظة <span class="req">*</span></label>
+          <select class="input" bind:value={cProvince} class:invalid={tried && !cProvince} style="height:50px">
+            <option value="" disabled>اختر…</option>
+            {#each PROVINCES as pv (pv)}<option value={pv}>{pv}</option>{/each}
+          </select>
+          {#if tried && !cProvince}<span class="err">مطلوبة</span>{/if}
+        </div>
+        <div class="field" style="flex:1">
+          <label>العنوان <span class="muted tiny">(اذا متوفر)</span></label>
+          <input class="input" bind:value={cAddress} placeholder="أقرب نقطة دالة…" />
+        </div>
+      </div>
       <div class="field">
         <label>أجور التوصيل (د.ع)</label>
         <input class="input" bind:value={fee} inputmode="numeric" />
@@ -129,7 +179,11 @@
 </Sheet>
 
 <style>
-  .res { padding: 13px 15px; display: flex; flex-direction: column; gap: 4px; }
+  :global(.res) { padding: 13px 15px; display: flex; flex-direction: column; gap: 4px; }
+
+  .req { color: var(--burgundy); font-weight: 800; }
+  .err { display: block; font-size: 11px; color: var(--burgundy); font-weight: 700; margin-top: 3px; }
+  :global(.invalid) { border-color: rgba(181, 73, 91, 0.55) !important; background: rgba(181, 73, 91, 0.05); }
   .chip-n {
     min-width: 20px; height: 22px; padding: 0 9px;
     border-radius: 999px;

@@ -1,5 +1,6 @@
 <script>
   import Icon from '../components/Icon.svelte';
+  import Glass from '../components/Glass.svelte';
   import { db, addProduct, updateProduct, WOMENS_TYPES, DEFAULT_CATEGORIES } from '../db.js';
   import { fmtIQD, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
@@ -122,21 +123,21 @@
   </div>
 
   {#if Number(price) > 0 && Number(cost) > 0}
-    <div class="profit glass pop">
+    <Glass class="profit pop" radius="var(--r-md)">
       {#key profit}
         <span class="pnum" style="color:{margin >= 30 ? 'var(--good)' : 'var(--warn)'}">{fmtIQD(profit)}</span>
       {/key}
       <span class="muted small">({margin}%) ربح القطعة</span>
-    </div>
+    </Glass>
   {/if}
 
   <div class="field">
     <label>الكمية</label>
-    <div class="stepper glass">
+    <Glass class="stepper" radius="var(--r-md)">
       <button class="step" onclick={() => { if (qty > 0) { qty--; buzz(6); } }} aria-label="نقصان">−</button>
       <div class="qty-num">{qty}</div>
       <button class="step" onclick={() => { qty++; buzz(6); }} aria-label="زيادة">+</button>
-    </div>
+    </Glass>
   </div>
 
   <div class="field">
@@ -151,7 +152,7 @@
 </div>
 
 <style>
-  .profit {
+  :global(.profit) {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -159,7 +160,7 @@
     border-radius: var(--r-md);
   }
   .pnum { font-weight: 800; font-variant-numeric: tabular-nums; }
-  .stepper {
+  :global(.stepper) {
     display: flex;
     align-items: center;
     justify-content: space-between;

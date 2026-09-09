@@ -145,6 +145,54 @@ export function spotlight(node) {
 
 /* ---------------- 3D tilt ----------------
    Perspective tilt that follows the pointer, with a soft spring back. */
+/* Long-press power move: fires a `longpress` CustomEvent after `delay` ms of
+   a held, still pointer; quick releases and scrolls cancel silently. */
+export function longpress(node, opts = {}) {
+  const delay = opts.delay ?? 450;
+  let timer = null;
+  let fired = false;
+  let x0 = null;
+
+  function down(e) {
+    if (e.button !== undefined && e.button !== 0) return;
+    fired = false;
+    x0 = e.clientX;
+    timer = setTimeout(() => {
+      fired = true;
+      try { navigator.vibrate?.([18, 40, 18]); } catch { /* noop */ }
+      node.dispatchEvent(new CustomEvent('longpress', { detail: { x: e.clientX, y: e.clientY } }));
+    }, delay);
+  }
+  function move(e) {
+    if (x0 !== null && Math.abs(e.clientX - x0) > 10) cancel();
+  }
+  function cancel() {
+    clearTimeout(timer);
+    timer = null;
+    x0 = null;
+  }
+  function up(e) {
+    const wasFired = fired;
+    cancel();
+    if (wasFired) { fired = false; e?.preventDefault?.(); e?.stopPropagation?.(); }
+  }
+
+  node.addEventListener('pointerdown', down);
+  node.addEventListener('pointermove', move);
+  node.addEventListener('pointerup', up, true);
+  node.addEventListener('pointercancel', cancel);
+  node.addEventListener('contextmenu', (e) => { if (fired) e.preventDefault(); });
+
+  return {
+    destroy() {
+      node.removeEventListener('pointerdown', down);
+      node.removeEventListener('pointermove', move);
+      node.removeEventListener('pointerup', up, true);
+      node.removeEventListener('pointercancel', cancel);
+    }
+  };
+}
+
 export function tilt(node, opts = {}) {
   const maxTilt = opts.max ?? 9;
   const scale = opts.scale ?? 1.02;

@@ -4,10 +4,12 @@
   import Dropdown from '../components/Dropdown.svelte';
   import SpeedDial from '../components/SpeedDial.svelte';
   import EmptyState from '../components/EmptyState.svelte';
+  import Glass from '../components/Glass.svelte';
   import ProductForm from './ProductForm.svelte';
   import ItemDetail from './ItemDetail.svelte';
-  import { db } from '../db.js';
+  import { db, adjustQty } from '../db.js';
   import { fmtIQD, fmtNum, buzz } from '../utils.js';
+  import { toastOk } from '../store.js';
 
   let { goto } = $props();
 
@@ -120,19 +122,41 @@
   function onDial(a) {
     if (a.id === 'add') openAdd();
   }
+
+  /* ---- Long-press power moves: hold a card → quick ops popover ---- */
+  let quickOps = $state(null); // { sku, x, y }
+
+  function onLongPress(e, p) {
+    buzz([18, 40, 18]);
+    quickOps = { sku: p.sku, product: p, x: e.detail?.x ?? window.innerWidth / 2, y: e.detail?.y ?? window.innerHeight / 3 };
+  }
+
+  async function quickBump(p, d) {
+    const q2 = await adjustQty(p.sku, d);
+    products = products.map((x) => (x.sku === p.sku ? { ...x, qty: q2 } : x));
+    quickOps = null;
+    buzz(12);
+    if (d > 0) toastOk(`+1 قطعة — ${p.name}`);
+    else toastOk(`−1 قطعة — ${p.name}`);
+  }
+
+  function quickReserve(p) {
+    quickOps = null;
+    detail = products.find((x) => x.sku === p.sku);
+  }
 </script>
 
 <div class="stack" style="gap:12px">
   <div class="row" style="gap:10px">
-    <div class="search glass">
+    <Glass class="search" radius="var(--r-md)">
       <Icon name="search" size={18} color="var(--taupe)" />
       <input placeholder="ابحث بالاسم، اللون، المقاس، الكود…" bind:value={q} />
       {#if q}<button class="clr" onclick={() => (q = '')}><Icon name="x" size={14} /></button>{/if}
-    </div>
+    </Glass>
   </div>
 
   <!-- Premium filter card -->
-  <div class="glass filter-card">
+  <Glass class="filter-card">
     <div class="f-head">
       <span class="f-title"><Icon name="sliders" size={16} color="var(--burgundy)" /> فلاتر</span>
       {#if activeCount > 0}<span class="f-count">{activeCount}</span>{/if}
@@ -158,7 +182,7 @@
         {/each}
       </div>
     {/if}
-  </div>
+  </Glass>
 
   <div class="muted small sort-note">
     {fmtNum(filtered.length)} موديل{cat !== 'الكل' ? ` في ${cat}` : ''}
@@ -175,7 +199,13 @@
   {:else}
     <div class="grid">
       {#each filtered as p, i (p.sku)}
-        <button class="card glass rise" style="animation-delay:{Math.min(i * 0.04, 0.4)}s" onclick={() => { buzz(6); detail = p; }}>
+        <Glass
+          as="button"
+          class="card rise"
+          style="animation-delay:{Math.min(i * 0.04, 0.4)}s"
+          onlongpress={(e) => onLongPress(e, p)}
+          onclick={() => { buzz(6); detail = p; }}
+        >
           <div class="thumb" class:oos={p.qty === 0}>
             {#if p.photo}
               <img src={p.photo} alt={p.name} loading="lazy" />
@@ -191,13 +221,28 @@
               <span class="card-price">{fmtIQD(p.price)}</span>
             </div>
           </div>
-        </button>
+        </Glass>
       {/each}
     </div>
   {/if}
 </div>
 
 <SpeedDial actions={dialActions} onselect={onDial} />
+
+{#if quickOps}
+  <div class="qp-backdrop" onclick={() => (quickOps = null)} aria-hidden="true"></div>
+  <div class="quickops pop" style="left:{Math.min(Math.max(quickOps.x, 90), window.innerWidth - 90)}px; top:{Math.max(quickOps.y - 8, 60)}px">
+    <div class="qo-name">{quickOps.product.name}</div>
+    <div class="qo-row">
+      <button class="qo-btn" onclick={() => quickBump(quickOps.product, +1)}><Icon name="plus" size={16} /> قطعة</button>
+      <button class="qo-btn" onclick={() => quickBump(quickOps.product, -1)}><Icon name="back" size={14} style="transform:rotate(90deg)" /> نقصان</button>
+    </div>
+    <div class="qo-row">
+      <button class="qo-btn gold" onclick={() => quickReserve(quickOps.product)}><Icon name="clock" size={15} /> حجز</button>
+      <button class="qo-btn" onclick={() => { const p2 = quickOps.product; quickOps = null; openEdit(p2); }}><Icon name="edit" size={15} /> تعديل</button>
+    </div>
+  </div>
+{/if}
 
 <Sheet open={showForm} title={editing ? 'تعديل موديل' : 'إضافة موديل جديد'} onclose={() => { showForm = false; editing = null; }}>
   <ProductForm product={editing} ondone={() => { showForm = false; editing = null; }} />
@@ -210,7 +255,7 @@
 </Sheet>
 
 <style>
-  .search {
+  :global(.search) {
     flex: 1;
     display: flex;
     align-items: center;
@@ -219,7 +264,7 @@
     height: 50px;
     border-radius: var(--r-md);
   }
-  .search input {
+  :global(.search) input {
     flex: 1;
     border: none;
     outline: none;
@@ -238,7 +283,7 @@
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 12px;
   }
-  .card {
+  :global(.card) {
     position: relative;
     padding: 0;
     overflow: hidden;
@@ -246,7 +291,7 @@
     text-align: right;
     transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .card:active { transform: scale(0.97); }
+  :global(.card:active) { transform: scale(0.97); }
   .thumb {
     height: 110px;
     display: flex; align-items: center; justify-content: center;
@@ -277,4 +322,58 @@
   .card-name { font-weight: 800; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .card-meta { font-size: 12px; color: var(--taupe); display: flex; justify-content: space-between; gap: 6px; }
   .card-price { font-weight: 800; color: var(--burgundy); font-size: 13px; white-space: nowrap; }
+
+  .qp-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    background: rgba(58, 26, 32, 0.12);
+  }
+  .quickops {
+    position: fixed;
+    z-index: 71;
+    transform: translate(-50%, -100%);
+    background: var(--glass-strong);
+    backdrop-filter: blur(26px) saturate(1.5);
+    -webkit-backdrop-filter: blur(26px) saturate(1.5);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    box-shadow: 0 18px 44px rgba(58, 26, 32, 0.28);
+    padding: 10px;
+    min-width: 170px;
+  }
+  .qo-name {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--ink);
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 170px;
+  }
+  .qo-row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .qo-row:last-child { margin-bottom: 0; }
+  .qo-btn {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.6);
+    border-radius: 10px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--ink);
+    padding: 8px 6px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .qo-btn.gold {
+    background: linear-gradient(150deg, var(--gold), #a4803e);
+    color: #fff;
+    border: none;
+  }
 </style>

@@ -18,6 +18,33 @@ export function celebrateAt(x = window.innerWidth / 2, y = window.innerHeight / 
   setTimeout(() => celebrate.set(null), 1600);
 }
 
+/* ---------- Sale milestones (تبدأ من خمس قطع في اليوم) ----------
+   Fire once per threshold per day as today's piece count climbs. */
+export const MILESTONES = [5, 10, 20, 35, 50, 75, 100];
+const MILESTONE_TEXT = {
+  5: 'الخامسة! خمس قطع اليوم — عقبال المئة 💛',
+  10: 'عشرة قطع اليوم — البوتيك ما يوقف 🔥',
+  20: 'عشرون قطعة! يوم تاريخي للبوتيك 👑',
+  35: '٣٥ قطعة اليوم — شطور يا بوتيك غزالة 🚀',
+  50: 'خمسون قطعة! نصف مئة في يوم واحد 💎',
+  75: '٧٥ قطعة — هذا مو يوم عادي 🌟',
+  100: 'مئة قطعة في يوم واحد! أسطورة 🏆'
+};
+let msDay = null;
+let msLevel = 0;
+export function milestoneFor(pieces) {
+  const key = new Date().toDateString();
+  if (msDay !== key) { msDay = key; msLevel = 0; }
+  let hit = null;
+  for (let i = 0; i < MILESTONES.length; i++) {
+    if (pieces >= MILESTONES[i] && msLevel < i + 1) {
+      hit = { threshold: MILESTONES[i], text: MILESTONE_TEXT[MILESTONES[i]] };
+      msLevel = i + 1;
+    }
+  }
+  return hit;
+}
+
 /* ---------- Confirm dialog ---------- */
 export const confirmState = writable(null); // { title, body, danger, okLabel, resolve }
 export function askConfirm({ title = 'تأكيد', body = '', okLabel = 'تأكيد', danger = false } = {}) {

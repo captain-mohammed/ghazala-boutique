@@ -1,6 +1,7 @@
 <script>
   import { onMount } from 'svelte';
   import Icon from '../components/Icon.svelte';
+  import Glass from '../components/Glass.svelte';
   import { db, allSettings, setSetting, seedDemo, wipeAll, DEFAULT_CATEGORIES } from '../db.js';
   import { fmtIQD, buzz, hashPin, WA_VARS, DEFAULT_WA_TEMPLATE, buildSalesMessage } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
@@ -130,7 +131,7 @@
 
 <div class="stack" style="gap:12px">
   {#if loaded}
-    <section class="glass rise" style="padding:16px">
+    <Glass class="rise" style="padding:16px">
       <h2 class="h2" style="margin-bottom:12px"><Icon name="truck" size={17} color="var(--burgundy)" /> التوصيل</h2>
       <div class="field">
         <label>أجور التوصيل (د.ع) — لكل المحافظات</label>
@@ -139,9 +140,9 @@
           <button class="btn primary" onclick={saveFee}>حفظ</button>
         </div>
       </div>
-    </section>
+    </Glass>
 
-    <section class="glass rise" style="padding:16px; animation-delay:0.05s">
+    <Glass class="rise" style="padding:16px; animation-delay:0.05s">
       <h2 class="h2" style="margin-bottom:12px"><Icon name="alert" size={17} color="var(--warn)" /> التنبيهات</h2>
       <div class="stack" style="gap:12px">
         <div class="field">
@@ -159,9 +160,9 @@
           </div>
         </div>
       </div>
-    </section>
+    </Glass>
 
-    <section class="glass rise" style="padding:16px; animation-delay:0.1s">
+    <Glass class="rise" style="padding:16px; animation-delay:0.1s">
       <h2 class="h2" style="margin-bottom:12px"><Icon name="tag" size={17} color="var(--burgundy)" /> التصنيفات</h2>
       <div class="row wrap" style="gap:8px; margin-bottom:12px">
         {#each cats as c (c)}
@@ -177,9 +178,9 @@
         <input class="input" bind:value={newCat} placeholder="تصنيف جديد…" style="flex:1" onkeydown={(e) => e.key === 'Enter' && addCat()} />
         <button class="btn" onclick={addCat}><Icon name="plus" size={16} /> إضافة</button>
       </div>
-    </section>
+    </Glass>
 
-    <section class="glass rise" style="padding:16px; animation-delay:0.12s">
+    <Glass class="rise" style="padding:16px; animation-delay:0.12s">
       <div class="row" style="justify-content:space-between; margin-bottom:12px">
         <h2 class="h2"><Icon name="whatsapp" size={17} /> رسالة الواتساب</h2>
         {#if waTouched}<span class="small muted">مُخصصة</span>{/if}
@@ -205,9 +206,9 @@
           <Icon name="edit" size={16} /> تعديل نص الرسالة
         </button>
       {/if}
-    </section>
+    </Glass>
 
-    <section class="glass rise" style="padding:16px; animation-delay:0.15s">
+    <Glass class="rise" style="padding:16px; animation-delay:0.15s">
       <h2 class="h2" style="margin-bottom:12px"><Icon name="lock" size={17} color="var(--burgundy)" /> الرقم السري</h2>
       {#if pinBox}
         <div class="stack" style="gap:10px">
@@ -224,15 +225,15 @@
           <button class="btn danger" style="flex:1" onclick={removePin}>إزالة القفل</button>
         </div>
       {/if}
-    </section>
+    </Glass>
 
-    <section class="glass rise danger-zone" style="padding:16px; animation-delay:0.2s">
+    <Glass class="rise" style="padding:16px; animation-delay:0.2s; border-color:rgba(181,73,91,0.3)">
       <h2 class="h2" style="margin-bottom:12px"><Icon name="alert" size={17} color="var(--burgundy)" /> منطقة التجارب</h2>
       <div class="row" style="gap:8px">
         <button class="btn" style="flex:1" onclick={demo}>بيانات تجريبية</button>
         <button class="btn danger" style="flex:1" onclick={wipe}>مسح كل البيانات</button>
       </div>
-    </section>
+    </Glass>
   {/if}
 </div>
 
@@ -246,7 +247,7 @@
     cursor: pointer;
     padding: 0;
   }
-  .danger-zone { border-color: rgba(181, 73, 91, 0.3); }
+
   .wa-ta {
     width: 100%;
     min-height: 170px;

@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Icon from '../components/Icon.svelte';
   import Sheet from '../components/Sheet.svelte';
+  import Glass from '../components/Glass.svelte';
   import { db, backupJSON, restoreJSON, getSetting, setSetting } from '../db.js';
   import { downloadFile, fmtDate, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
@@ -105,7 +106,7 @@
 </script>
 
 <div class="stack" style="gap:12px">
-  <div class="glass rise" style="padding:16px" class:warn-card={reminder.on}>
+  <Glass class="rise" style="padding:16px; animation-delay:0s; {reminder.on ? 'border-color:rgba(192,127,58,0.4)' : ''}">
     <div class="row" style="gap:10px; margin-bottom:10px">
       <Icon name={reminder.on ? 'alert' : 'check'} size={19} color={reminder.on ? 'var(--warn)' : 'var(--good)'} />
       <span class="bold small" style="flex:1">{reminder.on ? 'تذكير النسخ الاحتياطي' : 'نسختك حديثة'}</span>
@@ -114,24 +115,24 @@
     <button class="btn primary block" onclick={doBackup}>
       <Icon name="download" size={18} /> أخذ نسخة احتياطية الآن
     </button>
-  </div>
+  </Glass>
 
-  <section class="glass rise" style="padding:16px; animation-delay:0.05s">
+  <Glass class="rise" style="padding:16px; animation-delay:0.05s">
     <h2 class="h2" style="margin-bottom:10px"><Icon name="upload" size={17} color="var(--burgundy)" /> استعادة نسخة</h2>
     <p class="muted small" style="margin:0 0 12px">اختر ملف ghazala-backup-…json لاستعادة بياناتك على هذا الجهاز أو جهاز جديد.</p>
     <input type="file" accept=".json,application/json" style="display:none" bind:this={fileInput} onchange={onFile} />
     <button class="btn block" onclick={pickFile}>
       <Icon name="file" size={18} /> اختيار ملف النسخة
     </button>
-  </section>
+  </Glass>
 
-  <section class="glass rise" style="padding:16px; animation-delay:0.1s">
+  <Glass class="rise" style="padding:16px; animation-delay:0.1s">
     <h2 class="h2" style="margin-bottom:10px"><Icon name="file" size={17} color="var(--gold)" /> تصدير إكسل</h2>
     <p class="muted small" style="margin:0 0 12px">ملف .xlsx بورقتين: المخزون والمبيعات — يفتح في أي برنامج جداول.</p>
     <button class="btn gold block" onclick={exportExcel}>
       <Icon name="download" size={18} /> تصدير إلى Excel
     </button>
-  </section>
+  </Glass>
 </div>
 
 <Sheet open={restoreOpen} title="طريقة الاستعادة" onclose={() => { restoreOpen = false; pendingData = null; }}>
@@ -148,7 +149,3 @@
     <button class="btn ghost block" onclick={() => { restoreOpen = false; pendingData = null; }}>إلغاء</button>
   </div>
 </Sheet>
-
-<style>
-  .warn-card { border-color: rgba(192, 127, 58, 0.4); }
-</style>

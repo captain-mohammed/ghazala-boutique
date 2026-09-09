@@ -1,6 +1,7 @@
 <script>
   import Icon from '../components/Icon.svelte';
   import Scanner from '../components/Scanner.svelte';
+  import Glass from '../components/Glass.svelte';
   import { db, stocktakeApply } from '../db.js';
   import { fmtNum, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
@@ -76,26 +77,26 @@
 
 <div class="stack" style="gap:12px">
   <div class="row" style="gap:10px">
-    <div class="search glass">
+    <Glass class="search" radius="var(--r-md)">
       <Icon name="search" size={18} color="var(--taupe)" />
       <input placeholder="ابحث عن موديل لعدّه…" bind:value={q} />
-    </div>
+    </Glass>
     <button class="iconbtn" style="width:50px; height:50px; flex:none" aria-label="مسح" onclick={() => { buzz(8); scanOpen = true; }}>
       <Icon name="scan" size={20} />
     </button>
   </div>
 
-  <div class="glass" style="padding:12px 16px; display:flex; align-items:center; gap:10px">
+  <Glass style="padding:12px 16px; display:flex; align-items:center; gap:10px">
     <Icon name="check" size={18} color="var(--good)" />
     <span class="small muted" style="flex:1">عدّيت {fmtNum(countedEntries.length)} موديل • فروقات: <b style="color:{diffCount ? 'var(--warn)' : 'var(--good)'}">{fmtNum(diffCount)}</b></span>
     <button class="btn primary" style="min-height:42px" onclick={apply} disabled={applying || !diffCount}>تطبيق الجرد</button>
-  </div>
+  </Glass>
 
   <div class="stack" style="gap:8px; padding-bottom:80px">
     {#each filtered as p (p.sku)}
       {@const counted = counts[p.sku]}
       {@const diff = counted !== undefined && counted !== '' ? (Number(counted) || 0) - p.qty : null}
-      <div class="row glass" style="padding:10px 12px; border-radius:var(--r-md); gap:10px" class:mark={counted !== undefined}>
+      <Glass class="row {counted !== undefined ? 'mark' : ''}" style="padding:10px 12px; border-radius:var(--r-md); gap:10px">
         <div style="flex:1; min-width:0">
           <div class="bold small">{p.name}</div>
           <div class="muted small">
@@ -116,7 +117,7 @@
           value={counted ?? ''}
           oninput={(e) => (counts = { ...counts, [p.sku]: e.currentTarget.value })}
         />
-      </div>
+      </Glass>
     {/each}
   </div>
 </div>
@@ -124,7 +125,7 @@
 <Scanner open={scanOpen} title="جرد — مسح موديل" onclose={() => (scanOpen = false)} onscan={onScan} />
 
 <style>
-  .search {
+  :global(.search) {
     flex: 1;
     display: flex;
     align-items: center;
@@ -133,7 +134,7 @@
     height: 50px;
     border-radius: var(--r-md);
   }
-  .search input {
+  :global(.search) input {
     flex: 1;
     border: none;
     outline: none;
@@ -143,7 +144,7 @@
     font-weight: 600;
     color: var(--ink);
   }
-  .mark { border-color: rgba(181, 73, 91, 0.35); background: rgba(181, 73, 91, 0.05); }
+  :global(.row.mark) { border-color: rgba(181, 73, 91, 0.35); background: rgba(181, 73, 91, 0.05); }
   .cinput { width: 90px; min-height: 44px; text-align: center; flex: none; }
   .diff { font-weight: 800; }
   .diff.pos { color: var(--good); }

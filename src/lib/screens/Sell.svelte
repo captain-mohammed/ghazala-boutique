@@ -1,11 +1,15 @@
 <script>
+  /* العراق 18 محافظة — the delivery map of every sale */
+  const PROVINCES = ['بغداد', 'البصرة', 'نينوى', 'أربيل', 'السليمانية', 'دهوك', 'كركوك', 'الأنبار', 'بابل', 'كربلاء', 'النجف', 'القادسية', 'ذي قار', 'ميسان', 'مثنى', 'واسط', 'ديالى', 'صلاح الدين'];
+
   import Icon from '../components/Icon.svelte';
   import Sheet from '../components/Sheet.svelte';
   import Scanner from '../components/Scanner.svelte';
   import EmptyState from '../components/EmptyState.svelte';
-  import { db, recordSale, getSetting } from '../db.js';
+  import Glass from '../components/Glass.svelte';
+  import { db, recordSale, getSetting, piecesSoldToday } from '../db.js';
   import { fmtIQD, fmtNum, buzz } from '../utils.js';
-  import { toastOk, toastErr, toast, celebrateAt } from '../store.js';
+  import { toastOk, toastErr, toast, celebrateAt, milestoneFor } from '../store.js';
 
   let products = $state([]);
   let q = $state('');
@@ -62,6 +66,8 @@
   let checkout = $state(false);
   let cname = $state('');
   let cphone = $state('');
+  let cprovince = $state('');
+  let caddress = $state('');
   let fee = $state(5000);
   let barcode = $state('');
   let company = $state('');
@@ -69,6 +75,10 @@
   let scanOpen = $state(false);
   let itemScanOpen = $state(false);
   let saving = $state(false);
+  let tried = $state(false);
+
+  /* the three required client fields: الاسم، الهاتف، المحافظة */
+  const clientValid = $derived(cname.trim().length > 0 && cphone.trim().length >= 7 && cprovince !== '');
 
   async function openCheckout() {
     if (!cart.length) return;
@@ -86,6 +96,8 @@
         items: cart.map((c) => ({ sku: c.sku, name: c.name, price: c.price, cost: c.cost, qty: c.qty })),
         customerName: cname,
         customerPhone: cphone,
+        province: cprovince,
+        address: caddress,
         deliveryFee: Number(fee) || 0,
         barcode,
         deliveryCompany: company,
@@ -93,10 +105,20 @@
       });
       checkout = false;
       cart = [];
-      cname = ''; cphone = ''; barcode = ''; company = ''; q = '';
+      cname = ''; cphone = ''; cprovince = ''; caddress = ''; barcode = ''; company = ''; q = ''; tried = false;
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.8, '🛍️');
       toastOk(`تم البيع #${sale.id} — ${fmtIQD(sale.total)}`);
+      /* milestone: today's piece count crossed a threshold (خمس قطع وأعلى) */
+      const sold = await piecesSoldToday();
+      const ms = milestoneFor(sold);
+      if (ms) {
+        setTimeout(() => {
+          celebrateAt(window.innerWidth / 2, window.innerHeight / 2.4, '🏆');
+          buzz([40, 80, 40, 80, 40]);
+          toastOk(ms.text, 'success', 4200);
+        }, 700);
+      }
     } catch (e) {
       console.error(e);
       toastErr('تعذر إتمام البيع');
@@ -108,11 +130,11 @@
 
 <div class="stack" style="gap:12px">
   <div class="row" style="gap:10px">
-    <div class="search glass">
+    <Glass class="search" radius="var(--r-md)">
       <Icon name="search" size={18} color="var(--taupe)" />
       <input placeholder="ابحث عن موديل…" bind:value={q} />
       {#if q}<button class="clr" onclick={() => (q = '')}><Icon name="x" size={14} /></button>{/if}
-    </div>
+    </Glass>
     <button class="iconbtn" style="width:50px; height:50px; flex:none" aria-label="مسح باركود" onclick={() => { buzz(8); q = ''; itemScanOpen = true; }}>
       <Icon name="scan" size={20} />
     </button>
@@ -120,7 +142,11 @@
 
   <div class="grid">
     {#each results as p (p.sku)}
-      <button class="pcard glass rise" class:oos={p.qty === 0} onclick={() => addToCart(p)}>
+      <Glass
+        as="button"
+        class="pcard rise {p.qty === 0 ? 'oos' : ''}"
+        onclick={() => addToCart(p)}
+      >
         <div class="pthumb">
           {#if p.photo}<img src={p.photo} alt={p.name} />{:else}<Icon name="box" size={24} color="var(--taupe)" />{/if}
         </div>
@@ -133,7 +159,7 @@
           </div>
         </div>
         <span class="add-ic"><Icon name="plus" size={16} color="#fff" /></span>
-      </button>
+      </Glass>
     {/each}
   </div>
 
@@ -185,7 +211,7 @@
 <Sheet open={checkout} title="إتمام البيع" onclose={() => (checkout = false)}>
   <div class="stack" style="gap:14px">
     {#each cart as c (c.sku)}
-      <div class="citem glass">
+      <Glass class="citem" radius="var(--r-md)">
         <div class="ci-info">
           <div class="bold">{c.name}</div>
           <div class="muted small">{fmtIQD(c.price)} × {c.qty} = <span class="money">{fmtIQD(c.price * c.qty)}</span></div>
@@ -195,19 +221,38 @@
           <span class="qn">{c.qty}</span>
           <button class="stp" onclick={() => setQty(c.sku, +1)}>+</button>
         </div>
-      </div>
+      </Glass>
     {/each}
 
     <hr class="divider-gold" />
 
     <div class="row" style="gap:10px">
       <div class="field" style="flex:1">
-        <label>اسم الزبون</label>
-        <input class="input" bind:value={cname} placeholder="اختياري" />
+        <label>اسم الزبون <span class="req">*</span></label>
+        <input class="input" bind:value={cname} class:invalid={tried && !cname.trim()} placeholder="الاسم الكامل" />
+        {#if tried && !cname.trim()}<span class="err">الاسم مطلوب</span>{/if}
       </div>
       <div class="field" style="flex:1">
-        <label>هاتف الزبون</label>
-        <input class="input" bind:value={cphone} inputmode="tel" placeholder="07xx…" />
+        <label>هاتف الزبون <span class="req">*</span></label>
+        <input class="input" bind:value={cphone} inputmode="tel" class:invalid={tried && cphone.trim().length < 7} placeholder="07xx…" />
+        {#if tried && cphone.trim().length < 7}<span class="err">رقم صحيح مطلوب</span>{/if}
+      </div>
+    </div>
+
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:1">
+        <label>المحافظة <span class="req">*</span></label>
+        <select class="input" bind:value={cprovince} class:invalid={tried && !cprovince} style="height:50px">
+          <option value="" disabled>اختر المحافظة…</option>
+          {#each PROVINCES as pv (pv)}<option value={pv}>{pv}</option>{/each}
+        </select>
+        {#if tried && !cprovince}<span class="err">المحافظة مطلوبة</span>{/if}
+      </div>
+    </div>
+    <div class="row" style="gap:10px">
+      <div class="field" style="flex:1">
+        <label>العنوان الكامل <span class="muted tiny">(اذا متوفر)</span></label>
+        <input class="input" bind:value={caddress} placeholder="أقرب نقطة دالة…" />
       </div>
     </div>
 
@@ -245,7 +290,7 @@
       </div>
     </div>
 
-    <div class="totals glass">
+    <Glass class="totals" radius="var(--r-md)">
       <div class="row" style="justify-content:space-between"><span class="muted">المجموع</span><span class="money">{fmtIQD(subtotal)}</span></div>
       <div class="row" style="justify-content:space-between"><span class="muted">التوصيل</span><span class="money">{fmtIQD(Number(fee) || 0)}</span></div>
       <hr class="divider-gold" style="margin:4px 0" />
@@ -253,16 +298,16 @@
         <span class="bold">الإجمالي</span>
         <span class="bold" style="font-size:18px; color:var(--burgundy)">{fmtIQD(subtotal + (Number(fee) || 0))}</span>
       </div>
-    </div>
+    </Glass>
 
-    <button class="btn primary lg block" onclick={finishSale} disabled={saving || !cart.length}>
+    <button class="btn primary lg block" onclick={() => { if (!clientValid) { tried = true; buzz([30, 40, 30]); return; } finishSale(); }} disabled={saving || !cart.length}>
       <Icon name="check" size={20} /> تأكيد البيع
     </button>
   </div>
 </Sheet>
 
 <style>
-  .search {
+  :global(.search) {
     flex: 1;
     display: flex;
     align-items: center;
@@ -271,7 +316,7 @@
     height: 50px;
     border-radius: var(--r-md);
   }
-  .search input {
+  :global(.search) input {
     flex: 1;
     border: none;
     outline: none;
@@ -284,7 +329,7 @@
   .clr { background: none; border: none; color: var(--taupe); cursor: pointer; padding: 4px; }
 
   .grid { display: flex; flex-direction: column; gap: 10px; padding-bottom: 90px; }
-  .pcard {
+  :global(.pcard) {
     display: flex;
     align-items: center;
     gap: 12px;
@@ -293,8 +338,8 @@
     text-align: right;
     transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .pcard:active { transform: scale(0.98); }
-  .pcard.oos { opacity: 0.55; }
+  :global(.pcard:active) { transform: scale(0.98); }
+  :global(.pcard.oos) { opacity: 0.55; }
   .pthumb {
     width: 58px; height: 58px;
     border-radius: var(--r-sm);
@@ -366,7 +411,7 @@
     display: flex; align-items: center; justify-content: center;
   }
 
-  .citem {
+  :global(.citem) {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -389,12 +434,9 @@
   .stp:active { transform: scale(0.85); }
   .qn { min-width: 22px; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; }
 
-  .totals { padding: 12px 16px; border-radius: var(--r-md); display: flex; flex-direction: column; gap: 6px; }
-  .empty { padding: 26px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-  .empty-ic {
-    width: 64px; height: 64px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 50%;
-    background: var(--accent-soft);
-  }
+  :global(.totals) { padding: 12px 16px; border-radius: var(--r-md); display: flex; flex-direction: column; gap: 6px; }
+
+  .req { color: var(--burgundy); font-weight: 800; }
+  .err { display: block; font-size: 11px; color: var(--burgundy); font-weight: 700; margin-top: 3px; }
+  :global(.invalid) { border-color: rgba(181, 73, 91, 0.55) !important; background: rgba(181, 73, 91, 0.05); }
 </style>
