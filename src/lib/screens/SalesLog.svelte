@@ -3,7 +3,7 @@
   import Sheet from '../components/Sheet.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import { db, setSaleStatus, returnSale } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, buzz, buildSalesMessage, sendWhatsApp } from '../utils.js';
+  import { fmtIQD, fmtNum, fmtDate, buzz, buildSalesMessage, sendWhatsApp, salePieces } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   const FILTERS = [
@@ -120,7 +120,7 @@
               <span class="bold">#{s.id} {s.customerName || 'زبون'}</span>
               <span class="st {STATUS[s.status]?.cls}">{STATUS[s.status]?.label}</span>
             </div>
-            <div class="muted small">{fmtDate(s.date)} • {s.items.length} قطعة {s.barcode ? '• ' + s.barcode : ''}</div>
+            <div class="muted small">{fmtDate(s.date)} • {fmtNum(salePieces(s))} قطعة {s.barcode ? '• ' + s.barcode : ''}</div>
           </div>
           <div class="col" style="align-items:flex-end; gap:6px">
             <div class="money">{fmtIQD(s.total)}</div>

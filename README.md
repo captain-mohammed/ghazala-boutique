@@ -54,6 +54,22 @@ Each version below lists **what was added and why it matters to the shop**.
 
 ---
 
+## [0.2.6] — 2026-09-09
+
+### Fixed
+- **قطعة count was wrong for multi-quantity sales** — the sales log and the dashboard's «آخر العمليات» showed the number of *distinct product lines*, not pieces: selling 2 of the same shoe displayed «1 قطعة». Both now sum the actual quantities (Reports was already correct).
+  - *Benefit:* the numbers match what physically left the shelf.
+
+### Added
+- **Same-kind merge when registering** — adding a model with the same name + size + color + category as an existing one now asks first: **دمج** (adds the quantity into the existing SKU and updates cost/price) or add as a separate card. No more accidental duplicate SKUs when entering the same model twice.
+
+### Changed
+- **Speed-dial FAB centered to the dock** (not the page) — it mirrors the dock's exact geometry and sits above the protruding bubble, staying aligned on any screen width.
+- **Frosted veil instead of dim** — opening the menu now blurs the page with the same ivory-glass language as the rest of the app, keeping everything readable and cohesive.
+- **The whole menu pill is the button** — icon disc + label are one tappable element (previously only the small circle worked and the label was decoration).
+
+---
+
 ## [0.2.5] — 2026-09-09
 
 ### Added

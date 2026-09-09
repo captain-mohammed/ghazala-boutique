@@ -28,17 +28,16 @@
   {#if open}
     <div class="sd-items">
       {#each actions as a, i (a.id)}
-        <div class="sd-item" in:fly={{ y: 20, duration: 340, delay: 60 + i * 55, easing: backOut }} out:fade={{ duration: 110 }}>
-          <span class="sd-label glass-strong">{a.label}</span>
-          <button
-            class="sd-btn"
-            style={a.bg ? `background:${a.bg}` : ''}
-            aria-label={a.label}
-            onclick={() => pick(a)}
-          >
-            <Icon name={a.icon} size={21} color="#fff" />
-          </button>
-        </div>
+        <button
+          class="sd-item glass-strong"
+          in:fly={{ y: 18, duration: 340, delay: 60 + i * 55, easing: backOut }}
+          out:fade={{ duration: 110 }}
+          onclick={() => pick(a)}
+          aria-label={a.label}
+        >
+          <span class="sd-ic"><Icon name={a.icon} size={19} color="#fff" /></span>
+          <span class="sd-txt">{a.label}</span>
+        </button>
       {/each}
     </div>
   {/if}
@@ -49,48 +48,65 @@
 </div>
 
 <style>
+  /* Frosted-glass veil — same blur language as the app's glass, no dark dim */
   .sd-backdrop {
     position: fixed;
     inset: 0;
     z-index: 45;
-    background: rgba(30, 12, 15, 0.24);
+    background: rgba(251, 243, 238, 0.38);
+    backdrop-filter: blur(16px) saturate(1.3);
+    -webkit-backdrop-filter: blur(16px) saturate(1.3);
   }
   .sd-root {
     position: fixed;
-    bottom: calc(var(--nav-h) + 18px + var(--sab));
-    right: 16px; /* physical right — above the dock's corner, RTL-independent */
+    bottom: calc(var(--nav-h) + 40px + var(--sab));
+    /* mirror the dock's geometry exactly → FAB centers to the dock, not the page */
+    left: 12px;
+    right: 12px;
+    max-width: 536px;
+    margin: 0 auto;
     z-index: 46;
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: center;
     gap: 12px;
+    pointer-events: none; /* empty box areas never swallow taps */
   }
-  .sd-items { display: flex; flex-direction: column; align-items: flex-end; gap: 12px; }
-  .sd-item { display: flex; align-items: center; gap: 10px; }
-  .sd-label {
-    padding: 8px 14px;
+  .sd-items { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .sd-item {
+    pointer-events: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px;
+    padding-inline-end: 18px;
     border-radius: 999px;
-    font-size: 13px;
-    font-weight: 800;
-    color: var(--ink);
-    white-space: nowrap;
-    box-shadow: 0 6px 18px rgba(58, 26, 32, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    cursor: pointer;
+    font-family: inherit;
+    box-shadow: 0 8px 22px rgba(58, 26, 32, 0.16);
+    transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .sd-btn {
-    width: 48px;
-    height: 48px;
+  .sd-item:active { transform: scale(0.95); }
+  .sd-ic {
+    width: 38px;
+    height: 38px;
     border-radius: 50%;
-    border: 1px solid rgba(255, 255, 255, 0.35);
     background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
     display: flex;
     align-items: center;
     justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 5px 16px rgba(122, 46, 58, 0.28);
-    transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
+    flex: none;
+    box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.25);
   }
-  .sd-btn:active { transform: scale(0.88); }
+  .sd-txt {
+    font-size: 13.5px;
+    font-weight: 800;
+    color: var(--ink);
+    white-space: nowrap;
+  }
   .sd-fab {
+    pointer-events: auto;
     width: 60px;
     height: 60px;
     border-radius: 50%;

@@ -1,8 +1,8 @@
 <script>
   import Icon from '../components/Icon.svelte';
-  import { addProduct, updateProduct, WOMENS_TYPES, DEFAULT_CATEGORIES } from '../db.js';
+  import { db, addProduct, updateProduct, WOMENS_TYPES, DEFAULT_CATEGORIES } from '../db.js';
   import { fmtIQD, buzz } from '../utils.js';
-  import { toastOk, toastErr, celebrateAt } from '../store.js';
+  import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
 
   let { product = null, ondone = () => {} } = $props();
 
@@ -35,6 +35,31 @@
         await updateProduct(product.sku, data);
         toastOk('تم حفظ التعديلات');
       } else {
+        /* Same-kind detection: identical name + category + size + color means
+           it's more stock of a model we already have — offer to merge into
+           the existing SKU instead of creating a duplicate card. */
+        const all = await db.products.toArray();
+        const twin = all.find((p) =>
+          p.name.trim().toLowerCase() === data.name.toLowerCase() &&
+          p.category === data.category &&
+          String(p.size || '').trim() === data.size &&
+          (p.color || '').trim() === data.color
+        );
+        if (twin) {
+          const merge = await askConfirm({
+            title: 'موديل مطابق موجود',
+            body: `«${twin.name}» مقاس ${twin.size || '—'} موجود بالكود ${twin.sku} وكميته ${twin.qty}.\n«دمج» يزيد كميته بـ ${data.qty} ويحدّث السعر — «إلغاء» يضيفه كموديل منفصل.`,
+            okLabel: 'دمج'
+          });
+          if (merge) {
+            await updateProduct(twin.sku, { qty: twin.qty + data.qty, cost: data.cost, price: data.price });
+            toastOk(`اندُمجت الكمية — ${twin.sku} أصبح ${twin.qty + data.qty} قطعة`);
+            buzz([20, 50, 20]);
+            celebrateAt(window.innerWidth / 2, window.innerHeight / 2.5, '👠');
+            ondone();
+            return;
+          }
+        }
         const p = await addProduct(data);
         toastOk(`تمت الإضافة — كود: ${p.sku}`);
         buzz([20, 50, 20]);

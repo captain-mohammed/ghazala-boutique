@@ -5,7 +5,7 @@
   import Logo from '../components/Logo.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import { db, allSettings } from '../db.js';
-  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap } from '../utils.js';
+  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
 
   let { goto } = $props();
@@ -132,7 +132,7 @@
             <span class="s-ic"><Icon name={s.status === 'returned' ? 'undo' : 'cart'} size={18} color="var(--burgundy)" /></span>
             <div class="a-body">
               <div class="bold">{s.customerName || 'زبون'}</div>
-              <div class="muted small">{s.items.length} قطعة</div>
+              <div class="muted small">{fmtNum(salePieces(s))} قطعة</div>
             </div>
             <div class="money">{fmtIQD(s.total)}</div>
           </div>
