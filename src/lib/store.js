@@ -59,5 +59,9 @@ export function resolveConfirm(val) {
 /* ---------- App logo (custom, data URL) ---------- */
 export const logo = writable(null);
 
+/* ---------- Cross-screen intents ---------- */
+export const invoicePreset = writable(null); // { supplier, lines: [line…] } → فاتورة الوارد
+export const sellPrefill = writable(null);   // search term → تبويب البيع
+
 /* ---------- Misc ui ---------- */
 export const uiFlags = writable({ sawReportsTip: false });

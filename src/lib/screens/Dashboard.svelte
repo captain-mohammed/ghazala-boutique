@@ -6,8 +6,9 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import { db, allSettings, upcomingOccasions } from '../db.js';
-  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate } from '../utils.js';
+  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
+  import { invoicePreset, sellPrefill } from '../store.js';
 
   /* tilt for Glass-hosted alert buttons (Glass applies it via its action prop) */
   const tiltAlert = (node) => tilt(node, { max: 5, scale: 1.01 });
@@ -60,12 +61,58 @@
     out: products.filter((p) => !p.qty).length
   });
 
-  const dead = $derived.by(() => {
+  const deadInfo = $derived.by(() => {
     if (!settings) return [];
     const lm = lastSaleMap(sales.filter((s) => s.status !== 'returned'));
     const cutoff = daysAgoStart(settings.deadStockDays ?? 30);
-    return products.filter((p) => p.qty > 0 && (!lm.get(p.sku) || new Date(lm.get(p.sku)) < cutoff));
+    return products
+      .filter((p) => p.qty > 0 && (!lm.get(p.sku) || new Date(lm.get(p.sku)) < cutoff))
+      .map((p) => ({
+        p,
+        days: Math.max(0, Math.round((Date.now() - new Date(lm.get(p.sku) || p.createdAt || Date.now()).getTime()) / 86400000))
+      }))
+      .sort((a, b) => b.days - a.days);
   });
+  const dead = $derived(deadInfo.map((d) => d.p));
+
+  /* ---- Smart suggestions: restock what flew off the shelf, discount what sits ---- */
+  const weekSold = $derived.by(() => {
+    const from = daysAgoStart(7);
+    const map = new Map();
+    for (const s of sales) {
+      if (s.status === 'returned' || new Date(s.date) < from) continue;
+      for (const it of s.items || []) map.set(it.sku, (map.get(it.sku) || 0) + (Number(it.qty) || 0));
+    }
+    return map;
+  });
+  const restock = $derived(
+    products
+      .filter((p) => p.qty === 0 && (weekSold.get(p.sku) || 0) >= 2)
+      .sort((a, b) => (weekSold.get(b.sku) || 0) - (weekSold.get(a.sku) || 0))
+      .slice(0, 2)
+      .map((p) => ({ p, sold: weekSold.get(p.sku) || 0 }))
+  );
+  const smartOn = $derived(restock.length > 0);
+
+  function goRestock(item) {
+    const p = item.p;
+    invoicePreset.set({
+      supplier: p.supplier || '',
+      lines: [{
+        name: p.name, category: p.category, type: p.type || '',
+        color: p.color || '', cost: p.cost, price: p.price,
+        sizes: { [String(p.size || '').trim() || '38']: 3 },
+        photo: p.photo || null
+      }]
+    });
+    buzz(10);
+    goto('receive');
+  }
+  function goShowOff(p) {
+    sellPrefill.set(p.name.trim());
+    buzz(10);
+    goto('sell');
+  }
 
   const recent = $derived([...sales].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 4));
 
@@ -178,7 +225,34 @@
   </Glass>
 
   <section class="alerts">
-    {#if stock.out > 0 || stock.low > 0}
+    {#if smartOn}
+      <Glass class="smart rise" style="animation-delay:0.08s">
+        <h3 class="sm-head"><span class="sm-ic"><Icon name="sparkle" size={14} color="#fff" /></span> اقتراحات غزالة الذكية</h3>
+        {#each restock as item (item.p.sku)}
+          <div class="sm-row">
+            <div class="a-body">
+              <div class="bold small">«{item.p.name}{item.p.color ? ` ${item.p.color}` : ''}» {item.p.size ? `مقاس ${item.p.size} • ` : ''}نفد</div>
+              <div class="muted tiny">بيع منه {fmtNum(item.sold)} قطعة هالأسبوع — فاضل تستلمين أكثر؟</div>
+            </div>
+            <button class="btn gold" style="min-height:38px; padding:0 12px; font-size:12.5px; flex:none" onclick={() => goRestock(item)}>
+              <Icon name="upload" size={14} /> استلام
+            </button>
+          </div>
+        {/each}
+        {#each deadInfo.slice(0, 2) as d (d.p.sku)}
+          <div class="sm-row">
+            <div class="a-body">
+              <div class="bold small">«{d.p.name}» راكد {fmtNum(d.days)} يوم ({fmtNum(d.p.qty)} قطعة)</div>
+              <div class="muted tiny">اعرضيها بخصم — أفضل من رف ساكن</div>
+            </div>
+            <button class="btn" style="min-height:38px; padding:0 12px; font-size:12.5px; flex:none" onclick={() => goShowOff(d.p)}>
+              <Icon name="cart" size={14} /> اعرضيها
+            </button>
+          </div>
+        {/each}
+      </Glass>
+    {/if}
+    {#if stock.low > 0}
       <Glass
         as="button"
         class="alert rise"
@@ -188,13 +262,28 @@
       >
         <span class="a-ic warn"><Icon name="alert" size={20} /></span>
         <div class="a-body">
-          <div class="bold">{stock.out > 0 ? `${stock.out} موديل نفد من المخزون` : `${stock.low} موديل كمية قليلة`}</div>
+          <div class="bold">{stock.low} موديل كمية قليلة</div>
+          <div class="muted small">اضغط لمراجعة المخزون</div>
+        </div>
+        <Icon name="back" size={18} color="var(--taupe)" />
+      </Glass>
+    {:else if stock.out > 0 && !smartOn}
+      <Glass
+        as="button"
+        class="alert rise"
+        style="animation-delay:0.08s; border-radius:var(--r-md)"
+        action={tiltAlert}
+        onclick={() => goto('inventory')}
+      >
+        <span class="a-ic warn"><Icon name="alert" size={20} /></span>
+        <div class="a-body">
+          <div class="bold">{stock.out} موديل نفد من المخزون</div>
           <div class="muted small">اضغط لمراجعة المخزون</div>
         </div>
         <Icon name="back" size={18} color="var(--taupe)" />
       </Glass>
     {/if}
-    {#if dead.length > 0}
+    {#if dead.length > 0 && !smartOn}
       <Glass
         as="button"
         class="alert rise"
@@ -210,7 +299,7 @@
         <Icon name="back" size={18} color="var(--taupe)" />
       </Glass>
     {/if}
-    {#if stock.out === 0 && stock.low === 0 && dead.length === 0 && loaded && products.length > 0}
+    {#if !smartOn && stock.out === 0 && stock.low === 0 && dead.length === 0 && loaded && products.length > 0}
       <Glass class="alert rise" style="animation-delay:0.08s; border-radius:var(--r-md)">
         <span class="a-ic ok"><Icon name="check" size={20} /></span>
         <div class="a-body">
@@ -331,5 +420,23 @@
     display: flex; align-items: center; justify-content: center;
     border-radius: 12px;
     background: var(--accent-soft);
+  }
+
+  :global(.smart) { padding: 13px 15px; display: flex; flex-direction: column; gap: 10px; }
+  .sm-head {
+    display: flex; align-items: center; gap: 8px;
+    margin: 0; font-size: 14px; font-weight: 800; color: var(--ink);
+  }
+  .sm-ic {
+    width: 24px; height: 24px; border-radius: 8px;
+    background: linear-gradient(150deg, var(--gold), #a4803e);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .sm-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 10px;
+    border-radius: var(--r-sm);
+    background: rgba(255, 255, 255, 0.35);
+    border: 1px solid var(--line);
   }
 </style>

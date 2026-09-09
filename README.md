@@ -12,8 +12,8 @@
 
 - 🔒 **قفل برقم سري** — يُعيَّن عند أول فتح، مشفّر (SHA-256)، لوحة مفاتيح زجاجية
 - 🏠 **لوحة رئيسية حيّة** — عدّاد أرقام ميكانيكي متحرك، شريط ضوئي ذهبي، تنبيهات نقص ونفاد ورکود
-- 👠 **المخزون** — إضافة موديلات بسرعة (كود تلقائي GHZ-0001)، بحث وفلاتر، سجل حركات لكل موديل
-- 🛍️ **بيع سريع** — سلة عائمة، مسح باركود شركة التوصيل عند الدفع، أجور توصيل تلقائية (5,000 د.ع افتراضياً)
+- 👠 **المخزون** — إضافة موديلات بسرعة (كود تلقائي GHZ-0001) وبعدة مقاسات بضغطة، فاتورة وارد بالجملة مع اسم المورد، قوة المقاسات، بحث وفلاتر، سجل حركات لكل موديل
+- 🛍️ **بيع سريع** — سلة عائمة ذكية لا تضيع بإعادة الفتح، فلاتر فاخرة، FAB للمسح والبيع من رسالة، مسح باركود شركة التوصيل عند الدفع، أجور توصيل تلقائية (5,000 د.ع افتراضياً)
 - 💬 **رسالة واتساب جاهزة** — تُفتح واتساب مباشرة برقم الزبون والرسالة مكتوبة كاملة، والنص قابل للتخصيص من الإعدادات
 - 📋 **سجل المبيعات** — تبويب مستقل في الشريط السفلي، حالات (قيد التوصيل / تم التسليم / راجع)، الإرجاع يعيد الكميات للمخزون تلقائياً
 - 📊 **تقارير** — اليوم/أسبوع/شهر، الأكثر مبيعاً، مخزون راكد، رسم بياني لآخر 14 يوم
@@ -76,6 +76,38 @@ The COD-selling cockpit: reserve → manifest for the driver → reconcile what 
 
 ### Fixed
 - **Reservation conversion double-decrement** — converting a reservation to a sale decremented stock twice (once at reservation, once at sale). Now the sale records without touching stock again.
+
+---
+
+## [0.5.0] — 2026-09-09 — «دفعة الاستلام» — المقاسات، فواتير الوارد، ولمسة غزالة الذكية
+
+### Added
+- **إدخال مقاسات متعدد (queued)** — في نموذج الإضافة، وضع «عدة مقاسات»: شبكة 36–41 (ورجال/أطفال حسب التصنيف) مع stepper لكل مقاس، وحفظ الكل بضغطة واحدة. كل مقاس يصير بطاقة SKU مستقلة، والمقاس الموجود مسبقاً **يندمج تلقائياً** بكميته الجديدة.
+  - *Benefit:* صندوق بوّات بستة مقاسات يُسجَّل في دقيقة، لا في ست.
+- **فاتورة وارد (batch receiving)** — شاشة جديدة (المخزون ← FAB، أو المزيد): اسم **المورد** + رقم الفاتورة + أسطر موديلات × مقاسات بصفحة واحدة. المورد وسعره وتاريخه تُحفظ على المنتج نفسه وسجل حركاته — بعد ستة أشهر، «منين شريت هذا؟» لها جواب.
+  - الموديل/المقاس الموجود يُدمج، وغيره يُنشأ — بدون بطاقات مكررة أبداً.
+- **قوة المقاسات (size-run view)** — في تفاصيل كل موديل: شريط 36[2] 37[—] 38[3]… يكشف الثقوب فوراً، مع زر **استلام الناقص** الذي يفتح فاتورة وارد مملوءة بالمقاسات الفارغة واسم المورد السابق.
+  - *Benefit:* مشكلة محل الأحذية الكلاسيكية — «عندي 37 و39 وكل زبونة تريد 38» — صارت مشهد تشوفينه، والعلاج بضغطة.
+- **اقتراحات غزالة الذكية** — لوحة رئيسية جديدة فوق التنبيهات: موديل نفد وبيع منه قطعتان+ هالأسبوع ← **«فاضل تستلمين أكثر؟»** بزر استلام يملأ الفاتورة؛ والمخزون الراكد ← **«اعرضيها بخصم»** يقفز للبيع على البحث جاهزاً.
+- **لون بالنقرة (color swatches)** — 12 دائرة لونية جاهزة (أسود/بيج/وردي/بordo/خردلي…) بدل كتابة الاسم؛ النقرة تملأ، والكتابة الحرة تبقى ممكنة. في نموذج الإضافة وفي كل سطر فاتورة.
+- **تدفق الصورة أولاً** — «إضافة موديل» تفتح الكاميرا **قبل** النموذج، والصورة تركب معك كل الخطوات وتُطبَّع على كل مقاسات نفس الموديل (وزوجها JPEG صغير في قاعدة البيانات).
+
+### Changed
+- حقل `supplier`/`supplierAt` على المنتجات — يظهر في التفاصيل وسجل الحركات، ويدخل النسخ الاحتياطي JSON كبقية الحقول (لا ترقية قاعدة بيانات مطلوبة).
+
+
+
+---
+
+## [0.4.1] — 2026-09-09
+
+### Added
+- **Premium filter bar (بيع)** — the same treatment the المخزون got, now in the selling cockpit: a filter card with a live count pill and **مسح الكل**, dropdowns for التصنيف (with in-stock counts), الحالة (متوفر / كمية منخفضة / الكل حتى النافد) and الترتيب, plus removable active-filter chips and a live results line.
+  - *Smart empty states:* when everything sold out the empty card points to **إلى المخزون** to restock; when *filters* hide the models → **عرض الكل** clears them in one tap.
+  - *Benefit:* finding the right model to sell in a rush is three precise taps, not just a search box.
+- **Speed-dial FAB (بيع)** — same dock-centered menu as inventory: «مسح باركود موديل» (moved out of the search row) and «بيع من رسالة واتساب» which jumps straight to paste-to-sell. The FAB springs upward to make room when the cart bar appears.
+- **Smart cart that never disappears** — the sell cart is persisted live: switching tabs, reloading, or closing the app no longer wipes a half-entered sale. On return, quantities auto-reconcile with the shelf (a model that sold out elsewhere is dropped with a toast; reduced stock clamps the qty).
+- **Last-cart quick reopen** — emptying the cart with 🗑 now leaves a gold «استرجاع آخر سلة» pill (count + total) — one tap brings the whole cart back. The snapshot lives 30 minutes and dismisses with ✕. A completed sale does *not* offer a reopen (it was recorded).
 
 ---
 

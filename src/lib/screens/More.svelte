@@ -7,6 +7,7 @@
   let { goto } = $props();
 
   const items = [
+    { id: 'receive', icon: 'upload', label: 'فاتورة وارد', desc: 'استلام عدة موديلات ومقاسات بضغطة — مع اسم المورد' },
     { id: 'pastesell', icon: 'cart', label: 'بيع من رسالة', desc: 'الصق رسالة الزبونة — يطابق الموديلات تلقائياً' },
     { id: 'occasions', icon: 'calendar', label: 'المناسبات', desc: 'أعياد ميلاد وذكريات زبوناتك — ذكّرهم بوقتهم' },
     { id: 'reservations', icon: 'clock', label: 'الحجوزات', desc: 'قطع محجوزة لزبوناتك — تحويل لبيع بأمان' },

@@ -4,7 +4,7 @@
   import Icon from './Icon.svelte';
   import { buzz } from '../utils.js';
 
-  let { actions = [], onselect = () => {} } = $props();
+  let { actions = [], onselect = () => {}, label = 'إجراءات', lift = false } = $props();
 
   let open = $state(false);
 
@@ -24,7 +24,7 @@
   <div class="sd-backdrop" transition:fade={{ duration: 180 }} onclick={() => { open = false; buzz(6); }} aria-hidden="true"></div>
 {/if}
 
-<div class="sd-root">
+<div class="sd-root" class:lift>
   {#if open}
     <div class="sd-items">
       {#each actions as a, i (a.id)}
@@ -42,7 +42,7 @@
     </div>
   {/if}
 
-  <button class="sd-fab" class:open aria-expanded={open} aria-label="إجراءات المخزون" onclick={toggle}>
+  <button class="sd-fab" class:open aria-expanded={open} aria-label={label} onclick={toggle}>
     <span class="sd-plus"><Icon name="plus" size={25} color="#fff" /></span>
   </button>
 </div>
@@ -71,7 +71,10 @@
     align-items: center;
     gap: 12px;
     pointer-events: none; /* empty box areas never swallow taps */
+    transition: bottom 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+  /* rides above the floating cart bar when one is on screen (بيع) */
+  .sd-root.lift { bottom: calc(var(--nav-h) + 98px + var(--sab)); }
   .sd-items { display: flex; flex-direction: column; align-items: center; gap: 10px; }
   .sd-item {
     pointer-events: auto;

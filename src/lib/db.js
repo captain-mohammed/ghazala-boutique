@@ -28,6 +28,29 @@ db.version(3).stores({
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
 export const WOMENS_TYPES = ['بوت', 'سلامبر', 'موال', 'كعب عالي'];
 
+/* Starting size grid per category — always extendable with custom sizes */
+export const SIZE_RUNS = {
+  'نسائية': ['36', '37', '38', '39', '40', '41'],
+  'رجالية': ['40', '41', '42', '43', '44', '45'],
+  'أطفال': ['26', '28', '30', '32', '34']
+};
+
+/* One-tap palette — tap a circle instead of typing the color name */
+export const COLOR_SWATCHES = [
+  { label: 'أسود', hex: '#242124' },
+  { label: 'بيج', hex: '#d8c3a5' },
+  { label: 'وردي', hex: '#e8a3ab' },
+  { label: 'أبيض', hex: '#f7f2ea', ring: true },
+  { label: 'بني', hex: '#6b4a2f' },
+  { label: 'ذهبي', hex: '#c9a24b' },
+  { label: 'فضي', hex: '#b9bec3', ring: true },
+  { label: 'كحلي', hex: '#232c49' },
+  { label: 'أحمر', hex: '#a12433' },
+  { label: 'بordo', hex: '#7a2e3a' },
+  { label: 'خردلي', hex: '#b1a24e' },
+  { label: 'أخضر', hex: '#3e6b4f' }
+];
+
 export const DEFAULT_SETTINGS = {
   deliveryFee: 5000,
   lowStockThreshold: 3,
@@ -67,21 +90,22 @@ export async function nextSku() {
   return sku;
 }
 
-export async function addProduct(data) {
+export async function addProduct(data, { moveNote } = {}) {
   const sku = data.sku || (await nextSku());
   const now = new Date().toISOString();
   const p = {
     name: '', category: 'نسائية', brand: '', color: '', size: '',
     cost: 0, price: 0, qty: 0, barcode: '', notes: '', photo: null,
+    supplier: '', supplierAt: null,
     ...data, sku, createdAt: now, updatedAt: now
   };
   delete p.id;
   await db.products.put(p);
-  if (p.qty > 0) await logMovement({ sku, type: 'in', qty: p.qty, note: 'إضافة أولية' });
+  if (p.qty > 0) await logMovement({ sku, type: 'in', qty: p.qty, note: moveNote || 'إضافة أولية' });
   return p;
 }
 
-export async function updateProduct(sku, changes) {
+export async function updateProduct(sku, changes, moveNote) {
   const before = await db.products.get(sku);
   if (!before) throw new Error('المنتج غير موجود');
   const now = new Date().toISOString();
@@ -91,7 +115,7 @@ export async function updateProduct(sku, changes) {
   if (diff !== 0) {
     await logMovement({
       sku, type: diff > 0 ? 'in' : 'out', qty: Math.abs(diff),
-      note: diff > 0 ? 'تعديل يدوي — زيادة' : 'تعديل يدوي — نقصان'
+      note: moveNote || (diff > 0 ? 'تعديل يدوي — زيادة' : 'تعديل يدوي — نقصان')
     });
   }
   return p;
@@ -117,6 +141,57 @@ export async function deleteProduct(sku) {
 
 export async function logMovement({ sku, type, qty, note }) {
   return db.movements.add({ sku, type, qty, note: note || '', date: new Date().toISOString() });
+}
+
+/* ---------------- Batch receiving (فاتورة الوارد) ----------------
+   One supplier invoice → many models × sizes. Lines expand into per-size
+   products; a size that already exists (same name+category+color+size) is
+   merged into — never duplicated. The supplier name rides on the product
+   and into every movement note, so «منين شريت هذا؟» is answerable forever. */
+
+export const modelKey = (p) =>
+  `${(p.name || '').trim().toLowerCase()}|${p.category || ''}|${String(p.size || '').trim()}|${(p.color || '').trim()}`;
+
+export async function receiveBatch({ supplier = '', invoice = '', note = '', lines = [] }) {
+  const sup = supplier.trim();
+  const invNote = sup ? `فاتورة وارد${invoice ? ` #${invoice.trim()}` : ''} — ${sup}` : 'فاتورة وارد';
+  const all = await db.products.toArray();
+  const idx = new Map(all.map((p) => [modelKey(p), p]));
+  let added = 0, merged = 0, pieces = 0;
+  const touchedSkus = [];
+  for (const ln of lines) {
+    const name = (ln.name || '').trim();
+    if (!name) continue;
+    for (const [size, rawQty] of Object.entries(ln.sizes || {})) {
+      const qty = Math.max(0, Math.round(Number(rawQty) || 0));
+      const sz = String(size).trim();
+      if (!qty || !sz) continue;
+      const twin = idx.get(modelKey({ name, category: ln.category, size: sz, color: ln.color }));
+      if (twin) {
+        await updateProduct(twin.sku, {
+          qty: (twin.qty || 0) + qty,
+          cost: Number(ln.cost) || twin.cost,
+          price: Number(ln.price) || twin.price,
+          supplier: sup || twin.supplier || '',
+          supplierAt: new Date().toISOString(),
+          photo: twin.photo || ln.photo || null
+        }, invNote + (note ? ` — ${note}` : ''));
+        twin.qty += qty;
+        merged++; pieces += qty; touchedSkus.push(twin.sku);
+      } else {
+        const p = await addProduct({
+          name, category: ln.category || 'نسائية', type: ln.type || '',
+          color: (ln.color || '').trim(), size: sz,
+          cost: Number(ln.cost) || 0, price: Number(ln.price) || 0, qty,
+          photo: ln.photo || null, supplier: sup, supplierAt: new Date().toISOString(),
+          notes: note || ''
+        }, { moveNote: invNote + (note ? ` — ${note}` : '') });
+        idx.set(modelKey(p), p);
+        added++; pieces += qty; touchedSkus.push(p.sku);
+      }
+    }
+  }
+  return { added, merged, pieces, touchedSkus };
 }
 
 /* ---------------- Sales ---------------- */

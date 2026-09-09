@@ -8,8 +8,8 @@
   import ProductForm from './ProductForm.svelte';
   import ItemDetail from './ItemDetail.svelte';
   import { db, adjustQty } from '../db.js';
-  import { fmtIQD, fmtNum, buzz } from '../utils.js';
-  import { toastOk } from '../store.js';
+  import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl } from '../utils.js';
+  import { toastOk, toastErr } from '../store.js';
 
   let { goto } = $props();
 
@@ -104,23 +104,51 @@
   let showForm = $state(false);
   let editing = $state(null);
   let detail = $state(null);
+  let photoGate = $state(false);
+  let formPhoto = $state(null);
 
   function openAdd() {
     editing = null;
+    formPhoto = null;
     showForm = true;
     buzz(8);
   }
+  /* photo-first: the camera asks before the form does */
+  function openAddFlow() {
+    photoGate = true;
+    buzz(8);
+  }
+  async function gatePhoto(e) {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    try {
+      formPhoto = await fileToPhotoDataUrl(f, 640);
+      photoGate = false;
+      openAdd();
+    } catch { toastErr('تعذّرت قراءة الصورة'); }
+  }
+  function gateSkip() {
+    photoGate = false;
+    formPhoto = null;
+    openAdd();
+  }
   function openEdit(p) {
     editing = p;
+    formPhoto = null;
     detail = null;
     showForm = true;
     buzz(8);
   }
 
-  /* Floating action menu — المزيد قادم لاحقاً (فاتورة وارد، طلبية…) */
-  const dialActions = [{ id: 'add', label: 'إضافة موديل', icon: 'plus' }];
+  /* Floating action menu — المزيد قادم لاحقاً (طلبية…) */
+  const dialActions = [
+    { id: 'add', label: 'إضافة موديل', icon: 'plus' },
+    { id: 'invoice', label: 'فاتورة وارد', icon: 'upload' }
+  ];
   function onDial(a) {
-    if (a.id === 'add') openAdd();
+    if (a.id === 'add') openAddFlow();
+    if (a.id === 'invoice') goto('receive');
   }
 
   /* ---- Long-press power moves: hold a card → quick ops popover ---- */
@@ -193,7 +221,7 @@
       title={isDefault ? 'المخزون فارغ' : 'لا نتائج مطابقة'}
       subtitle={isDefault ? 'أضف أول حذاء الآن — العملية لا تستغرق إلا ثوانٍ' : 'الموديلات موجودة لكن الفلاتر الحالية تخفيها'}
       actionLabel={isDefault ? 'إضافة موديل' : 'عرض الكل'}
-      onaction={isDefault ? openAdd : clearAllFilters}
+      onaction={isDefault ? openAddFlow : clearAllFilters}
       icon={isDefault ? 'box' : 'search'}
     />
   {:else}
@@ -227,7 +255,7 @@
   {/if}
 </div>
 
-<SpeedDial actions={dialActions} onselect={onDial} />
+<SpeedDial actions={dialActions} onselect={onDial} label="إجراءات المخزون" />
 
 {#if quickOps}
   <div class="qp-backdrop" onclick={() => (quickOps = null)} aria-hidden="true"></div>
@@ -244,13 +272,27 @@
   </div>
 {/if}
 
+<!-- Photo-first gate: snap the shoe, the photo rides the whole form -->
+<Sheet open={photoGate} title="صوّري الموديل أولاً" onclose={gateSkip}>
+  <div class="stack" style="gap:14px; text-align:center">
+    <div class="muted small">صورة الحذاء تعرفين بيها الموديل بعدين — تنتقل معك عبر كل خطوات الإضافة</div>
+    <label class="gate-cam">
+      <Icon name="image" size={34} color="var(--burgundy)" />
+      <span class="bold">افتحي الكاميرا</span>
+      <span class="muted tiny">أو المعرض على الهاتف</span>
+      <input type="file" accept="image/*" capture="environment" style="display:none" onchange={gatePhoto} />
+    </label>
+    <button class="btn block" onclick={gateSkip}>بدون صورة</button>
+  </div>
+</Sheet>
+
 <Sheet open={showForm} title={editing ? 'تعديل موديل' : 'إضافة موديل جديد'} onclose={() => { showForm = false; editing = null; }}>
-  <ProductForm product={editing} ondone={() => { showForm = false; editing = null; }} />
+  <ProductForm product={editing} photo={formPhoto} ondone={() => { showForm = false; editing = null; formPhoto = null; }} />
 </Sheet>
 
 <Sheet open={!!detail} title="تفاصيل الموديل" onclose={() => (detail = null)}>
   {#if detail}
-    <ItemDetail product={detail} onedit={openEdit} onclose={() => (detail = null)} />
+    <ItemDetail product={detail} onedit={openEdit} ongoto={goto} onclose={() => (detail = null)} />
   {/if}
 </Sheet>
 
@@ -376,4 +418,16 @@
     color: #fff;
     border: none;
   }
+
+  .gate-cam {
+    display: flex; flex-direction: column; align-items: center; gap: 6px;
+    width: 100%;
+    padding: 26px 16px;
+    border-radius: var(--r-md);
+    border: 2px dashed rgba(181, 73, 91, 0.4);
+    background: linear-gradient(150deg, rgba(255, 255, 255, 0.55), rgba(181, 73, 91, 0.05));
+    cursor: pointer;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .gate-cam:active { transform: scale(0.97); }
 </style>

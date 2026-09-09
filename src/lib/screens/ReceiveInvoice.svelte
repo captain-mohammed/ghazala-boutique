@@ -1,0 +1,249 @@
+<script>
+  import Icon from '../components/Icon.svelte';
+  import Glass from '../components/Glass.svelte';
+  import ColorSwatches from '../components/ColorSwatches.svelte';
+  import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
+  import { receiveBatch, WOMENS_TYPES, DEFAULT_CATEGORIES, SIZE_RUNS } from '../db.js';
+  import { fmtNum, fmtIQD, buzz, fileToPhotoDataUrl } from '../utils.js';
+  import { get } from 'svelte/store';
+  import { toastOk, toastErr, celebrateAt, invoicePreset } from '../store.js';
+
+  let { goto } = $props();
+
+  const cats = [...DEFAULT_CATEGORIES];
+
+  let uid = 0;
+  const blank = (over = {}) => ({
+    id: ++uid, name: '', category: 'نسائية', type: '', color: '',
+    cost: '', price: '', sizes: {}, photo: null,
+    ...over
+  });
+
+  let supplier = $state('');
+  let invoice = $state('');
+  let note = $state('');
+  let lines = $state([blank()]);
+  let saving = $state(false);
+
+  /* a restock suggestion / size-run hole may arrive pre-filled */
+  $effect(() => {
+    const pre = get(invoicePreset);
+    if (!pre) return;
+    if (pre.supplier) supplier = pre.supplier;
+    if (Array.isArray(pre.lines) && pre.lines.length) lines = pre.lines.map((l) => blank(l));
+    invoicePreset.set(null);
+  });
+
+  const totalPieces = $derived(lines.reduce((a, l) => a + Object.values(l.sizes).reduce((x, n) => x + (Number(n) || 0), 0), 0));
+  const linePieces = (l) => Object.values(l.sizes).reduce((x, n) => x + (Number(n) || 0), 0);
+  const canSave = $derived(supplier.trim().length >= 2 && lines.some((l) => l.name.trim() && linePieces(l) > 0));
+
+  function addLine() {
+    const last = lines[lines.length - 1];
+    lines = [...lines, blank(last ? { category: last.category, color: last.color, cost: last.cost, price: last.price } : {})];
+    buzz(8);
+  }
+  function removeLine(id) {
+    if (lines.length > 1) lines = lines.filter((l) => l.id !== id);
+    buzz(6);
+  }
+
+  async function onLinePhoto(l, e) {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f) return;
+    try { l.photo = await fileToPhotoDataUrl(f, 640); buzz(10); }
+    catch { toastErr('تعذّرت قراءة الصورة'); }
+  }
+
+  async function save() {
+    if (saving) return;
+    if (!supplier.trim()) { toastErr('اكتب اسم المورد — «منين شريت؟» يجي يوم وتسألينه'); return; }
+    const good = lines.filter((l) => l.name.trim() && linePieces(l) > 0);
+    if (!good.length) { toastErr('سطر واحد على الأقل: اسم + مقاس بكمية'); return; }
+    saving = true;
+    try {
+      const r = await receiveBatch({
+        supplier, invoice, note,
+        lines: good.map((l) => ({
+          name: l.name.trim(), category: l.category, type: l.type, color: l.color,
+          cost: Number(l.cost) || 0, price: Number(l.price) || 0,
+          sizes: l.sizes, photo: l.photo
+        }))
+      });
+      buzz([30, 60, 30, 60, 30]);
+      celebrateAt(window.innerWidth / 2, window.innerHeight / 2.6, '📦');
+      toastOk(`تم الاستلام — ${fmtNum(r.pieces)} قطعة (${fmtNum(r.added)} بطاقة جديدة${r.merged ? `، ${fmtNum(r.merged)} اندمجت` : ''})`);
+      setTimeout(() => goto('inventory'), 500);
+    } catch (e) {
+      console.error(e);
+      toastErr('تعذر حفظ الفاتورة');
+    } finally {
+      saving = false;
+    }
+  }
+</script>
+
+<div class="stack" style="gap:12px">
+  <Glass class="head-card rise">
+    <span class="h-ic"><Icon name="upload" size={20} color="#fff" /></span>
+    <div style="flex:1; min-width:0">
+      <div class="bold">فاتورة وارد</div>
+      <div class="muted small">استلمي البضاعة كلها بصفحة واحدة — والمورد يُسجَّل للأبد</div>
+    </div>
+  </Glass>
+
+  <div class="row" style="gap:10px">
+    <div class="field" style="flex:1.6">
+      <label>المورد / منين شريتِ؟ <span class="req">*</span></label>
+      <input class="input" bind:value={supplier} placeholder="مثال: هاي مول — أبو علي" />
+    </div>
+    <div class="field" style="flex:1">
+      <label>رقم الفاتورة <span class="muted tiny">(اختياري)</span></label>
+      <input class="input" bind:value={invoice} placeholder="123" inputmode="numeric" />
+    </div>
+  </div>
+
+  {#each lines as l, li (l.id)}
+    <Glass class="line rise" style="animation-delay:{Math.min(li * 0.05, 0.4)}s">
+      <div class="ln-head">
+        <span class="ln-n">سطر {fmtNum(li + 1)}</span>
+        <span class="ln-pieces" class:has={linePieces(l) > 0}>{linePieces(l) > 0 ? `${fmtNum(linePieces(l))} قطعة` : 'بدون كميات'}</span>
+        {#if lines.length > 1}
+          <button class="ln-x" aria-label="حذف السطر" onclick={() => removeLine(l.id)}><Icon name="x" size={13} /></button>
+        {/if}
+      </div>
+
+      <div class="ln-body">
+        <div class="row" style="gap:10px; align-items:flex-start">
+          <div class="field" style="flex:1">
+            <label>اسم الموديل *</label>
+            <input class="input" bind:value={l.name} placeholder="مثال: بوت جلد أسود" />
+          </div>
+          <label class="ln-photo" class:has={!!l.photo} title="صورة الموديل">
+            {#if l.photo}<img src={l.photo} alt="" />{:else}<Icon name="image" size={20} color="var(--taupe)" />{/if}
+            <input type="file" accept="image/*" capture="environment" style="display:none" onchange={(e) => onLinePhoto(l, e)} />
+          </label>
+        </div>
+
+        <div class="field">
+          <label>التصنيف</label>
+          <div class="row wrap" style="gap:8px">
+            {#each cats as c (c)}
+              <button type="button" class="chip" class:on={l.category === c} onclick={() => { l.category = c; l.type = ''; }}>{c}</button>
+            {/each}
+          </div>
+        </div>
+
+        {#if l.category === 'نسائية'}
+          <div class="field">
+            <label>النوع</label>
+            <div class="row wrap" style="gap:8px">
+              {#each WOMENS_TYPES as t (t)}
+                <button type="button" class="chip gold-on" class:on={l.type === t} onclick={() => (l.type = l.type === t ? '' : t)}>{t}</button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        <ColorSwatches bind:value={l.color} />
+
+        <div class="row" style="gap:10px">
+          <div class="field" style="flex:1">
+            <label>التكلفة (د.ع)</label>
+            <input class="input" bind:value={l.cost} inputmode="numeric" placeholder="0" />
+          </div>
+          <div class="field" style="flex:1">
+            <label>سعر البيع (د.ع)</label>
+            <input class="input" bind:value={l.price} inputmode="numeric" placeholder="0" />
+          </div>
+        </div>
+
+        <div class="field">
+          <label>المقاسات المستلمة</label>
+          <SizeQtyGrid sizes={SIZE_RUNS[l.category] || SIZE_RUNS['نسائية']} bind:value={l.sizes} />
+        </div>
+      </div>
+    </Glass>
+  {/each}
+
+  <button class="btn block add-line" onclick={addLine}>
+    <Icon name="plus" size={18} /> سطر موديل آخر
+  </button>
+
+  <div class="field">
+    <label>ملاحظة الفاتورة <span class="muted tiny">(اختياري)</span></label>
+    <input class="input" bind:value={note} placeholder="مثال: دفعة ثانية، مقاسات كبيرة…" />
+  </div>
+
+  <Glass class="totals" radius="var(--r-md)">
+    <div class="row" style="justify-content:space-between">
+      <span class="muted">القطع المستلمة</span>
+      <span class="bold">{fmtNum(totalPieces)} قطعة</span>
+    </div>
+    <div class="row" style="justify-content:space-between">
+      <span class="muted">أول تكلفة تقديرية</span>
+      <span class="money">{fmtIQD(lines.reduce((a, l) => a + (Number(l.cost) || 0) * linePieces(l), 0))}</span>
+    </div>
+  </Glass>
+
+  <button class="btn primary lg block" onclick={save} disabled={saving || !canSave}>
+    <Icon name="check" size={20} /> استلام الفاتورة
+  </button>
+</div>
+
+<style>
+  :global(.head-card) { display: flex; align-items: center; gap: 12px; padding: 13px 15px; }
+  .h-ic {
+    flex: none; width: 42px; height: 42px; border-radius: 13px;
+    background: linear-gradient(150deg, var(--gold), #a4803e);
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(164, 128, 62, 0.3);
+  }
+  .req { color: var(--burgundy); font-weight: 800; }
+
+  :global(.line) { padding: 0; overflow: hidden; }
+  .ln-head {
+    display: flex; align-items: center; gap: 8px;
+    padding: 9px 13px;
+    background: rgba(181, 73, 91, 0.06);
+    border-bottom: 1px solid var(--line);
+  }
+  .ln-n { font-size: 12.5px; font-weight: 800; color: var(--burgundy-deep); flex: 1; }
+  .ln-pieces {
+    font-size: 11px; font-weight: 800; color: var(--taupe);
+    background: rgba(122, 46, 58, 0.07);
+    border-radius: 999px; padding: 3px 9px;
+  }
+  .ln-pieces.has { color: var(--good); background: rgba(78, 138, 95, 0.12); }
+  .ln-x {
+    width: 26px; height: 26px; border-radius: 8px;
+    border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.6);
+    color: var(--burgundy); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ln-body { padding: 12px 13px; display: flex; flex-direction: column; gap: 2px; }
+
+  .ln-photo {
+    width: 56px; height: 56px; flex: none;
+    border-radius: 14px;
+    border: 1.5px dashed var(--line-2);
+    background: rgba(255, 255, 255, 0.5);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; overflow: hidden; position: relative;
+    margin-top: 26px;
+  }
+  .ln-photo.has { border-style: solid; border-color: rgba(181, 73, 91, 0.4); }
+  .ln-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+
+  .add-line {
+    border-style: dashed;
+    border-width: 1.5px;
+    border-color: rgba(181, 73, 91, 0.4);
+    color: var(--burgundy);
+    background: rgba(255, 255, 255, 0.35);
+    justify-content: center;
+    min-height: 50px;
+  }
+  :global(.totals) { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
+</style>

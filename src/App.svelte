@@ -19,6 +19,7 @@
   import Expenses from './lib/screens/Expenses.svelte';
   import Reservations from './lib/screens/Reservations.svelte';
   import PasteToSell from './lib/screens/PasteToSell.svelte';
+  import ReceiveInvoice from './lib/screens/ReceiveInvoice.svelte';
   import Occasions from './lib/screens/Occasions.svelte';
 
   let locked = $state(true);
@@ -50,6 +51,7 @@
     expenses: 'المصاريف',
     reservations: 'الحجوزات',
     pastesell: 'بيع من رسالة',
+    receive: 'فاتورة وارد',
     occasions: 'المناسبات'
   };
 
@@ -99,7 +101,7 @@
         {/if}
         {#if screen === 'home'}<Dashboard {goto} />
         {:else if screen === 'inventory'}<Inventory {goto} />
-        {:else if screen === 'sell'}<Sell />
+        {:else if screen === 'sell'}<Sell {goto} />
         {:else if screen === 'reports'}<Reports />
         {:else if screen === 'more'}<More {goto} />
         {:else if screen === 'saleslog'}<SalesLog />
@@ -112,6 +114,7 @@
         {:else if screen === 'expenses'}<Expenses />
         {:else if screen === 'reservations'}<Reservations />
         {:else if screen === 'pastesell'}<PasteToSell />
+        {:else if screen === 'receive'}<ReceiveInvoice {goto} />
         {:else if screen === 'occasions'}<Occasions />
         {/if}
       </div>

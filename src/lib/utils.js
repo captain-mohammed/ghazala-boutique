@@ -107,6 +107,35 @@ export function fileToLogoDataUrl(file, max = 256) {
   });
 }
 
+/* Product photo — same pipeline but JPEG (much smaller than PNG for photos) */
+export function fileToPhotoDataUrl(file, max = 640, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    if (!file || !String(file.type || '').startsWith('image/')) return reject(new Error('not an image'));
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('read failed'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('decode failed'));
+      img.onload = () => {
+        try {
+          const scale = Math.min(1, max / Math.max(img.width, img.height));
+          const w = Math.max(1, Math.round(img.width * scale));
+          const h = Math.max(1, Math.round(img.height * scale));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        } catch {
+          resolve(reader.result);
+        }
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 /* PIN hashing — non-reversible salted digest (SHA-256) */
 export async function hashPin(pin, salt = 'ghazala') {
   const data = new TextEncoder().encode(`${salt}:${pin}`);

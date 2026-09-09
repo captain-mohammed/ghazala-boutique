@@ -5,14 +5,26 @@
   import Icon from '../components/Icon.svelte';
   import Sheet from '../components/Sheet.svelte';
   import Scanner from '../components/Scanner.svelte';
+  import Dropdown from '../components/Dropdown.svelte';
+  import SpeedDial from '../components/SpeedDial.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
   import { db, recordSale, getSetting, piecesSoldToday } from '../db.js';
   import { fmtIQD, fmtNum, buzz } from '../utils.js';
-  import { toastOk, toastErr, toast, celebrateAt, milestoneFor } from '../store.js';
+  import { get } from 'svelte/store';
+  import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill } from '../store.js';
+
+  let { goto } = $props();
 
   let products = $state([]);
   let q = $state('');
+  let cat = $state('الكل');
+  let sort = $state('new');
+  let avail = $state('in');
+
+  /* «اعرضيها بخصم» and friends can prefill the search from the dashboard */
+  const prefill = get(sellPrefill);
+  if (prefill) { q = prefill; sellPrefill.set(null); }
 
   $effect(() => {
     let alive = true;
@@ -25,18 +37,141 @@
     return () => { alive = false; clearInterval(t); };
   });
 
-  const results = $derived.by(() => {
-    if (!q.trim()) return products.filter((p) => p.qty > 0).slice(0, 12);
-    const s = q.trim().toLowerCase();
-    return products
-      .filter((p) => [p.name, p.color, p.sku, p.size, p.barcode].filter(Boolean).join(' ').toLowerCase().includes(s))
-      .slice(0, 20);
+  const cats = $derived.by(() => {
+    const set = [...new Set(products.map((p) => p.category))];
+    return [
+      { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => p.qty > 0).length, clear: true },
+      ...set.map((c) => ({ value: c, label: c, icon: 'tag', count: products.filter((p) => p.category === c && p.qty > 0).length }))
+    ];
   });
 
-  /* ---- Cart ---- */
-  let cart = $state([]); // { sku, name, price, cost, qty, max }
+  /* sell defaults to what can actually go out the door; «حتى النافد» is a peek-only mode */
+  const AVAIL = [
+    { value: 'in', label: 'متوفر', icon: 'check', clear: true },
+    { value: 'low', label: 'كمية منخفضة', icon: 'alert' },
+    { value: 'all', label: 'الكل (حتى النافد)', icon: 'dots' }
+  ];
+
+  const SORTS = [
+    { value: 'new', label: 'الأحدث', icon: 'sparkle', clear: true },
+    { value: 'price', label: 'الأعلى سعراً', icon: 'tag' },
+    { value: 'qty', label: 'الأقل كمية', icon: 'chart' }
+  ];
+
+  const filtered = $derived.by(() => {
+    let list = products;
+    if (avail === 'in') list = list.filter((p) => p.qty > 0);
+    else if (avail === 'low') list = list.filter((p) => p.qty > 0 && p.qty <= 3);
+    if (cat !== 'الكل') list = list.filter((p) => p.category === cat);
+    if (q.trim()) {
+      const s = q.trim().toLowerCase();
+      list = list.filter((p) =>
+        [p.name, p.brand, p.color, p.sku, p.size, p.barcode].filter(Boolean).join(' ').toLowerCase().includes(s)
+      );
+    }
+    const sorted = [...list];
+    if (sort === 'new') sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    if (sort === 'price') sorted.sort((a, b) => (b.price || 0) - (a.price || 0));
+    if (sort === 'qty') sorted.sort((a, b) => a.qty - b.qty);
+    return sorted;
+  });
+
+  /* ---- Premium filter bar state ---- */
+  const activeCount = $derived((cat !== 'الكل' ? 1 : 0) + (avail !== 'in' ? 1 : 0) + (sort !== 'new' ? 1 : 0) + (q.trim() ? 1 : 0));
+  const isDefault = $derived(cat === 'الكل' && avail === 'in' && sort === 'new' && !q.trim());
+
+  function clearAllFilters() {
+    cat = 'الكل';
+    avail = 'in';
+    sort = 'new';
+    q = '';
+    buzz(10);
+  }
+
+  const activeTags = $derived.by(() => {
+    const tags = [];
+    if (q.trim()) tags.push({ key: 'q', label: `بحث: ${q.trim()}` });
+    if (cat !== 'الكل') tags.push({ key: 'cat', label: cat });
+    if (avail !== 'in') tags.push({ key: 'avail', label: AVAIL.find((a) => a.value === avail)?.label || '' });
+    if (sort !== 'new') tags.push({ key: 'sort', label: `ترتيب: ${SORTS.find((s) => s.value === sort)?.label || ''}` });
+    return tags;
+  });
+
+  function removeTag(key) {
+    if (key === 'q') q = '';
+    if (key === 'cat') cat = 'الكل';
+    if (key === 'avail') avail = 'in';
+    if (key === 'sort') sort = 'new';
+    buzz(6);
+  }
+
+  /* ---- Cart (survives tab switches and reloads) ---- */
+  const CART_KEY = 'ghazala.sell.cart';
+  const LAST_KEY = 'ghazala.sell.lastCart';
+  const LAST_TTL = 30 * 60 * 1000;
+
+  function loadCart() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(CART_KEY));
+      return Array.isArray(raw) ? raw.filter((c) => c && c.sku && c.qty > 0) : [];
+    } catch { return []; }
+  }
+  function loadLast() {
+    try {
+      const l = JSON.parse(localStorage.getItem(LAST_KEY));
+      if (!l || !Array.isArray(l.items) || !l.items.length) return null;
+      if (Date.now() - (l.at || 0) > LAST_TTL) { localStorage.removeItem(LAST_KEY); return null; }
+      return l;
+    } catch { return null; }
+  }
+
+  let cart = $state(loadCart()); // { sku, name, price, cost, qty, max }
+  let lastCart = $state(loadLast()); // { items, at } — emptied cart, one-tap reopen
   const cartCount = $derived(cart.reduce((a, c) => a + c.qty, 0));
   const subtotal = $derived(cart.reduce((a, c) => a + c.price * c.qty, 0));
+  const lastCount = $derived(lastCart ? lastCart.items.reduce((a, c) => a + c.qty, 0) : 0);
+  const lastSum = $derived(lastCart ? lastCart.items.reduce((a, c) => a + c.price * c.qty, 0) : 0);
+
+  $effect(() => {
+    try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
+  });
+
+  /* when stock moves under an open cart (another sale, stocktake, expiry) — clamp or drop */
+  $effect(() => {
+    if (!products.length || !cart.length) return;
+    let changed = false;
+    const gone = [];
+    const next = [];
+    for (const c of cart) {
+      const p = products.find((x) => x.sku === c.sku);
+      if (!p || p.qty === 0) { changed = true; gone.push(c.name); continue; }
+      if (c.qty > p.qty || c.max !== p.qty) { changed = true; next.push({ ...c, qty: p.qty, max: p.qty }); }
+      else next.push(c);
+    }
+    if (changed) {
+      cart = next;
+      if (gone.length) toastErr(gone.length === 1 ? `«${gone[0]}» نفد — أُزيل من السلة` : 'بعض موديلات السلة نفدت وأُزيلت');
+    }
+  });
+
+  function archiveLast() {
+    if (!cart.length) return;
+    lastCart = { items: cart.map((c) => ({ ...c })), at: Date.now() };
+    try { localStorage.setItem(LAST_KEY, JSON.stringify(lastCart)); } catch {}
+  }
+  function dismissLast() {
+    lastCart = null;
+    try { localStorage.removeItem(LAST_KEY); } catch {}
+    buzz(6);
+  }
+  function restoreLast() {
+    if (!lastCart) return;
+    cart = lastCart.items.map((c) => ({ ...c }));
+    lastCart = null;
+    try { localStorage.removeItem(LAST_KEY); } catch {}
+    buzz(10);
+    toastOk('أُعيدت آخر سلة — تفضل');
+  }
 
   function addToCart(p) {
     if (p.qty <= 0) { toastErr('هذا الموديل نفد من المخزون'); return; }
@@ -126,49 +261,89 @@
       saving = false;
     }
   }
+  /* ---- Floating action menu ---- */
+  const dialActions = [
+    { id: 'scan', label: 'مسح باركود موديل', icon: 'scan' },
+    { id: 'paste', label: 'بيع من رسالة واتساب', icon: 'chat' }
+  ];
+  function onDial(a) {
+    if (a.id === 'scan') { q = ''; itemScanOpen = true; }
+    if (a.id === 'paste') goto('pastesell');
+  }
 </script>
 
 <div class="stack" style="gap:12px">
-  <div class="row" style="gap:10px">
-    <Glass class="search" radius="var(--r-md)">
-      <Icon name="search" size={18} color="var(--taupe)" />
-      <input placeholder="ابحث عن موديل…" bind:value={q} />
-      {#if q}<button class="clr" onclick={() => (q = '')}><Icon name="x" size={14} /></button>{/if}
-    </Glass>
-    <button class="iconbtn" style="width:50px; height:50px; flex:none" aria-label="مسح باركود" onclick={() => { buzz(8); q = ''; itemScanOpen = true; }}>
-      <Icon name="scan" size={20} />
-    </button>
+  <Glass class="search" radius="var(--r-md)">
+    <Icon name="search" size={18} color="var(--taupe)" />
+    <input placeholder="ابحث عن موديل…" bind:value={q} />
+    {#if q}<button class="clr" onclick={() => (q = '')}><Icon name="x" size={14} /></button>{/if}
+  </Glass>
+
+  <!-- Premium filter card -->
+  <Glass class="filter-card">
+    <div class="f-head">
+      <span class="f-title"><Icon name="sliders" size={16} color="var(--burgundy)" /> فلاتر</span>
+      {#if activeCount > 0}<span class="f-count">{activeCount}</span>{/if}
+      <span class="f-spacer"></span>
+      {#if !isDefault}
+        <button class="f-clear" onclick={clearAllFilters}>مسح الكل</button>
+      {/if}
+    </div>
+
+    <div class="f-row">
+      <Dropdown bind:value={cat} options={cats} icon="tag" placeholder="التصنيف: الكل" />
+      <Dropdown bind:value={avail} options={AVAIL} icon="box" placeholder="الحالة: متوفر" />
+      <Dropdown bind:value={sort} options={SORTS} icon="sparkle" placeholder="ترتيب: الأحدث" />
+    </div>
+
+    {#if activeTags.length}
+      <div class="f-active">
+        {#each activeTags as t (t.key)}
+          <span class="f-tag">
+            {t.label}
+            <button aria-label="إزالة {t.label}" onclick={() => removeTag(t.key)}><Icon name="x" size={11} /></button>
+          </span>
+        {/each}
+      </div>
+    {/if}
+  </Glass>
+
+  <div class="muted small sort-note">
+    {fmtNum(filtered.length)} {avail === 'in' ? 'موديل متوفر' : 'موديل'}{cat !== 'الكل' ? ` في ${cat}` : ''}
   </div>
 
-  <div class="grid">
-    {#each results as p (p.sku)}
-      <Glass
-        as="button"
-        class="pcard rise {p.qty === 0 ? 'oos' : ''}"
-        onclick={() => addToCart(p)}
-      >
-        <div class="pthumb">
-          {#if p.photo}<img src={p.photo} alt={p.name} />{:else}<Icon name="box" size={24} color="var(--taupe)" />{/if}
-        </div>
-        <div class="pinfo">
-          <div class="pname">{p.name}</div>
-          <div class="pmeta muted small">{p.color || p.category}{p.size ? ' • ' + p.size : ''}</div>
-          <div class="prow">
-            <span class="pprice">{fmtIQD(p.price)}</span>
-            <span class="pqty" class:zero={p.qty === 0}>{p.qty === 0 ? 'نفد' : `× ${fmtNum(p.qty)}`}</span>
-          </div>
-        </div>
-        <span class="add-ic"><Icon name="plus" size={16} color="#fff" /></span>
-      </Glass>
-    {/each}
-  </div>
-
-  {#if results.length === 0}
+  {#if filtered.length === 0}
     <EmptyState
-      title="لا توجد نتائج"
-      subtitle={q ? `لا يوجد «${q}» في المخزون — جرّب كلمة أخرى` : 'أضف موديلات أولاً من تبويب المخزون'}
-      icon="search"
+      title={isDefault ? (products.length ? 'لا شيء متوفر حالياً' : 'لا موديلات للبيع') : 'لا نتائج مطابقة'}
+      subtitle={isDefault ? (products.length ? 'كل الموديلات نفدت — استكمل الكميات من المخزون أولاً' : 'أضف موديلات أولاً من تبويب المخزون') : 'الموديلات موجودة لكن الفلاتر الحالية تخفيها'}
+      actionLabel={isDefault ? 'إلى المخزون' : 'عرض الكل'}
+      onaction={isDefault ? () => goto('inventory') : clearAllFilters}
+      icon={isDefault ? 'box' : 'search'}
     />
+  {:else}
+    <div class="grid">
+      {#each filtered as p, i (p.sku)}
+        <Glass
+          as="button"
+          class="pcard rise {p.qty === 0 ? 'oos' : ''}"
+          style="animation-delay:{Math.min(i * 0.04, 0.4)}s"
+          onclick={() => addToCart(p)}
+        >
+          <div class="pthumb">
+            {#if p.photo}<img src={p.photo} alt={p.name} />{:else}<Icon name="box" size={24} color="var(--taupe)" />{/if}
+          </div>
+          <div class="pinfo">
+            <div class="pname">{p.name}</div>
+            <div class="pmeta muted small">{p.color || p.category}{p.size ? ' • ' + p.size : ''}</div>
+            <div class="prow">
+              <span class="pprice">{fmtIQD(p.price)}</span>
+              <span class="pqty" class:zero={p.qty === 0}>{p.qty === 0 ? 'نفد' : `× ${fmtNum(p.qty)}`}</span>
+            </div>
+          </div>
+          <span class="add-ic"><Icon name="plus" size={16} color="#fff" /></span>
+        </Glass>
+      {/each}
+    </div>
   {/if}
 </div>
 
@@ -183,11 +358,27 @@
       </div>
       <Icon name="back" size={18} color="var(--burgundy)" />
     </button>
-    <button class="cart-x" onclick={() => { cart = []; buzz(10); }} aria-label="إفراغ السلة">
+    <button class="cart-x" onclick={() => { archiveLast(); cart = []; buzz(10); }} aria-label="إفراغ السلة">
       <Icon name="trash" size={17} />
     </button>
   </div>
+{:else if lastCart}
+  <!-- Last-cart quick reopen -->
+  <div class="cartbar glass-strong">
+    <button class="cart-info" onclick={restoreLast}>
+      <span class="cart-badge pop undo"><Icon name="undo" size={18} color="#fff" /></span>
+      <div class="cart-txt">
+        <div class="bold">استرجاع آخر سلة</div>
+        <div class="muted small">{fmtNum(lastCount)} عناصر • {fmtIQD(lastSum)}</div>
+      </div>
+    </button>
+    <button class="cart-x" onclick={dismissLast} aria-label="تجاهل">
+      <Icon name="x" size={17} />
+    </button>
+  </div>
 {/if}
+
+<SpeedDial actions={dialActions} onselect={onDial} label="إجراءات البيع" lift={cart.length > 0 || !!lastCart} />
 
 <!-- Item scanner (finds a product by its barcode/SKU) -->
 <Scanner open={itemScanOpen} title="مسح باركود الموديل" onclose={() => (itemScanOpen = false)}
@@ -328,7 +519,11 @@
   }
   .clr { background: none; border: none; color: var(--taupe); cursor: pointer; padding: 4px; }
 
-  .grid { display: flex; flex-direction: column; gap: 10px; padding-bottom: 90px; }
+  .f-row { display: flex; gap: 8px; }
+  .f-row > :global(.dd) { flex: 1; min-width: 0; }
+  .sort-note { margin-top: -4px; }
+
+  .grid { display: flex; flex-direction: column; gap: 10px; padding-bottom: 150px; }
   :global(.pcard) {
     display: flex;
     align-items: center;
@@ -401,6 +596,11 @@
     box-shadow: 0 6px 16px rgba(181, 73, 91, 0.4);
   }
   .cart-txt { flex: 1; display: flex; flex-direction: column; align-items: flex-start; }
+  .cart-badge.undo {
+    background: linear-gradient(150deg, var(--gold), #a4803e);
+    box-shadow: 0 6px 16px rgba(164, 128, 62, 0.35);
+    display: flex; align-items: center; justify-content: center;
+  }
   .cart-x {
     width: 40px; height: 40px;
     border-radius: 12px;
