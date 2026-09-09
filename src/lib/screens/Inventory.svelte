@@ -1,6 +1,9 @@
 <script>
   import Icon from '../components/Icon.svelte';
   import Sheet from '../components/Sheet.svelte';
+  import Dropdown from '../components/Dropdown.svelte';
+  import SpeedDial from '../components/SpeedDial.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
   import ProductForm from './ProductForm.svelte';
   import ItemDetail from './ItemDetail.svelte';
   import { db } from '../db.js';
@@ -12,6 +15,7 @@
   let q = $state('');
   let cat = $state('الكل');
   let sort = $state('new');
+  let avail = $state('all');
 
   $effect(() => {
     let alive = true;
@@ -24,11 +28,35 @@
     return () => { alive = false; clearInterval(t); };
   });
 
-  const cats = $derived(['الكل', ...new Set(products.map((p) => p.category))]);
+  const cats = $derived.by(() => {
+    const set = [...new Set(products.map((p) => p.category))];
+    return [
+      { value: 'الكل', label: 'الكل', icon: 'dots', count: products.length, clear: true },
+      ...set.map((c) => ({ value: c, label: c, icon: 'tag', count: products.filter((p) => p.category === c).length }))
+    ];
+  });
+
+  const AVAIL = [
+    { value: 'all', label: 'الكل', icon: 'dots', clear: true },
+    { value: 'in', label: 'متوفر', icon: 'check' },
+    { value: 'low', label: 'كمية منخفضة', icon: 'alert' },
+    { value: 'out', label: 'نفد', icon: 'x' }
+  ];
+
+  const SORTS = [
+    { value: 'new', label: 'الأحدث', icon: 'sparkle', clear: true },
+    { value: 'price', label: 'الأعلى سعراً', icon: 'tag' },
+    { value: 'qty', label: 'الأقل كمية', icon: 'chart' }
+  ];
+
+  const isLow = (p) => p.qty > 0 && p.qty <= 3;
 
   const filtered = $derived.by(() => {
     let list = products;
     if (cat !== 'الكل') list = list.filter((p) => p.category === cat);
+    if (avail === 'in') list = list.filter((p) => p.qty >= 4);
+    else if (avail === 'low') list = list.filter(isLow);
+    else if (avail === 'out') list = list.filter((p) => p.qty === 0);
     if (q.trim()) {
       const s = q.trim().toLowerCase();
       list = list.filter((p) =>
@@ -41,6 +69,35 @@
     if (sort === 'qty') sorted.sort((a, b) => a.qty - b.qty);
     return sorted;
   });
+
+  /* ---- Premium filter bar state ---- */
+  const activeCount = $derived((cat !== 'الكل' ? 1 : 0) + (avail !== 'all' ? 1 : 0) + (sort !== 'new' ? 1 : 0) + (q.trim() ? 1 : 0));
+  const isDefault = $derived(cat === 'الكل' && avail === 'all' && sort === 'new' && !q.trim());
+
+  function clearAllFilters() {
+    cat = 'الكل';
+    avail = 'all';
+    sort = 'new';
+    q = '';
+    buzz(10);
+  }
+
+  const activeTags = $derived.by(() => {
+    const tags = [];
+    if (q.trim()) tags.push({ key: 'q', label: `بحث: ${q.trim()}` });
+    if (cat !== 'الكل') tags.push({ key: 'cat', label: cat });
+    if (avail !== 'all') tags.push({ key: 'avail', label: AVAIL.find((a) => a.value === avail)?.label || '' });
+    if (sort !== 'new') tags.push({ key: 'sort', label: `ترتيب: ${SORTS.find((s) => s.value === sort)?.label || ''}` });
+    return tags;
+  });
+
+  function removeTag(key) {
+    if (key === 'q') q = '';
+    if (key === 'cat') cat = 'الكل';
+    if (key === 'avail') avail = 'all';
+    if (key === 'sort') sort = 'new';
+    buzz(6);
+  }
 
   let showForm = $state(false);
   let editing = $state(null);
@@ -57,6 +114,12 @@
     showForm = true;
     buzz(8);
   }
+
+  /* Floating action menu — المزيد قادم لاحقاً (فاتورة وارد، طلبية…) */
+  const dialActions = [{ id: 'add', label: 'إضافة موديل', icon: 'plus' }];
+  function onDial(a) {
+    if (a.id === 'add') openAdd();
+  }
 </script>
 
 <div class="stack" style="gap:12px">
@@ -66,37 +129,49 @@
       <input placeholder="ابحث بالاسم، اللون، المقاس، الكود…" bind:value={q} />
       {#if q}<button class="clr" onclick={() => (q = '')}><Icon name="x" size={14} /></button>{/if}
     </div>
-    <button
-      class="iconbtn"
-      style="width:50px; height:50px; flex:none"
-      aria-label="ترتيب"
-      onclick={() => { buzz(6); sort = sort === 'new' ? 'price' : sort === 'price' ? 'qty' : 'new'; }}
-    >
-      <Icon name="list" size={20} />
-    </button>
   </div>
 
-  <div class="cats noscroll">
-    {#each cats as c (c)}
-      <button class="chip" class:on={cat === c} onclick={() => { buzz(5); cat = c; }}>{c}</button>
-    {/each}
+  <!-- Premium filter card -->
+  <div class="glass filter-card">
+    <div class="f-head">
+      <span class="f-title"><Icon name="sliders" size={16} color="var(--burgundy)" /> فلاتر</span>
+      {#if activeCount > 0}<span class="f-count">{activeCount}</span>{/if}
+      <span class="f-spacer"></span>
+      {#if !isDefault}
+        <button class="f-clear" onclick={clearAllFilters}>مسح الكل</button>
+      {/if}
+    </div>
+
+    <div class="f-row">
+      <Dropdown bind:value={cat} options={cats} icon="tag" placeholder="التصنيف: الكل" />
+      <Dropdown bind:value={avail} options={AVAIL} icon="box" placeholder="الحالة: الكل" />
+      <Dropdown bind:value={sort} options={SORTS} icon="sparkle" placeholder="ترتيب: الأحدث" />
+    </div>
+
+    {#if activeTags.length}
+      <div class="f-active">
+        {#each activeTags as t (t.key)}
+          <span class="f-tag">
+            {t.label}
+            <button aria-label="إزالة {t.label}" onclick={() => removeTag(t.key)}><Icon name="x" size={11} /></button>
+          </span>
+        {/each}
+      </div>
+    {/if}
   </div>
 
   <div class="muted small sort-note">
-    ترتيب: {sort === 'new' ? 'الأحدث' : sort === 'price' ? 'الأعلى سعراً' : 'الكمية'} • {fmtNum(filtered.length)} موديل
+    {fmtNum(filtered.length)} موديل{cat !== 'الكل' ? ` في ${cat}` : ''}
   </div>
 
   {#if filtered.length === 0}
-    <div class="glass rise empty">
-      <div class="empty-ic floaty"><Icon name="box" size={34} color="var(--burgundy)" /></div>
-      <h2 class="h2">{q || cat !== 'الكل' ? 'لا نتائج مطابقة' : 'المخزون فارغ'}</h2>
-      <p class="muted center">
-        {q || cat !== 'الكل' ? 'جرّب كلمة أخرى أو غيّر التصنيف' : 'أضف أول حذاء الآن — العملية لا تستغرق إلا ثوانٍ'}
-      </p>
-      {#if !q && cat === 'الكل'}
-        <button class="btn primary lg" onclick={openAdd}><Icon name="plus" size={18} /> إضافة موديل</button>
-      {/if}
-    </div>
+    <EmptyState
+      title={isDefault ? 'المخزون فارغ' : 'لا نتائج مطابقة'}
+      subtitle={isDefault ? 'أضف أول حذاء الآن — العملية لا تستغرق إلا ثوانٍ' : 'الموديلات موجودة لكن الفلاتر الحالية تخفيها'}
+      actionLabel={isDefault ? 'إضافة موديل' : 'عرض الكل'}
+      onaction={isDefault ? openAdd : clearAllFilters}
+      icon={isDefault ? 'box' : 'search'}
+    />
   {:else}
     <div class="grid">
       {#each filtered as p, i (p.sku)}
@@ -121,6 +196,8 @@
     </div>
   {/if}
 </div>
+
+<SpeedDial actions={dialActions} onselect={onDial} />
 
 <Sheet open={showForm} title={editing ? 'تعديل موديل' : 'إضافة موديل جديد'} onclose={() => { showForm = false; editing = null; }}>
   <ProductForm product={editing} ondone={() => { showForm = false; editing = null; }} />
@@ -153,7 +230,8 @@
     color: var(--ink);
   }
   .clr { background: none; border: none; color: var(--taupe); cursor: pointer; padding: 4px; }
-  .cats { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+  .f-row { display: flex; gap: 8px; }
+  .f-row > :global(.dd) { flex: 1; min-width: 0; }
   .sort-note { margin-top: -4px; }
   .grid {
     display: grid;

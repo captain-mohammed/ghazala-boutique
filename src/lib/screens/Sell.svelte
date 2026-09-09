@@ -2,6 +2,7 @@
   import Icon from '../components/Icon.svelte';
   import Sheet from '../components/Sheet.svelte';
   import Scanner from '../components/Scanner.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
   import { db, recordSale, getSetting } from '../db.js';
   import { fmtIQD, fmtNum, buzz } from '../utils.js';
   import { toastOk, toastErr, toast, celebrateAt } from '../store.js';
@@ -133,10 +134,11 @@
   </div>
 
   {#if results.length === 0}
-    <div class="glass empty">
-      <div class="empty-ic floaty"><Icon name="search" size={30} color="var(--burgundy)" /></div>
-      <p class="muted center">لا توجد نتائج{q ? ` لـ «${q}»` : ''}</p>
-    </div>
+    <EmptyState
+      title="لا توجد نتائج"
+      subtitle={q ? `لا يوجد «${q}» في المخزون — جرّب كلمة أخرى` : 'أضف موديلات أولاً من تبويب المخزون'}
+      icon="search"
+    />
   {/if}
 </div>
 

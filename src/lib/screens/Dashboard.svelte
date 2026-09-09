@@ -3,6 +3,7 @@
   import Icon from '../components/Icon.svelte';
   import Ticker from '../components/Ticker.svelte';
   import Logo from '../components/Logo.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
   import { db, allSettings } from '../db.js';
   import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
@@ -139,14 +140,14 @@
       </div>
     </section>
   {:else if loaded && products.length === 0}
-    <section class="glass rise empty" style="animation-delay:0.16s">
-      <div class="empty-ic floaty"><Icon name="box" size={34} color="var(--burgundy)" /></div>
-      <h2 class="h2">ابدأ بجرد بوتيكك</h2>
-      <p class="muted center">أضف أول حذاء من تبويب المخزون —<br />كل شيء يبقى محفوظاً في جهازك</p>
-      <button class="btn primary lg" onclick={() => goto('inventory')}>
-        <Icon name="plus" size={18} /> إضافة أول موديل
-      </button>
-    </section>
+    <div style="animation-delay:0.16s">
+      <EmptyState
+        title="ابدأ بجرد بوتيكك"
+        subtitle="أضف أول حذاء من تبويب المخزون — كل شيء يبقى محفوظاً في جهازك"
+        actionLabel="إضافة أول موديل"
+        onaction={() => goto('inventory')}
+      />
+    </div>
   {/if}
 </div>
 

@@ -39,7 +39,12 @@ export function spawnSparks(x, y, count = 8) {
       ],
       { duration: 480 + Math.random() * 180, easing: 'cubic-bezier(.2,.7,.3,1)' }
     );
-    anim.onfinish = () => p.remove();
+    // cleanup on finish AND cancel (backgrounding the app cancels animations,
+    // which would otherwise leave stray particles "parked" on screen)
+    const kill = () => p.remove();
+    anim.onfinish = kill;
+    anim.oncancel = kill;
+    setTimeout(kill, 1400);
   }
   const ring = document.createElement('span');
   ring.style.cssText = `position:fixed;left:${x}px;top:${y}px;width:10px;height:10px;border-radius:50%;` +
@@ -49,7 +54,10 @@ export function spawnSparks(x, y, count = 8) {
     [{ transform: 'translate(-50%,-50%) scale(1)', opacity: 0.5 }, { transform: 'translate(-50%,-50%) scale(4.2)', opacity: 0 }],
     { duration: 420, easing: 'cubic-bezier(.2,.7,.3,1)' }
   );
-  ra.onfinish = () => ring.remove();
+  const killRing = () => ring.remove();
+  ra.onfinish = killRing;
+  ra.oncancel = killRing;
+  setTimeout(killRing, 1000);
 }
 
 /* Call once from main.js — every tap on an interactive element emits sparks */

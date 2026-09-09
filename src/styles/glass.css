@@ -158,15 +158,15 @@ button { font-family: inherit; }
   background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
   border-color: rgba(181, 73, 91, 0.4);
   color: #fff;
-  box-shadow: 0 10px 26px rgba(181, 73, 91, 0.32);
+  box-shadow: 0 4px 14px rgba(122, 46, 58, 0.22);
 }
-.btn.primary:active { box-shadow: 0 4px 12px rgba(181, 73, 91, 0.3); }
+.btn.primary:active { box-shadow: 0 2px 8px rgba(122, 46, 58, 0.2); }
 .btn.gold {
   background: linear-gradient(150deg, #d4b276, var(--gold));
   border-color: rgba(201, 161, 90, 0.5);
   color: #fff;
   text-shadow: 0 1px 2px rgba(122, 46, 58, 0.25);
-  box-shadow: 0 10px 26px rgba(201, 161, 90, 0.3);
+  box-shadow: 0 4px 14px rgba(164, 128, 62, 0.22);
 }
 .btn.ghost { background: transparent; border-color: var(--line-2); }
 .btn.danger { color: var(--burgundy-deep); border-color: rgba(181, 73, 91, 0.35); background: var(--accent-soft); }
@@ -204,6 +204,107 @@ button { font-family: inherit; }
 }
 @keyframes ripple-wave { to { transform: translate(-50%, -50%) scale(1); opacity: 0; } }
 
+/* Premium filter card — wraps a filter row (chips / dropdowns / search).
+   z-index lifts the whole card above the product grid: every .glass card
+   is its own stacking context (backdrop-filter), and later DOM siblings
+   would otherwise paint over the dropdown popovers. */
+.filter-card {
+  position: relative;
+  z-index: 30;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: visible;
+}
+.f-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.f-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--ink);
+}
+.f-count {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #fff;
+  background: linear-gradient(150deg, rgba(181, 73, 91, 0.92), rgba(122, 46, 58, 0.92));
+  box-shadow: 0 2px 6px rgba(122, 46, 58, 0.2);
+}
+.f-spacer { flex: 1; }
+.f-clear {
+  background: none;
+  border: none;
+  color: var(--taupe);
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 10px;
+  transition: color 0.2s, background 0.2s, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.f-clear:hover { color: var(--burgundy-deep); background: var(--accent-soft); }
+.f-clear:active { transform: scale(0.94); }
+.f-chips {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.f-chips::-webkit-scrollbar { display: none; }
+.f-count-in {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 8px 0 0;
+  margin-inline-start: -2px;
+  font-size: 11px;
+  font-weight: 800;
+  opacity: 0.85;
+}
+.f-active {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.f-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--burgundy-deep);
+  background: var(--accent-soft);
+  border: 1px solid rgba(181, 73, 91, 0.22);
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s;
+}
+.f-tag:active { transform: scale(0.93); }
+.f-tag button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--burgundy);
+  cursor: pointer;
+  display: inline-flex;
+}
+
 /* ---------- Chips ---------- */
 .chip {
   display: inline-flex;
@@ -222,14 +323,14 @@ button { font-family: inherit; }
 }
 .chip:active { transform: scale(0.94); }
 .chip.on {
-  background: linear-gradient(150deg, rgba(181, 73, 91, 0.9), rgba(122, 46, 58, 0.9));
-  border-color: transparent;
+  background: linear-gradient(150deg, rgba(181, 73, 91, 0.92), rgba(122, 46, 58, 0.92));
+  border-color: rgba(255, 255, 255, 0.35);
   color: #fff;
-  box-shadow: 0 6px 16px rgba(181, 73, 91, 0.3);
+  box-shadow: 0 2px 8px rgba(122, 46, 58, 0.18);
 }
 .chip.gold-on {
   background: linear-gradient(150deg, rgba(201, 161, 90, 0.95), rgba(164, 128, 62, 0.95));
-  border-color: transparent;
+  border-color: rgba(255, 255, 255, 0.35);
   color: #fff;
 }
 .chip .mini-ic { width: 15px; height: 15px; }
@@ -487,6 +588,12 @@ textarea.input { min-height: 84px; resize: vertical; }
 /* ---------- Desktop sizing ---------- */
 @media (min-width: 700px) {
   .sheet { border-radius: var(--r-lg) var(--r-lg) 0 0; max-width: 560px; }
+}
+
+/* Narrow phones: stack filter dropdowns, tighten page gutters */
+@media (max-width: 420px) {
+  .f-row { flex-direction: column; }
+  .filter-card { padding: 11px 12px; }
 }
 
 /* ---------- Reduced motion ---------- */

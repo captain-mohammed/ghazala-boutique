@@ -1,6 +1,7 @@
 <script>
   import Icon from '../components/Icon.svelte';
   import Sheet from '../components/Sheet.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
   import { db, setSaleStatus, returnSale } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz, buildSalesMessage, sendWhatsApp } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
@@ -42,6 +43,12 @@
   });
 
   const filtered = $derived(filter === 'all' ? sales : sales.filter((s) => s.status === filter));
+
+  const counts = $derived.by(() => {
+    const c = { all: sales.length, pending: 0, delivered: 0, returned: 0 };
+    for (const s of sales) if (c[s.status] != null) c[s.status]++;
+    return c;
+  });
 
   const STATUS = {
     pending: { label: 'قيد التوصيل', cls: 'st-pending' },
@@ -90,15 +97,19 @@
 <div class="stack" style="gap:12px">
   <div class="row noscroll" style="gap:8px; overflow-x:auto; padding-bottom:2px">
     {#each FILTERS as f (f.id)}
-      <button class="chip" class:on={filter === f.id} onclick={() => (filter = f.id)}>{f.label}</button>
+      <button class="chip" class:on={filter === f.id} onclick={() => (filter = f.id)}>
+        {f.label}
+        <span class="chip-n" class:dim={filter !== f.id}>{counts[f.id] ?? 0}</span>
+      </button>
     {/each}
   </div>
 
   {#if filtered.length === 0}
-    <div class="glass empty">
-      <div class="empty-ic floaty"><Icon name="list" size={30} color="var(--burgundy)" /></div>
-      <p class="muted center">لا مبيعات هنا بعد</p>
-    </div>
+    <EmptyState
+      title="لا مبيعات هنا بعد"
+      subtitle="أول عملية بيع ستظهر هنا مع كل تفاصيلها — اسم الزبونة، القطع، والحالة"
+      icon="list"
+    />
   {:else}
     <div class="stack" style="gap:10px">
       {#each filtered as s, i (s.id)}
@@ -243,6 +254,20 @@
     white-space: nowrap;
   }
   .st-pending { background: rgba(192, 127, 58, 0.15); color: var(--warn); }
+  .chip-n {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10.5px;
+    font-weight: 800;
+    background: rgba(255, 255, 255, 0.25);
+    color: inherit;
+  }
+  .chip-n.dim { background: rgba(122, 46, 58, 0.08); color: var(--taupe); }
   .st-delivered { background: rgba(78, 138, 95, 0.14); color: var(--good); }
   .st-returned { background: rgba(122, 46, 58, 0.12); color: var(--burgundy-deep); }
   .head-card { padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }

@@ -27,6 +27,7 @@ export const icons = {
   phone: '<path d="M5 4h4l2 5-2.5 1.5a12 12 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
   history: '<path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/>',
+  sliders: '<path d="M4 6h10M18 6h2"/><circle cx="16" cy="6" r="2.2"/><path d="M4 12h4M12 12h8"/><circle cx="10" cy="12" r="2.2"/><path d="M4 18h12M20 18h0.5"/><circle cx="18" cy="18" r="2.2"/>',
   sparkle: '<path d="m12 3 2 5.5L19.5 10 14 12l-2 5.5L10 12 4.5 10 10 8.5Z"/>',
   chat: '<path d="M21 12a8 8 0 0 1-11.6 7.2L4 21l1.8-5.4A8 8 0 1 1 21 12Z"/>',
   truck: '<path d="M2 6h11v10H2Z"/><path d="M13 9h4l3 3v4h-7"/><circle cx="6" cy="18" r="1.8"/><circle cx="17" cy="18" r="1.8"/>',

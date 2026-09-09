@@ -54,6 +54,36 @@ Each version below lists **what was added and why it matters to the shop**.
 
 ---
 
+## [0.2.5] — 2026-09-09
+
+### Added
+- **Speed-dial FAB (المخزون)** — a floating action button at the dock's bottom-right corner fans open glass-labeled actions (Material speed-dial pattern: icon morphs to ×, items rise with staggered springs, dimmed backdrop to dismiss). Today it holds **إضافة موديل**; more actions are coming (فاتورة وارد، طلبية…).
+  - *Benefit:* adding a shoe is now always one thumb-reach away, wherever you've scrolled on the page.
+- **Premium empty states** — the plain icon-in-a-circle empty boxes became illustrated glass cards, themed to Ghazala: a searching face with a gold magnifier, floating dust, soft brand glows, animated with everything honoring reduced-motion. Wired into **الرئيسية، المخزون، بيع، السجل**.
+  - *Smart CTA:* when the inventory is truly empty → «إضافة موديل»؛ when *filters* hide everything → «لا نتائج مطابقة» with a **عرض الكل** button that clears the filters in one tap.
+
+### Changed
+- **Responsive on narrow phones** — the three filter dropdowns stack vertically under 420px width, and page gutters tighten, so nothing wraps awkwardly on small screens.
+- **Dropdown popovers pop** — the filter menus now float above item cards with lighter, more translucent frosted glass and a deeper shadow, so they stand out instead of blending into the card underneath.
+- Speed-dial scrim lightened (no blur) — the page stays readable while the menu is open.
+
+---
+
+## [0.2.4] — 2026-09-09
+
+### Added
+- **Premium filter bar (المخزون)** — the inventory filters are rebuilt as a proper filter card:
+  - **Filter header** — sliders icon, live **active-filter count pill**, and a **مسح الكل** button that appears only when something is active.
+  - **Dropdown selects** with glass spring popovers — التصنيف (with per-category counts), الحالة (متوفر / كمية منخفضة / نفد — a new filter that didn't exist before), and الترتيب — each with a checkmark on the selected option.
+  - **Removable active-filter chips** under the row (بحث، تصنيف، حالة، ترتيب) — tap the ✕ to drop a single filter.
+  - *Benefit:* finding a model is now three precise taps instead of cycling one sort button, and the shop owner sees *what's filtering* at a glance.
+- **Status counts in سجل المبيعات chips** — كل / قيد التوصيل / تم التسليم / راجع now show how many sales each holds.
+
+### Fixed
+- **Stray shadow behind buttons** — the active chip / primary buttons carried a heavy burgundy glow that read as a dirty shadow behind nearby elements; glows are now tight and subtle. Spark particles also gained hardened cleanup (they could stay parked on screen when the app was backgrounded mid-animation).
+
+---
+
 ## [0.2.3] — 2026-09-09
 
 ### Added
