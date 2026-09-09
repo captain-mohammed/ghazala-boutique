@@ -10,7 +10,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
   import { db, recordSale, getSetting, piecesSoldToday } from '../db.js';
-  import { fmtIQD, fmtNum, buzz } from '../utils.js';
+  import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill } from '../store.js';
 
@@ -66,7 +66,7 @@
     if (q.trim()) {
       const s = q.trim().toLowerCase();
       list = list.filter((p) =>
-        [p.name, p.brand, p.color, p.sku, p.size, p.barcode].filter(Boolean).join(' ').toLowerCase().includes(s)
+        [p.name, p.brand, p.color, p.sku, p.size, p.barcode, p.type, p.season, p.material].filter(Boolean).join(' ').toLowerCase().includes(s)
       );
     }
     const sorted = [...list];
@@ -233,7 +233,7 @@
         customerPhone: cphone,
         province: cprovince,
         address: caddress,
-        deliveryFee: Number(fee) || 0,
+        deliveryFee: iqd(fee),
         barcode,
         deliveryCompany: company,
         status: 'pending'
@@ -449,8 +449,8 @@
 
     <div class="row" style="gap:10px">
       <div class="field" style="flex:1">
-        <label>أجور التوصيل (د.ع)</label>
-        <input class="input" bind:value={fee} inputmode="numeric" />
+        <label>أجور التوصيل (د.ع) <span class="muted tiny">— 5 = 5,000</span></label>
+        <input class="input" bind:value={fee} inputmode="decimal" />
       </div>
       <div class="field" style="flex:1">
         <label>شركة التوصيل</label>
@@ -483,11 +483,11 @@
 
     <Glass class="totals" radius="var(--r-md)">
       <div class="row" style="justify-content:space-between"><span class="muted">المجموع</span><span class="money">{fmtIQD(subtotal)}</span></div>
-      <div class="row" style="justify-content:space-between"><span class="muted">التوصيل</span><span class="money">{fmtIQD(Number(fee) || 0)}</span></div>
+      <div class="row" style="justify-content:space-between"><span class="muted">التوصيل</span><span class="money">{fmtIQD(iqd(fee))}</span></div>
       <hr class="divider-gold" style="margin:4px 0" />
       <div class="row" style="justify-content:space-between">
         <span class="bold">الإجمالي</span>
-        <span class="bold" style="font-size:18px; color:var(--burgundy)">{fmtIQD(subtotal + (Number(fee) || 0))}</span>
+        <span class="bold" style="font-size:18px; color:var(--burgundy)">{fmtIQD(subtotal + iqd(fee))}</span>
       </div>
     </Glass>
 

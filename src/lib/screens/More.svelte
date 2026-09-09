@@ -14,6 +14,7 @@
     { id: 'ledger', icon: 'truck', label: 'حساب الشركات', desc: 'المبالغ عند شركات التوصيل والتسوية' },
     { id: 'expenses', icon: 'wallet', label: 'المصاريف', desc: 'الإيجار والنقل والتغليف — تُخصم من الربح' },
     { id: 'stocktake', icon: 'check', label: 'الجرد', desc: 'مطابقة الكميات مع الرفوف' },
+    { id: 'modelopts', icon: 'sliders', label: 'خيارات الموديلات', desc: 'التصنيفات، الأنواع، المواسم، المواد، والألوان — عدّليها كما تحبين' },
     { id: 'logo', icon: 'sparkle', label: 'شعار التطبيق', desc: 'تغيير شعار بوتيك غزالة أو استعادة الافتراضي' },
     { id: 'settings', icon: 'settings', label: 'الإعدادات', desc: 'التوصيل، التنبيهات، الرقم السري' },
     { id: 'backup', icon: 'shield', label: 'النسخ الاحتياطي', desc: 'حماية بياناتك — نسخة واستعادة' },

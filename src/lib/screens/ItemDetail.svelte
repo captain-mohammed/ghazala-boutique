@@ -109,7 +109,7 @@
     <div class="info">
       <h2 class="h2">{p.name}</h2>
       <div class="muted small">
-        {p.category}{p.type ? ' • ' + p.type : ''}{p.color ? ' • ' + p.color : ''}{p.size ? ' • مقاس ' + p.size : ''}
+        {[p.category, p.type, p.season, p.material].filter(Boolean).join(' • ')}{p.color ? ' • ' + p.color : ''}{p.size ? ' • مقاس ' + p.size : ''}
       </div>
       <div class="sku">{p.sku}</div>
       {#if p.supplier}

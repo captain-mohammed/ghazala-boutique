@@ -3,7 +3,7 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import { db, addExpense, deleteExpense, EXPENSE_CATEGORIES } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, isSameDay, startOfToday, daysAgoStart, buzz } from '../utils.js';
+  import { fmtIQD, fmtNum, fmtDate, isSameDay, startOfToday, daysAgoStart, buzz, iqd } from '../utils.js';
   import { toastOk } from '../store.js';
 
   let expenses = $state([]);
@@ -33,7 +33,7 @@
   const allTotal = $derived(expenses.reduce((a, e) => a + e.amount, 0));
 
   async function save() {
-    const amt = Number(amount);
+    const amt = iqd(amount);
     if (!amt || amt <= 0) { toastOk('اكتب المبلغ أولاً'); return; }
     await addExpense({ amount: amt, category, note });
     amount = '';
@@ -51,7 +51,7 @@
   <Glass class="rise" style="animation-delay:0.03s; padding:16px">
     <div class="row" style="gap:8px; margin-bottom:12px">
       <div class="field" style="flex:1">
-        <label>المبلغ (د.ع)</label>
+        <label>المبلغ (د.ع) <span class="muted tiny">— 5 = 5,000</span></label>
         <input class="input" bind:value={amount} inputmode="numeric" placeholder="0" />
       </div>
       <div class="field" style="flex:1">

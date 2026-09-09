@@ -5,6 +5,15 @@ const nf = new Intl.NumberFormat('en-US');
 export const fmtNum = (n) => nf.format(Math.round(Number(n) || 0));
 export const fmtIQD = (n) => fmtNum(n) + ' د.ع';
 
+/* Iraqi money shorthand: what you type is read in thousands.
+   5 → 5,000 د.ع · 12 → 12,000 · values ≥ 1000 are taken literally
+   so old full numbers (32000) keep working untouched. */
+export function iqd(raw) {
+  const n = Number(raw);
+  if (!n || n <= 0) return 0;
+  return n < 1000 ? Math.round(n * 1000) : Math.round(n);
+}
+
 /* Pieces in a sale = sum of item quantities (items.length is only the
    number of distinct lines — 2× the same shoe is one line with qty 2) */
 export const salePieces = (s) => (s?.items || []).reduce((a, it) => a + (Number(it.qty) || 0), 0);

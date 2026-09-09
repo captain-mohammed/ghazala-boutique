@@ -2,16 +2,16 @@
   import { onMount } from 'svelte';
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
-  import { db, allSettings, setSetting, seedDemo, wipeAll, DEFAULT_CATEGORIES } from '../db.js';
-  import { fmtIQD, buzz, hashPin, WA_VARS, DEFAULT_WA_TEMPLATE, buildSalesMessage } from '../utils.js';
+  import { db, allSettings, setSetting, seedDemo, wipeAll } from '../db.js';
+  import { fmtIQD, buzz, hashPin, iqd, WA_VARS, DEFAULT_WA_TEMPLATE, buildSalesMessage } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
   import { applyTheme } from '../theme.js';
+
+  let { goto = () => {} } = $props();
 
   let fee = $state('');
   let low = $state(3);
   let deadDays = $state(30);
-  let cats = $state([]);
-  let newCat = $state('');
   let loaded = $state(false);
   let themeMode = $state('light');
 
@@ -25,7 +25,6 @@
     fee = s.deliveryFee;
     low = s.lowStockThreshold;
     deadDays = s.deadStockDays;
-    cats = [...(s.categories || DEFAULT_CATEGORIES)];
     themeMode = s.theme || 'light';
     if (typeof s.waTemplate === 'string' && s.waTemplate.trim()) {
       waText = s.waTemplate;
@@ -48,8 +47,10 @@
   }
 
   async function saveFee() {
-    await setSetting('deliveryFee', Math.max(0, Number(fee) || 0));
-    toastOk(`أجور التوصيل: ${fmtIQD(Number(fee) || 0)}`);
+    const v = iqd(fee);
+    await setSetting('deliveryFee', v);
+    fee = v;
+    toastOk(`أجور التوصيل: ${fmtIQD(v)}`);
     buzz(10);
   }
   async function saveLow() {
@@ -61,26 +62,6 @@
     await setSetting('deadStockDays', Math.max(1, Math.round(Number(deadDays) || 30)));
     toastOk('تم حفظ مدة الرکود');
     buzz(10);
-  }
-
-  async function addCat() {
-    const name = newCat.trim();
-    if (!name) return;
-    if (cats.includes(name)) { toastErr('التصنيف موجود مسبقاً'); return; }
-    cats = [...cats, name];
-    await setSetting('categories', cats);
-    newCat = '';
-    toastOk('أُضيف التصنيف');
-    buzz(8);
-  }
-  async function rmCat(name) {
-    if (DEFAULT_CATEGORIES.includes(name)) {
-      const ok = await askConfirm({ title: 'حذف تصنيف أساسي؟', body: 'يمكنك إضافته لاحقاً في أي وقت.', okLabel: 'حذف', danger: true });
-      if (!ok) return;
-    }
-    cats = cats.filter((c) => c !== name);
-    await setSetting('categories', cats);
-    toastOk('حُذف التصنيف');
   }
 
   /* WhatsApp template save / reset */
@@ -163,9 +144,9 @@
     <Glass class="rise" style="padding:16px; animation-delay:0.05s">
       <h2 class="h2" style="margin-bottom:12px"><Icon name="truck" size={17} color="var(--burgundy)" /> التوصيل</h2>
       <div class="field">
-        <label>أجور التوصيل (د.ع) — لكل المحافظات</label>
+        <label>أجور التوصيل (د.ع) — لكل المحافظات <span class="muted tiny">— الآلاف: اكتب 5 = 5,000</span></label>
         <div class="row" style="gap:8px">
-          <input class="input" bind:value={fee} inputmode="numeric" style="flex:1" />
+          <input class="input" bind:value={fee} inputmode="decimal" style="flex:1" />
           <button class="btn primary" onclick={saveFee}>حفظ</button>
         </div>
       </div>
@@ -191,22 +172,18 @@
       </div>
     </Glass>
 
-    <Glass class="rise" style="padding:16px; animation-delay:0.1s">
-      <h2 class="h2" style="margin-bottom:12px"><Icon name="tag" size={17} color="var(--burgundy)" /> التصنيفات</h2>
-      <div class="row wrap" style="gap:8px; margin-bottom:12px">
-        {#each cats as c (c)}
-          <span class="chip on">
-            {c}
-            <button class="chip-x" onclick={() => rmCat(c)} aria-label="حذف {c}">
-              <Icon name="x" size={12} color="#fff" />
-            </button>
-          </span>
-        {/each}
+    <Glass
+      as="button"
+      class="rise opt-link"
+      style="animation-delay:0.1s"
+      onclick={() => { buzz(8); goto('modelopts'); }}
+    >
+      <span class="ol-ic"><Icon name="sliders" size={18} color="#fff" /></span>
+      <div style="flex:1; min-width:0; text-align:right">
+        <div class="bold">خيارات الموديلات</div>
+        <div class="muted small">التصنيفات، الأنواع، المواسم (شتائي/صيفي)، المواد، والألوان بدوائرها — كلها تُعدّل هنا</div>
       </div>
-      <div class="row" style="gap:8px">
-        <input class="input" bind:value={newCat} placeholder="تصنيف جديد…" style="flex:1" onkeydown={(e) => e.key === 'Enter' && addCat()} />
-        <button class="btn" onclick={addCat}><Icon name="plus" size={16} /> إضافة</button>
-      </div>
+      <Icon name="back" size={17} color="var(--taupe)" />
     </Glass>
 
     <Glass class="rise" style="padding:16px; animation-delay:0.12s">
@@ -267,6 +244,18 @@
 </div>
 
 <style>
+  :global(.opt-link) {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 16px; text-align: right; width: 100%; cursor: pointer;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  :global(.opt-link:active) { transform: scale(0.98); }
+  :global(.opt-link .ol-ic) {
+    flex: none; width: 42px; height: 42px; border-radius: 13px;
+    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(122, 46, 58, 0.25);
+  }
   .chip-x {
     background: rgba(255, 255, 255, 0.25);
     border: none;

@@ -221,14 +221,20 @@ export function tilt(node, opts = {}) {
 /* ---------------- Custom spring transitions ---------------- */
 
 /* Screen change: content slides in FROM the tapped tab's direction,
-   with a soft blur-clearing and scale settle. */
+   with a soft blur-clearing and scale settle.
+   The last frames return an EMPTY style — a leftover `filter/transform`
+   inline on this wrapper would make it the containing block for every
+   position:fixed child (speed-dial FAB, cart bar), pinning them to the
+   bottom of the long screen element instead of the viewport. */
 export function screenIn(node, { x = 0, y = 18, duration = 420, delay = 0 } = {}) {
   return {
     duration,
     delay,
     easing: cubicOut,
     css: (t, u) =>
-      `opacity: ${t}; transform: translate(${u * x}px, ${u * y}px) scale(${0.975 + 0.025 * t}); filter: blur(${(u * 5).toFixed(1)}px);`
+      u < 0.03
+        ? ''
+        : `opacity: ${t}; transform: translate(${u * x}px, ${u * y}px) scale(${0.975 + 0.025 * t}); filter: blur(${(u * 5).toFixed(1)}px);`
   };
 }
 

@@ -73,6 +73,7 @@
 
     const pRows = products.map((p) => ({
       'الكود': p.sku, 'الاسم': p.name, 'التصنيف': p.category, 'النوع': p.type || '',
+      'الموسم': p.season || '', 'المادة': p.material || '', 'المورد': p.supplier || '',
       'الماركة': p.brand || '', 'اللون': p.color || '', 'المقاس': p.size || '',
       'التكلفة': p.cost, 'سعر البيع': p.price, 'الكمية': p.qty,
       'ملاحظات': p.notes || '', 'آخر تحديث': p.updatedAt

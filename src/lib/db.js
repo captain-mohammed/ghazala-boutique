@@ -28,6 +28,12 @@ db.version(3).stores({
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
 export const WOMENS_TYPES = ['بوت', 'سلامبر', 'موال', 'كعب عالي'];
 
+/* Editable model vocabulary (المزيد ← خيارات الموديلات). Seeded defaults
+   only — the shop owner's own lists live in settings. */
+export const DEFAULT_TYPES = [...WOMENS_TYPES];
+export const DEFAULT_SEASONS = ['شتائي', 'صيفي'];
+export const DEFAULT_MATERIALS = ['جلد طبيعي', 'جلد صناعي', 'قماش', 'سويد', 'بلاستيك'];
+
 /* Starting size grid per category — always extendable with custom sizes */
 export const SIZE_RUNS = {
   'نسائية': ['36', '37', '38', '39', '40', '41'],
@@ -57,6 +63,10 @@ export const DEFAULT_SETTINGS = {
   deadStockDays: 30,
   pin: null,
   categories: DEFAULT_CATEGORIES,
+  types: DEFAULT_TYPES,
+  seasons: DEFAULT_SEASONS,
+  materials: DEFAULT_MATERIALS,
+  modelColors: COLOR_SWATCHES,
   backupReminderAt: null,
   theme: 'light', // 'light' | 'dark' | 'auto' (auto = ليل بغداد)
   waTemplate: null // null → app default (see DEFAULT_WA_TEMPLATE in utils.js)
@@ -77,6 +87,21 @@ export async function allSettings() {
   return { ...DEFAULT_SETTINGS, ...map };
 }
 
+/* The owner's model vocabulary (المزيد ← خيارات الموديلات) */
+export async function modelOptions() {
+  const s = await allSettings();
+  return {
+    categories: s.categories?.length ? s.categories : DEFAULT_CATEGORIES,
+    types: s.types?.length ? s.types : DEFAULT_TYPES,
+    seasons: s.seasons?.length ? s.seasons : DEFAULT_SEASONS,
+    materials: s.materials?.length ? s.materials : DEFAULT_MATERIALS,
+    colors: Array.isArray(s.modelColors) && s.modelColors.length ? s.modelColors : COLOR_SWATCHES
+  };
+}
+/* resolve a color label to its hex dot (for cards and size-runs) */
+export const hexForColor = (label, colors) =>
+  (colors || COLOR_SWATCHES).find((c) => (c.label || '').trim().toLowerCase() === String(label || '').trim().toLowerCase())?.hex || 'var(--taupe)';
+
 /* ---------------- Products ---------------- */
 
 export async function nextSku() {
@@ -95,7 +120,7 @@ export async function addProduct(data, { moveNote } = {}) {
   const sku = data.sku || (await nextSku());
   const now = new Date().toISOString();
   const p = {
-    name: '', category: 'نسائية', brand: '', color: '', size: '',
+    name: '', category: 'نسائية', brand: '', color: '', size: '', type: '', season: '', material: '',
     cost: 0, price: 0, qty: 0, barcode: '', notes: '', photo: null,
     supplier: '', supplierAt: null,
     ...data, sku, createdAt: now, updatedAt: now
@@ -173,6 +198,9 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
           qty: (twin.qty || 0) + qty,
           cost: Number(ln.cost) || twin.cost,
           price: Number(ln.price) || twin.price,
+          type: ln.type || twin.type || '',
+          season: ln.season || twin.season || '',
+          material: ln.material || twin.material || '',
           supplier: sup || twin.supplier || '',
           supplierAt: new Date().toISOString(),
           photo: twin.photo || ln.photo || null
@@ -182,6 +210,7 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
       } else {
         const p = await addProduct({
           name, category: ln.category || 'نسائية', type: ln.type || '',
+          season: ln.season || '', material: ln.material || '',
           color: (ln.color || '').trim(), size: sz,
           cost: Number(ln.cost) || 0, price: Number(ln.price) || 0, qty,
           photo: ln.photo || null, supplier: sup, supplierAt: new Date().toISOString(),

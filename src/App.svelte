@@ -20,6 +20,7 @@
   import Reservations from './lib/screens/Reservations.svelte';
   import PasteToSell from './lib/screens/PasteToSell.svelte';
   import ReceiveInvoice from './lib/screens/ReceiveInvoice.svelte';
+  import ModelOptions from './lib/screens/ModelOptions.svelte';
   import Occasions from './lib/screens/Occasions.svelte';
   import { loadTheme } from './lib/theme.js';
   import { sweepMonthClosing } from './lib/db.js';
@@ -54,6 +55,7 @@
     reservations: 'الحجوزات',
     pastesell: 'بيع من رسالة',
     receive: 'فاتورة وارد',
+    modelopts: 'خيارات الموديلات',
     occasions: 'المناسبات'
   };
 
@@ -110,7 +112,7 @@
         {:else if screen === 'more'}<More {goto} />
         {:else if screen === 'saleslog'}<SalesLog />
         {:else if screen === 'stocktake'}<Stocktake />
-        {:else if screen === 'settings'}<Settings />
+        {:else if screen === 'settings'}<Settings {goto} />
         {:else if screen === 'backup'}<Backup />
         {:else if screen === 'logo'}<LogoScreen />
         {:else if screen === 'about'}<About />
@@ -119,6 +121,7 @@
         {:else if screen === 'reservations'}<Reservations />
         {:else if screen === 'pastesell'}<PasteToSell />
         {:else if screen === 'receive'}<ReceiveInvoice {goto} />
+        {:else if screen === 'modelopts'}<ModelOptions />
         {:else if screen === 'occasions'}<Occasions />
         {/if}
       </div>

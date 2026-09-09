@@ -4,7 +4,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
   import { db, sweepExpiredReservations, cancelReservation, convertReservation, piecesSoldToday } from '../db.js';
-  import { fmtIQD, fmtDate, fmtNum, buzz } from '../utils.js';
+  import { fmtIQD, fmtDate, fmtNum, buzz, iqd } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt, milestoneFor } from '../store.js';
 
   let reservations = $state([]);
@@ -66,7 +66,7 @@
   async function doConvert() {
     if (!clientValid) { tried = true; buzz([30, 40, 30]); return; }
     try {
-      const sale = await convertReservation(converting.id, { deliveryFee: Number(fee) || 0, province: cProvince, address: cAddress });
+      const sale = await convertReservation(converting.id, { deliveryFee: iqd(fee), province: cProvince, address: cAddress });
       converting = null;
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.8, '🛍️');
@@ -168,11 +168,11 @@
         </div>
       </div>
       <div class="field">
-        <label>أجور التوصيل (د.ع)</label>
-        <input class="input" bind:value={fee} inputmode="numeric" />
+        <label>أجور التوصيل (د.ع) <span class="muted tiny">— 5 = 5,000</span></label>
+        <input class="input" bind:value={fee} inputmode="decimal" />
       </div>
       <button class="btn primary lg block" onclick={doConvert}>
-        <Icon name="check" size={20} /> تأكيد البيع — {fmtIQD(converting.price + (Number(fee) || 0))}
+        <Icon name="check" size={20} /> تأكيد البيع — {fmtIQD(converting.price + iqd(fee))}
       </button>
     </div>
   {/if}

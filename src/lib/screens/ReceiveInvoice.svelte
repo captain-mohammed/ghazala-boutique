@@ -3,18 +3,19 @@
   import Glass from '../components/Glass.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
-  import { receiveBatch, WOMENS_TYPES, DEFAULT_CATEGORIES, SIZE_RUNS } from '../db.js';
-  import { fmtNum, fmtIQD, buzz, fileToPhotoDataUrl } from '../utils.js';
+  import { receiveBatch, modelOptions, SIZE_RUNS } from '../db.js';
+  import { fmtNum, fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, celebrateAt, invoicePreset } from '../store.js';
 
   let { goto } = $props();
 
-  const cats = [...DEFAULT_CATEGORIES];
+  let opts = $state({ categories: ['نسائية'], types: [], seasons: [], materials: [], colors: [] });
+  (async () => { opts = await modelOptions(); })();
 
   let uid = 0;
   const blank = (over = {}) => ({
-    id: ++uid, name: '', category: 'نسائية', type: '', color: '',
+    id: ++uid, name: '', category: 'نسائية', type: '', season: '', material: '', color: '',
     cost: '', price: '', sizes: {}, photo: null,
     ...over
   });
@@ -40,7 +41,7 @@
 
   function addLine() {
     const last = lines[lines.length - 1];
-    lines = [...lines, blank(last ? { category: last.category, color: last.color, cost: last.cost, price: last.price } : {})];
+    lines = [...lines, blank(last ? { category: last.category, type: last.type, season: last.season, material: last.material, color: last.color, cost: last.cost, price: last.price } : {})];
     buzz(8);
   }
   function removeLine(id) {
@@ -66,8 +67,8 @@
       const r = await receiveBatch({
         supplier, invoice, note,
         lines: good.map((l) => ({
-          name: l.name.trim(), category: l.category, type: l.type, color: l.color,
-          cost: Number(l.cost) || 0, price: Number(l.price) || 0,
+          name: l.name.trim(), category: l.category, type: l.type, season: l.season, material: l.material, color: l.color,
+          cost: iqd(l.cost), price: iqd(l.price),
           sizes: l.sizes, photo: l.photo
         }))
       });
@@ -129,33 +130,55 @@
         <div class="field">
           <label>التصنيف</label>
           <div class="row wrap" style="gap:8px">
-            {#each cats as c (c)}
-              <button type="button" class="chip" class:on={l.category === c} onclick={() => { l.category = c; l.type = ''; }}>{c}</button>
+            {#each opts.categories as c (c)}
+              <button type="button" class="chip" class:on={l.category === c} onclick={() => { l.category = c; }}>{c}</button>
             {/each}
           </div>
         </div>
 
-        {#if l.category === 'نسائية'}
+        {#if opts.types.length}
           <div class="field">
             <label>النوع</label>
             <div class="row wrap" style="gap:8px">
-              {#each WOMENS_TYPES as t (t)}
+              {#each opts.types as t (t)}
                 <button type="button" class="chip gold-on" class:on={l.type === t} onclick={() => (l.type = l.type === t ? '' : t)}>{t}</button>
               {/each}
             </div>
           </div>
         {/if}
 
-        <ColorSwatches bind:value={l.color} />
+        {#if opts.seasons.length}
+          <div class="field">
+            <label>الموسم</label>
+            <div class="row wrap" style="gap:8px">
+              {#each opts.seasons as s (s)}
+                <button type="button" class="chip" class:on={l.season === s} onclick={() => (l.season = l.season === s ? '' : s)}>{s}</button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        {#if opts.materials.length}
+          <div class="field">
+            <label>المادة</label>
+            <div class="row wrap" style="gap:8px">
+              {#each opts.materials as m (m)}
+                <button type="button" class="chip" class:on={l.material === m} onclick={() => (l.material = l.material === m ? '' : m)}>{m}</button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        <ColorSwatches bind:value={l.color} colors={opts.colors} />
 
         <div class="row" style="gap:10px">
           <div class="field" style="flex:1">
-            <label>التكلفة (د.ع)</label>
-            <input class="input" bind:value={l.cost} inputmode="numeric" placeholder="0" />
+            <label>التكلفة (د.ع) <span class="muted tiny">— 18 = 18,000</span></label>
+            <input class="input" bind:value={l.cost} inputmode="decimal" placeholder="0" />
           </div>
           <div class="field" style="flex:1">
-            <label>سعر البيع (د.ع)</label>
-            <input class="input" bind:value={l.price} inputmode="numeric" placeholder="0" />
+            <label>سعر البيع (د.ع) <span class="muted tiny">— 32 = 32,000</span></label>
+            <input class="input" bind:value={l.price} inputmode="decimal" placeholder="0" />
           </div>
         </div>
 
@@ -183,7 +206,7 @@
     </div>
     <div class="row" style="justify-content:space-between">
       <span class="muted">أول تكلفة تقديرية</span>
-      <span class="money">{fmtIQD(lines.reduce((a, l) => a + (Number(l.cost) || 0) * linePieces(l), 0))}</span>
+      <span class="money">{fmtIQD(lines.reduce((a, l) => a + iqd(l.cost) * linePieces(l), 0))}</span>
     </div>
   </Glass>
 

@@ -7,95 +7,142 @@
   import Glass from '../components/Glass.svelte';
   import ProductForm from './ProductForm.svelte';
   import ItemDetail from './ItemDetail.svelte';
-  import { db, adjustQty } from '../db.js';
+  import { db, modelOptions, hexForColor } from '../db.js';
   import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl } from '../utils.js';
-  import { toastOk, toastErr } from '../store.js';
+  import { toastErr, invoicePreset } from '../store.js';
 
   let { goto } = $props();
 
   let products = $state([]);
+  let opts = $state({ types: [], seasons: [], colors: [] });
   let q = $state('');
   let cat = $state('الكل');
+  let typ = $state('الكل');
+  let season = $state('الكل');
   let sort = $state('new');
   let avail = $state('all');
 
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const p = await db.products.toArray();
-      if (alive) products = p;
+      const [p, o] = await Promise.all([db.products.toArray(), modelOptions()]);
+      if (!alive) return;
+      products = p;
+      opts = o;
     };
     grab();
     const t = setInterval(grab, 4000);
     return () => { alive = false; clearInterval(t); };
   });
 
-  const cats = $derived.by(() => {
-    const set = [...new Set(products.map((p) => p.category))];
-    return [
-      { value: 'الكل', label: 'الكل', icon: 'dots', count: products.length, clear: true },
-      ...set.map((c) => ({ value: c, label: c, icon: 'tag', count: products.filter((p) => p.category === c).length }))
-    ];
-  });
-
+  const cats = $derived.by(() => [
+    { value: 'الكل', label: 'الكل', icon: 'dots', count: products.length, clear: true },
+    ...[...new Set(products.map((p) => p.category))].map((c) => ({ value: c, label: c, icon: 'tag', count: products.filter((p) => p.category === c).length }))
+  ]);
+  const types = $derived.by(() => [
+    { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => p.type).length, clear: true },
+    ...opts.types.map((t) => ({ value: t, label: t, icon: 'list', count: products.filter((p) => p.type === t).length }))
+  ]);
+  const seasons = $derived.by(() => [
+    { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => p.season).length, clear: true },
+    ...opts.seasons.map((s) => ({ value: s, label: s, icon: 'calendar', count: products.filter((p) => p.season === s).length }))
+  ]);
   const AVAIL = [
     { value: 'all', label: 'الكل', icon: 'dots', clear: true },
     { value: 'in', label: 'متوفر', icon: 'check' },
-    { value: 'low', label: 'كمية منخفضة', icon: 'alert' },
     { value: 'out', label: 'نفد', icon: 'x' }
   ];
-
   const SORTS = [
     { value: 'new', label: 'الأحدث', icon: 'sparkle', clear: true },
     { value: 'price', label: 'الأعلى سعراً', icon: 'tag' },
     { value: 'qty', label: 'الأقل كمية', icon: 'chart' }
   ];
 
-  const isLow = (p) => p.qty > 0 && p.qty <= 3;
-
-  const filtered = $derived.by(() => {
+  /* ---- One card = one model (all its colors & sizes together) ---- */
+  const groups = $derived.by(() => {
     let list = products;
     if (cat !== 'الكل') list = list.filter((p) => p.category === cat);
-    if (avail === 'in') list = list.filter((p) => p.qty >= 4);
-    else if (avail === 'low') list = list.filter(isLow);
-    else if (avail === 'out') list = list.filter((p) => p.qty === 0);
+    if (typ !== 'الكل') list = list.filter((p) => p.type === typ);
+    if (season !== 'الكل') list = list.filter((p) => p.season === season);
     if (q.trim()) {
       const s = q.trim().toLowerCase();
       list = list.filter((p) =>
-        [p.name, p.brand, p.color, p.sku, p.size, p.barcode].filter(Boolean).join(' ').toLowerCase().includes(s)
+        [p.name, p.brand, p.color, p.sku, p.size, p.barcode, p.type, p.season, p.material].filter(Boolean).join(' ').toLowerCase().includes(s)
       );
     }
-    const sorted = [...list];
-    if (sort === 'new') sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    if (sort === 'price') sorted.sort((a, b) => (b.price || 0) - (a.price || 0));
-    if (sort === 'qty') sorted.sort((a, b) => a.qty - b.qty);
-    return sorted;
+    const map = new Map();
+    for (const p of list) {
+      const k = `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+      if (!map.has(k)) map.set(k, []);
+      map.get(k).push(p);
+    }
+    const out = [];
+    for (const items of map.values()) {
+      const qty = items.reduce((a, x) => a + (x.qty || 0), 0);
+      const price = Math.max(...items.map((x) => x.price || 0));
+      const lead = items[0];
+      const colorMap = new Map();
+      for (const p of items) {
+        const c = (p.color || '').trim();
+        if (!colorMap.has(c)) colorMap.set(c, []);
+        colorMap.get(c).push(p);
+      }
+      const colorRows = [...colorMap.entries()].map(([c, ps]) => {
+        const sizes = [...ps]
+          .sort((a, b) => (parseFloat(a.size) || 0) - (parseFloat(b.size) || 0))
+          .map((p) => ({ size: String(p.size || '—').trim(), qty: p.qty || 0, p }));
+        return { color: c, qty: ps.reduce((a, x) => a + (x.qty || 0), 0), sizes };
+      });
+      out.push({
+        key: lead.name.trim().toLowerCase() + '|' + lead.category,
+        items, qty, price, lead,
+        name: lead.name, category: lead.category,
+        type: lead.type, season: lead.season, material: lead.material,
+        photo: items.find((x) => x.photo)?.photo || null,
+        createdAt: Math.max(...items.map((x) => new Date(x.createdAt || 0).getTime())),
+        colorRows,
+        sizesCount: new Set(items.map((x) => String(x.size || '').trim()).filter(Boolean)).size,
+        supplier: items.find((x) => x.supplier)?.supplier || ''
+      });
+    }
+    /* status filter works on the model's TOTAL stock — «نفد» = zero pieces */
+    if (avail === 'in') return out.filter((g) => g.qty > 0);
+    if (avail === 'out') return out.filter((g) => g.qty === 0);
+    return out;
+  });
+
+  const sorted = $derived.by(() => {
+    const list = [...groups];
+    if (sort === 'new') list.sort((a, b) => b.createdAt - a.createdAt);
+    if (sort === 'price') list.sort((a, b) => b.price - a.price);
+    if (sort === 'qty') list.sort((a, b) => a.qty - b.qty);
+    return list;
   });
 
   /* ---- Premium filter bar state ---- */
-  const activeCount = $derived((cat !== 'الكل' ? 1 : 0) + (avail !== 'all' ? 1 : 0) + (sort !== 'new' ? 1 : 0) + (q.trim() ? 1 : 0));
-  const isDefault = $derived(cat === 'الكل' && avail === 'all' && sort === 'new' && !q.trim());
+  const activeCount = $derived((cat !== 'الكل' ? 1 : 0) + (typ !== 'الكل' ? 1 : 0) + (season !== 'الكل' ? 1 : 0) + (avail !== 'all' ? 1 : 0) + (sort !== 'new' ? 1 : 0) + (q.trim() ? 1 : 0));
+  const isDefault = $derived(cat === 'الكل' && typ === 'الكل' && season === 'الكل' && avail === 'all' && sort === 'new' && !q.trim());
+  const totalModels = $derived(groups.length);
 
   function clearAllFilters() {
-    cat = 'الكل';
-    avail = 'all';
-    sort = 'new';
-    q = '';
+    cat = 'الكل'; typ = 'الكل'; season = 'الكل'; avail = 'all'; sort = 'new'; q = '';
     buzz(10);
   }
-
   const activeTags = $derived.by(() => {
     const tags = [];
     if (q.trim()) tags.push({ key: 'q', label: `بحث: ${q.trim()}` });
     if (cat !== 'الكل') tags.push({ key: 'cat', label: cat });
+    if (typ !== 'الكل') tags.push({ key: 'typ', label: typ });
+    if (season !== 'الكل') tags.push({ key: 'season', label: season });
     if (avail !== 'all') tags.push({ key: 'avail', label: AVAIL.find((a) => a.value === avail)?.label || '' });
     if (sort !== 'new') tags.push({ key: 'sort', label: `ترتيب: ${SORTS.find((s) => s.value === sort)?.label || ''}` });
     return tags;
   });
-
   function removeTag(key) {
     if (key === 'q') q = '';
     if (key === 'cat') cat = 'الكل';
+    if (key === 'typ') typ = 'الكل';
+    if (key === 'season') season = 'الكل';
     if (key === 'avail') avail = 'all';
     if (key === 'sort') sort = 'new';
     buzz(6);
@@ -103,10 +150,12 @@
 
   let showForm = $state(false);
   let editing = $state(null);
-  let detail = $state(null);
+  let detailGroup = $state(null);
+  let openSku = $state(null);
   let photoGate = $state(false);
   let formPhoto = $state(null);
 
+  function closeDetail() { detailGroup = null; openSku = null; }
   function openAdd() {
     editing = null;
     formPhoto = null;
@@ -136,12 +185,12 @@
   function openEdit(p) {
     editing = p;
     formPhoto = null;
-    detail = null;
+    closeDetail();
     showForm = true;
     buzz(8);
   }
 
-  /* Floating action menu — المزيد قادم لاحقاً (طلبية…) */
+  /* ---- Floating action menu ---- */
   const dialActions = [
     { id: 'add', label: 'إضافة موديل', icon: 'plus' },
     { id: 'invoice', label: 'فاتورة وارد', icon: 'upload' }
@@ -151,37 +200,50 @@
     if (a.id === 'invoice') goto('receive');
   }
 
-  /* ---- Long-press power moves: hold a card → quick ops popover ---- */
-  let quickOps = $state(null); // { sku, x, y }
+  /* ---- Long-press power moves on a model card ---- */
+  let quickOps = $state(null); // { g, x, y }
 
-  function onLongPress(e, p) {
+  function onLongPress(e, g) {
     buzz([18, 40, 18]);
-    quickOps = { sku: p.sku, product: p, x: e.detail?.x ?? window.innerWidth / 2, y: e.detail?.y ?? window.innerHeight / 3 };
+    quickOps = { g, x: e.detail?.x ?? window.innerWidth / 2, y: e.detail?.y ?? window.innerHeight / 3 };
   }
-
-  async function quickBump(p, d) {
-    const q2 = await adjustQty(p.sku, d);
-    products = products.map((x) => (x.sku === p.sku ? { ...x, qty: q2 } : x));
+  function qoDetails() {
+    const g = quickOps.g;
     quickOps = null;
-    buzz(12);
-    if (d > 0) toastOk(`+1 قطعة — ${p.name}`);
-    else toastOk(`−1 قطعة — ${p.name}`);
+    closeDetail();
+    detailGroup = g;
   }
-
-  function quickReserve(p) {
+  function qoEdit() {
+    const g = quickOps.g;
     quickOps = null;
-    detail = products.find((x) => x.sku === p.sku);
+    openEdit(g.lead);
+  }
+  /* restock this model via فاتورة وارد — one line per color, holes pre-set to 2 */
+  function qoRestock() {
+    const g = quickOps ? quickOps.g : detailGroup;
+    quickOps = null;
+    invoicePreset.set({
+      supplier: g.supplier || '',
+      lines: g.colorRows.map((cr) => {
+        const sizes = {};
+        for (const sz of cr.sizes) if (sz.qty === 0) sizes[sz.size] = 2;
+        return {
+          name: g.name, category: g.category, type: g.type || '', season: g.season || '',
+          material: g.material || '', color: cr.color,
+          cost: g.lead.cost, price: g.price, sizes, photo: cr.sizes.find((s) => s.p?.photo)?.p?.photo || g.photo
+        };
+      })
+    });
+    goto('receive');
   }
 </script>
 
 <div class="stack" style="gap:12px">
-  <div class="row" style="gap:10px">
-    <Glass class="search" radius="var(--r-md)">
-      <Icon name="search" size={18} color="var(--taupe)" />
-      <input placeholder="ابحث بالاسم، اللون، المقاس، الكود…" bind:value={q} />
-      {#if q}<button class="clr" onclick={() => (q = '')}><Icon name="x" size={14} /></button>{/if}
-    </Glass>
-  </div>
+  <Glass class="search" radius="var(--r-md)">
+    <Icon name="search" size={18} color="var(--taupe)" />
+    <input placeholder="ابحث بالاسم، اللون، المقاس، الكود…" bind:value={q} />
+    {#if q}<button class="clr" onclick={() => (q = '')}><Icon name="x" size={14} /></button>{/if}
+  </Glass>
 
   <!-- Premium filter card -->
   <Glass class="filter-card">
@@ -196,6 +258,10 @@
 
     <div class="f-row">
       <Dropdown bind:value={cat} options={cats} icon="tag" placeholder="التصنيف: الكل" />
+      <Dropdown bind:value={typ} options={types} icon="list" placeholder="النوع: الكل" />
+      <Dropdown bind:value={season} options={seasons} icon="calendar" placeholder="الموسم: الكل" />
+    </div>
+    <div class="f-row">
       <Dropdown bind:value={avail} options={AVAIL} icon="box" placeholder="الحالة: الكل" />
       <Dropdown bind:value={sort} options={SORTS} icon="sparkle" placeholder="ترتيب: الأحدث" />
     </div>
@@ -213,10 +279,10 @@
   </Glass>
 
   <div class="muted small sort-note">
-    {fmtNum(filtered.length)} موديل{cat !== 'الكل' ? ` في ${cat}` : ''}
+    {fmtNum(totalModels)} موديل{cat !== 'الكل' ? ` في ${cat}` : ''} — كل بطاقة تجمع مقاسات الموديل وألوانه
   </div>
 
-  {#if filtered.length === 0}
+  {#if sorted.length === 0}
     <EmptyState
       title={isDefault ? 'المخزون فارغ' : 'لا نتائج مطابقة'}
       subtitle={isDefault ? 'أضف أول حذاء الآن — العملية لا تستغرق إلا ثوانٍ' : 'الموديلات موجودة لكن الفلاتر الحالية تخفيها'}
@@ -226,27 +292,40 @@
     />
   {:else}
     <div class="grid">
-      {#each filtered as p, i (p.sku)}
+      {#each sorted as g, i (g.key + g.items.length)}
         <Glass
           as="button"
           class="card rise"
           style="animation-delay:{Math.min(i * 0.04, 0.4)}s"
-          onlongpress={(e) => onLongPress(e, p)}
-          onclick={() => { buzz(6); detail = p; }}
+          onlongpress={(e) => onLongPress(e, g)}
+          onclick={() => { buzz(6); closeDetail(); detailGroup = g; }}
         >
-          <div class="thumb" class:oos={p.qty === 0}>
-            {#if p.photo}
-              <img src={p.photo} alt={p.name} loading="lazy" />
+          <div class="thumb" class:oos={g.qty === 0}>
+            {#if g.photo}
+              <img src={g.photo} alt={g.name} loading="lazy" />
             {:else}
               <Icon name="box" size={30} color="var(--taupe)" />
             {/if}
-            <span class="qty-badge" class:zero={p.qty === 0} class:low={p.qty > 0 && p.qty <= 3}>{fmtNum(p.qty)}</span>
+            <span class="qty-badge" class:zero={g.qty === 0}>{fmtNum(g.qty)}</span>
           </div>
           <div class="card-body">
-            <div class="card-name">{p.name}</div>
+            <div class="card-name">{g.name}</div>
+            {#if g.colorRows.length > 1 || g.colorRows[0].color}
+              <div class="card-colors">
+                {#each g.colorRows as cr (cr.color)}
+                  <span class="cc-item">
+                    <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
+                    <span>{cr.color || '—'}<b>{fmtNum(cr.qty)}</b></span>
+                  </span>
+                {/each}
+              </div>
+            {/if}
+            <div class="card-sizes muted">
+              مقاسات: {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
+            </div>
             <div class="card-meta">
-              <span>{p.color || p.category}{p.size ? ' • ' + p.size : ''}</span>
-              <span class="card-price">{fmtIQD(p.price)}</span>
+              <span>{[g.category, g.type, g.season].filter(Boolean).join(' • ')}</span>
+              <span class="card-price">{fmtIQD(g.price)}</span>
             </div>
           </div>
         </Glass>
@@ -260,14 +339,13 @@
 {#if quickOps}
   <div class="qp-backdrop" onclick={() => (quickOps = null)} aria-hidden="true"></div>
   <div class="quickops pop" style="left:{Math.min(Math.max(quickOps.x, 90), window.innerWidth - 90)}px; top:{Math.max(quickOps.y - 8, 60)}px">
-    <div class="qo-name">{quickOps.product.name}</div>
+    <div class="qo-name">{quickOps.g.name}</div>
     <div class="qo-row">
-      <button class="qo-btn" onclick={() => quickBump(quickOps.product, +1)}><Icon name="plus" size={16} /> قطعة</button>
-      <button class="qo-btn" onclick={() => quickBump(quickOps.product, -1)}><Icon name="back" size={14} style="transform:rotate(90deg)" /> نقصان</button>
+      <button class="qo-btn" onclick={qoDetails}><Icon name="list" size={15} /> تفصيل</button>
+      <button class="qo-btn gold" onclick={qoRestock}><Icon name="upload" size={15} /> استلام</button>
     </div>
     <div class="qo-row">
-      <button class="qo-btn gold" onclick={() => quickReserve(quickOps.product)}><Icon name="clock" size={15} /> حجز</button>
-      <button class="qo-btn" onclick={() => { const p2 = quickOps.product; quickOps = null; openEdit(p2); }}><Icon name="edit" size={15} /> تعديل</button>
+      <button class="qo-btn" onclick={qoEdit}><Icon name="edit" size={15} /> تعديل</button>
     </div>
   </div>
 {/if}
@@ -290,9 +368,50 @@
   <ProductForm product={editing} photo={formPhoto} ondone={() => { showForm = false; editing = null; formPhoto = null; }} />
 </Sheet>
 
-<Sheet open={!!detail} title="تفاصيل الموديل" onclose={() => (detail = null)}>
-  {#if detail}
-    <ItemDetail product={detail} onedit={openEdit} ongoto={goto} onclose={() => (detail = null)} />
+<!-- Model sheet: everything about the model — colors × size-run → tap a size for its SKU -->
+<Sheet open={!!detailGroup} title={openSku ? 'تفاصيل القطعة' : 'الموديل كامل'} onclose={closeDetail}>
+  {#if openSku}
+    <ItemDetail product={openSku} onedit={openEdit} ongoto={goto} onclose={() => (openSku = null)} />
+  {:else if detailGroup}
+    {@const g = detailGroup}
+    <div class="stack" style="gap:12px">
+      <Glass class="mv-head">
+        <div class="mv-thumb" class:oos={g.qty === 0}>
+          {#if g.photo}<img src={g.photo} alt={g.name} />{:else}<Icon name="box" size={30} color="var(--taupe)" />{/if}
+        </div>
+        <div class="mv-info">
+          <div class="h2 mv-name">{g.name}</div>
+          <div class="muted small">{[g.category, g.type, g.season, g.material].filter(Boolean).join(' • ')}</div>
+          <div class="mv-stats">
+            <span class="money" style="color:var(--burgundy)">{fmtIQD(g.price)}</span>
+            <span class="mv-qty" class:zero={g.qty === 0}>{fmtNum(g.qty)} قطعة</span>
+          </div>
+          {#if g.supplier}<div class="mv-sup"><Icon name="upload" size={11} /> من {g.supplier}</div>{/if}
+        </div>
+      </Glass>
+
+      {#each g.colorRows as cr (cr.color)}
+        <div class="mv-color">
+          <div class="mvc-head">
+            <i class="mvc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
+            <span class="bold">{cr.color || 'بدون لون'}</span>
+            <span class="muted small">{fmtNum(cr.qty)} قطعة</span>
+          </div>
+          <div class="mvc-sizes">
+            {#each cr.sizes as sz (sz.size + sz.p.sku)}
+              <button class="szchip" class:hole={sz.qty === 0} onclick={() => { buzz(6); openSku = sz.p; }}>
+                {sz.size}<b>{sz.qty || '—'}</b>
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/each}
+
+      <div class="row" style="gap:10px">
+        <button class="btn gold" style="flex:1" onclick={qoRestock}><Icon name="upload" size={16} /> استلام مقاسات</button>
+        <button class="btn" style="flex:1" onclick={() => openEdit(g.lead)}><Icon name="edit" size={16} /> تعديل</button>
+      </div>
+    </div>
   {/if}
 </Sheet>
 
@@ -317,8 +436,8 @@
     color: var(--ink);
   }
   .clr { background: none; border: none; color: var(--taupe); cursor: pointer; padding: 4px; }
-  .f-row { display: flex; gap: 8px; }
-  .f-row > :global(.dd) { flex: 1; min-width: 0; }
+  .f-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .f-row > :global(.dd) { flex: 1 1 calc(50% - 8px); min-width: 0; }
   .sort-note { margin-top: -4px; }
   .grid {
     display: grid;
@@ -358,12 +477,60 @@
     font-weight: 800;
     box-shadow: 0 3px 10px rgba(58, 26, 32, 0.18);
   }
-  .qty-badge.low { background: rgba(192, 127, 58, 0.9); }
-  .qty-badge.zero { background: rgba(122, 46, 58, 0.85); }
-  .card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 2px; }
+  .qty-badge.zero { background: rgba(122, 46, 58, 0.9); }
+  .card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 3px; }
   .card-name { font-weight: 800; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .card-colors { display: flex; flex-wrap: wrap; gap: 4px 10px; max-height: 34px; overflow: hidden; }
+  .cc-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--ink-2); }
+  .cc-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--line-2); flex: none; }
+  .cc-item b { color: var(--burgundy); margin-inline-start: 3px; font-weight: 800; }
+  .card-sizes { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .card-meta { font-size: 12px; color: var(--taupe); display: flex; justify-content: space-between; gap: 6px; }
   .card-price { font-weight: 800; color: var(--burgundy); font-size: 13px; white-space: nowrap; }
+
+  /* model sheet */
+  :global(.mv-head) { display: flex; gap: 12px; padding: 12px; align-items: center; }
+  .mv-thumb {
+    width: 76px; height: 76px; border-radius: var(--r-md); flex: none;
+    overflow: hidden; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(150deg, rgba(255, 255, 255, 0.6), rgba(181, 73, 91, 0.06));
+    border: 1px solid var(--line);
+  }
+  .mv-thumb.oos { opacity: 0.75; }
+  .mv-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .mv-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .mv-name { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
+  .mv-stats { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
+  .mv-qty { font-size: 12px; font-weight: 800; color: var(--good); }
+  .mv-qty.zero { color: var(--burgundy-deep); }
+  .mv-sup {
+    display: inline-flex; align-items: center; gap: 4px; margin-top: 2px;
+    font-size: 10.5px; font-weight: 800; color: #8a6a35;
+  }
+  .mv-color { }
+  .mvc-head { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+  .mvc-dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; }
+  .mvc-head .muted { margin-inline-start: auto; }
+  .mvc-sizes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .szchip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: inherit; font-size: 12px; font-weight: 800;
+    color: var(--ink);
+    background: rgba(78, 138, 95, 0.12);
+    border: 1px solid rgba(78, 138, 95, 0.3);
+    border-radius: 10px; padding: 6px 10px;
+    cursor: pointer;
+    transition: transform 0.13s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .szchip:active { transform: scale(0.9); }
+  .szchip b { color: var(--good); }
+  .szchip.hole {
+    background: rgba(122, 46, 58, 0.06);
+    border: 1.5px dashed rgba(122, 46, 58, 0.45);
+    color: var(--burgundy-deep);
+  }
+  .szchip.hole b { color: var(--burgundy); }
 
   .qp-backdrop {
     position: fixed;
