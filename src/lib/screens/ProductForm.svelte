@@ -103,7 +103,8 @@
     if (!material) m.push('المادة');
     if (iqd(cost) <= 0) m.push('التكلفة');
     if (iqd(price) <= 0) m.push('سعر البيع');
-    if (totalPieces <= 0) m.push('مقاس واحد بكمية على الأقل');
+    /* editing may end at zero pieces on purpose — that's exactly how «نفد» is saved */
+    if (!editing && totalPieces <= 0) m.push('مقاس واحد بكمية على الأقل');
     return m;
   });
   const valid = $derived(missing.length === 0);
@@ -111,6 +112,15 @@
 
   const isMissing = (label) => tried && missing.includes(label);
   const bad = (label) => (isMissing(label) ? { 'border-color': 'rgba(181,73,91,0.6)', 'box-shadow': '0 0 0 3px rgba(181,73,91,0.1)' } : {});
+
+  /* «نفد» — wipe every size quantity of every color, keep the cards (0 pieces) */
+  function zeroAllQty() {
+    buzz([12, 30, 12]);
+    byColor = Object.fromEntries(
+      Object.entries(byColor).map(([c, m]) => [c, Object.fromEntries(Object.keys(m).map((s) => [s, 0]))])
+    );
+    toastOk('كل الكميات صارت صفر — اضغطي «حفظ التعديلات» لتثبيت نفد');
+  }
 
   async function save() {
     if (!valid) {
@@ -307,6 +317,13 @@
 
   {#if tried && missing.length}
     <div class="miss pop">مطلوب قبل الحفظ: {missing.join(' • ')}</div>
+  {/if}
+
+  {#if editing}
+    <button class="btn danger block" onclick={zeroAllQty}>
+      <Icon name="x" size={18} />
+      تصفير كل الكميات — الموديل نفد
+    </button>
   {/if}
 
   <button class="btn primary lg block" onclick={save}>

@@ -7,20 +7,19 @@
   import Glass from '../components/Glass.svelte';
   import ProductForm from './ProductForm.svelte';
   import ItemDetail from './ItemDetail.svelte';
-  import { db, modelOptions, hexForColor } from '../db.js';
+  import { db, modelOptions, hexForColor, deleteProducts } from '../db.js';
   import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl } from '../utils.js';
-  import { toastErr, invoicePreset } from '../store.js';
+  import { toastErr, toastOk, askConfirm, invoicePreset, catalogFilters } from '../store.js';
+  import { get } from 'svelte/store';
 
   let { goto } = $props();
 
   let products = $state([]);
   let opts = $state({ types: [], seasons: [], colors: [] });
-  let q = $state('');
-  let cat = $state('الكل');
-  let typ = $state('الكل');
-  let season = $state('الكل');
-  let sort = $state('new');
-  let avail = $state('all');
+
+  /* shared filters — same state drives البيع too, and survives tab switches */
+  let f = $state(JSON.parse(JSON.stringify(get(catalogFilters))));
+  $effect(() => { catalogFilters.set(f); });
 
   $effect(() => {
     let alive = true;
@@ -61,11 +60,11 @@
   /* ---- One card = one model (all its colors & sizes together) ---- */
   const groups = $derived.by(() => {
     let list = products;
-    if (cat !== 'الكل') list = list.filter((p) => p.category === cat);
-    if (typ !== 'الكل') list = list.filter((p) => p.type === typ);
-    if (season !== 'الكل') list = list.filter((p) => p.season === season);
-    if (q.trim()) {
-      const s = q.trim().toLowerCase();
+    if (f.cat !== 'الكل') list = list.filter((p) => p.category === f.cat);
+    if (f.typ !== 'الكل') list = list.filter((p) => p.type === f.typ);
+    if (f.season !== 'الكل') list = list.filter((p) => p.season === f.season);
+    if (f.q.trim()) {
+      const s = f.q.trim().toLowerCase();
       list = list.filter((p) =>
         [p.name, p.brand, p.color, p.sku, p.size, p.barcode, p.type, p.season, p.material].filter(Boolean).join(' ').toLowerCase().includes(s)
       );
@@ -106,45 +105,45 @@
       });
     }
     /* status filter works on the model's TOTAL stock — «نفد» = zero pieces */
-    if (avail === 'in') return out.filter((g) => g.qty > 0);
-    if (avail === 'out') return out.filter((g) => g.qty === 0);
+    if (f.availInv === 'in') return out.filter((g) => g.qty > 0);
+    if (f.availInv === 'out') return out.filter((g) => g.qty === 0);
     return out;
   });
 
   const sorted = $derived.by(() => {
     const list = [...groups];
-    if (sort === 'new') list.sort((a, b) => b.createdAt - a.createdAt);
-    if (sort === 'price') list.sort((a, b) => b.price - a.price);
-    if (sort === 'qty') list.sort((a, b) => a.qty - b.qty);
+    if (f.sort === 'new') list.sort((a, b) => b.createdAt - a.createdAt);
+    if (f.sort === 'price') list.sort((a, b) => b.price - a.price);
+    if (f.sort === 'qty') list.sort((a, b) => a.qty - b.qty);
     return list;
   });
 
   /* ---- Premium filter bar state ---- */
-  const activeCount = $derived((cat !== 'الكل' ? 1 : 0) + (typ !== 'الكل' ? 1 : 0) + (season !== 'الكل' ? 1 : 0) + (avail !== 'all' ? 1 : 0) + (sort !== 'new' ? 1 : 0) + (q.trim() ? 1 : 0));
-  const isDefault = $derived(cat === 'الكل' && typ === 'الكل' && season === 'الكل' && avail === 'all' && sort === 'new' && !q.trim());
+  const activeCount = $derived((f.cat !== 'الكل' ? 1 : 0) + (f.typ !== 'الكل' ? 1 : 0) + (f.season !== 'الكل' ? 1 : 0) + (f.availInv !== 'all' ? 1 : 0) + (f.sort !== 'new' ? 1 : 0) + (f.q.trim() ? 1 : 0));
+  const isDefault = $derived(f.cat === 'الكل' && f.typ === 'الكل' && f.season === 'الكل' && f.availInv === 'all' && f.sort === 'new' && !f.q.trim());
   const totalModels = $derived(groups.length);
 
   function clearAllFilters() {
-    cat = 'الكل'; typ = 'الكل'; season = 'الكل'; avail = 'all'; sort = 'new'; q = '';
+    f = { q: '', cat: 'الكل', typ: 'الكل', season: 'الكل', availInv: 'all', availSell: 'in', sort: 'new' };
     buzz(10);
   }
   const activeTags = $derived.by(() => {
     const tags = [];
-    if (q.trim()) tags.push({ key: 'q', label: `بحث: ${q.trim()}` });
-    if (cat !== 'الكل') tags.push({ key: 'cat', label: cat });
-    if (typ !== 'الكل') tags.push({ key: 'typ', label: typ });
-    if (season !== 'الكل') tags.push({ key: 'season', label: season });
-    if (avail !== 'all') tags.push({ key: 'avail', label: AVAIL.find((a) => a.value === avail)?.label || '' });
-    if (sort !== 'new') tags.push({ key: 'sort', label: `ترتيب: ${SORTS.find((s) => s.value === sort)?.label || ''}` });
+    if (f.q.trim()) tags.push({ key: 'q', label: `بحث: ${f.q.trim()}` });
+    if (f.cat !== 'الكل') tags.push({ key: 'cat', label: f.cat });
+    if (f.typ !== 'الكل') tags.push({ key: 'typ', label: f.typ });
+    if (f.season !== 'الكل') tags.push({ key: 'season', label: f.season });
+    if (f.availInv !== 'all') tags.push({ key: 'avail', label: AVAIL.find((a) => a.value === f.availInv)?.label || '' });
+    if (f.sort !== 'new') tags.push({ key: 'sort', label: `ترتيب: ${SORTS.find((s) => s.value === f.sort)?.label || ''}` });
     return tags;
   });
   function removeTag(key) {
-    if (key === 'q') q = '';
-    if (key === 'cat') cat = 'الكل';
-    if (key === 'typ') typ = 'الكل';
-    if (key === 'season') season = 'الكل';
-    if (key === 'avail') avail = 'all';
-    if (key === 'sort') sort = 'new';
+    if (key === 'q') f.q = '';
+    if (key === 'cat') f.cat = 'الكل';
+    if (key === 'typ') f.typ = 'الكل';
+    if (key === 'season') f.season = 'الكل';
+    if (key === 'avail') f.availInv = 'all';
+    if (key === 'sort') f.sort = 'new';
     buzz(6);
   }
 
@@ -207,6 +206,21 @@
     buzz([18, 40, 18]);
     quickOps = { g, x: e.detail?.x ?? window.innerWidth / 2, y: e.detail?.y ?? window.innerHeight / 3 };
   }
+  /* delete a whole model (all its colors & sizes) — from the card, long-press menu, or detail sheet */
+  async function askDelete(g) {
+    buzz(10);
+    const ok = await askConfirm({
+      title: `حذف «${g.name}»؟`,
+      body: `يُحذف الموديل بكل ألوانه ومقاساته (${fmtNum(g.items.length)} بطاقة • ${fmtNum(g.qty)} قطعة) نهائياً.`,
+      okLabel: 'حذف',
+      danger: true
+    });
+    if (!ok) return;
+    await deleteProducts(g.items.map((x) => x.sku));
+    if (detailGroup && detailGroup.key === g.key) closeDetail();
+    quickOps = null;
+    toastOk(`حُذف «${g.name}» من المخزون`);
+  }
   function qoDetails() {
     const g = quickOps.g;
     quickOps = null;
@@ -241,8 +255,8 @@
 <div class="stack" style="gap:12px">
   <Glass class="search" radius="var(--r-md)">
     <Icon name="search" size={18} color="var(--taupe)" />
-    <input placeholder="ابحث بالاسم، اللون، المقاس، الكود…" bind:value={q} />
-    {#if q}<button class="clr" onclick={() => (q = '')}><Icon name="x" size={14} /></button>{/if}
+    <input placeholder="ابحث بالاسم، اللون، المقاس، الكود…" bind:value={f.q} />
+    {#if f.q}<button class="clr" onclick={() => (f.q = '')}><Icon name="x" size={14} /></button>{/if}
   </Glass>
 
   <!-- Premium filter card -->
@@ -257,13 +271,13 @@
     </div>
 
     <div class="f-row">
-      <Dropdown bind:value={cat} options={cats} icon="tag" placeholder="التصنيف: الكل" />
-      <Dropdown bind:value={typ} options={types} icon="list" placeholder="النوع: الكل" />
-      <Dropdown bind:value={season} options={seasons} icon="calendar" placeholder="الموسم: الكل" />
+      <Dropdown bind:value={f.cat} options={cats} icon="tag" placeholder="التصنيف: الكل" />
+      <Dropdown bind:value={f.typ} options={types} icon="list" placeholder="النوع: الكل" />
+      <Dropdown bind:value={f.season} options={seasons} icon="calendar" placeholder="الموسم: الكل" />
     </div>
     <div class="f-row">
-      <Dropdown bind:value={avail} options={AVAIL} icon="box" placeholder="الحالة: الكل" />
-      <Dropdown bind:value={sort} options={SORTS} icon="sparkle" placeholder="ترتيب: الأحدث" />
+      <Dropdown bind:value={f.availInv} options={AVAIL} icon="box" placeholder="الحالة: الكل" />
+      <Dropdown bind:value={f.sort} options={SORTS} icon="sparkle" placeholder="ترتيب: الأحدث" />
     </div>
 
     {#if activeTags.length}
@@ -279,7 +293,7 @@
   </Glass>
 
   <div class="muted small sort-note">
-    {fmtNum(totalModels)} موديل{cat !== 'الكل' ? ` في ${cat}` : ''} — كل بطاقة تجمع مقاسات الموديل وألوانه
+    {fmtNum(totalModels)} موديل{f.cat !== 'الكل' ? ` في ${f.cat}` : ''} — كل بطاقة تجمع مقاسات الموديل وألوانه
   </div>
 
   {#if sorted.length === 0}
@@ -293,42 +307,48 @@
   {:else}
     <div class="grid">
       {#each sorted as g, i (g.key + g.items.length)}
-        <Glass
-          as="button"
-          class="card rise"
-          style="animation-delay:{Math.min(i * 0.04, 0.4)}s"
-          onlongpress={(e) => onLongPress(e, g)}
-          onclick={() => { buzz(6); closeDetail(); detailGroup = g; }}
-        >
-          <div class="thumb" class:oos={g.qty === 0}>
-            {#if g.photo}
-              <img src={g.photo} alt={g.name} loading="lazy" />
-            {:else}
-              <Icon name="box" size={30} color="var(--taupe)" />
-            {/if}
-            <span class="qty-badge" class:zero={g.qty === 0}>{fmtNum(g.qty)}</span>
-          </div>
-          <div class="card-body">
-            <div class="card-name">{g.name}</div>
-            {#if g.colorRows.length > 1 || g.colorRows[0].color}
-              <div class="card-colors">
-                {#each g.colorRows as cr (cr.color)}
-                  <span class="cc-item">
-                    <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
-                    <span>{cr.color || '—'}<b>{fmtNum(cr.qty)}</b></span>
-                  </span>
-                {/each}
+        <div class="cardwrap">
+          <Glass
+            as="button"
+            class="card rise"
+            style="animation-delay:{Math.min(i * 0.04, 0.4)}s"
+            onlongpress={(e) => onLongPress(e, g)}
+            onclick={() => { buzz(6); closeDetail(); detailGroup = g; }}
+          >
+            <div class="thumb" class:oos={g.qty === 0}>
+              {#if g.photo}
+                <img src={g.photo} alt={g.name} loading="lazy" />
+              {:else}
+                <Icon name="box" size={30} color="var(--taupe)" />
+              {/if}
+              <span class="qty-badge" class:zero={g.qty === 0}>{fmtNum(g.qty)}</span>
+            </div>
+            <div class="card-body">
+              <div class="card-name">{g.name}</div>
+              {#if g.colorRows.length > 1 || g.colorRows[0].color}
+                <div class="card-colors">
+                  {#each g.colorRows as cr (cr.color)}
+                    <span class="cc-item">
+                      <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
+                      <span>{cr.color || '—'}<b>{fmtNum(cr.qty)}</b></span>
+                    </span>
+                  {/each}
+                </div>
+              {/if}
+              <div class="card-sizes muted">
+                مقاسات: {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
               </div>
-            {/if}
-            <div class="card-sizes muted">
-              مقاسات: {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
+              <div class="card-meta">
+                <span>{[g.category, g.type, g.season].filter(Boolean).join(' • ')}</span>
+                <span class="card-price">{fmtIQD(g.price)}</span>
+              </div>
             </div>
-            <div class="card-meta">
-              <span>{[g.category, g.type, g.season].filter(Boolean).join(' • ')}</span>
-              <span class="card-price">{fmtIQD(g.price)}</span>
-            </div>
-          </div>
-        </Glass>
+          </Glass>
+          <!-- quick delete — one tap, whole model gone (with a confirm) -->
+          <button class="card-del" aria-label="حذف الموديل" onclick={() => askDelete(g)}>
+            <Icon name="trash" size={14} />
+          </button>
+        </div>
       {/each}
     </div>
   {/if}
@@ -346,6 +366,7 @@
     </div>
     <div class="qo-row">
       <button class="qo-btn" onclick={qoEdit}><Icon name="edit" size={15} /> تعديل</button>
+      <button class="qo-btn danger" onclick={() => askDelete(quickOps.g)}><Icon name="trash" size={15} /> حذف</button>
     </div>
   </div>
 {/if}
@@ -411,6 +432,7 @@
         <button class="btn gold" style="flex:1" onclick={qoRestock}><Icon name="upload" size={16} /> استلام مقاسات</button>
         <button class="btn" style="flex:1" onclick={() => openEdit(g.lead)}><Icon name="edit" size={16} /> تعديل</button>
       </div>
+      <button class="btn danger block" onclick={() => askDelete(g)}><Icon name="trash" size={16} /> حذف الموديل نهائياً</button>
     </div>
   {/if}
 </Sheet>
@@ -444,6 +466,28 @@
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 12px;
   }
+  .cardwrap { position: relative; }
+  .card-del {
+    position: absolute;
+    top: 8px;
+    inset-inline-start: 8px; /* physical right in RTL — opposite corner from the qty badge */
+    z-index: 3;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 1px solid var(--glass-border);
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    color: var(--burgundy);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(58, 26, 32, 0.14);
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .card-del:active { transform: scale(0.86); }
   :global(.card) {
     position: relative;
     padding: 0;
@@ -480,7 +524,7 @@
   .qty-badge.zero { background: rgba(122, 46, 58, 0.9); }
   .card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 3px; }
   .card-name { font-weight: 800; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .card-colors { display: flex; flex-wrap: wrap; gap: 4px 10px; max-height: 34px; overflow: hidden; }
+  .card-colors { display: flex; flex-wrap: wrap; gap: 4px 10px; }
   .cc-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--ink-2); }
   .cc-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--line-2); flex: none; }
   .cc-item b { color: var(--burgundy); margin-inline-start: 3px; font-weight: 800; }
@@ -582,6 +626,11 @@
   }
   .qo-btn.gold {
     background: linear-gradient(150deg, var(--gold), #a4803e);
+    color: #fff;
+    border: none;
+  }
+  .qo-btn.danger {
+    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
     color: #fff;
     border: none;
   }

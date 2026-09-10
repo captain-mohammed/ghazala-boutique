@@ -13,7 +13,11 @@
      block. The FAB is pinned to the viewport, centered to the dock. */
   let host = $state(null);
   $effect(() => {
-    if (host && host.parentNode !== document.body) document.body.appendChild(host);
+    if (!host) return;
+    document.body.appendChild(host);
+    /* re-parenting breaks Svelte's own removal — take the node down ourselves
+       when the screen unmounts, or the FAB leaks onto every other tab */
+    return () => host.remove();
   });
 
   function toggle() {

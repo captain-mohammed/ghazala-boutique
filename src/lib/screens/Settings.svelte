@@ -9,7 +9,6 @@
   let { goto = () => {} } = $props();
 
   let fee = $state('');
-  let low = $state(3);
   let deadDays = $state(30);
   let loaded = $state(false);
   let companies = $state([]);
@@ -23,7 +22,6 @@
   onMount(async () => {
     const s = await allSettings();
     fee = s.deliveryFee;
-    low = s.lowStockThreshold;
     deadDays = s.deadStockDays;
     companies = Array.isArray(s.deliveryCompanies) ? [...s.deliveryCompanies] : [];
     if (typeof s.waTemplate === 'string' && s.waTemplate.trim()) {
@@ -54,11 +52,6 @@
     await setSetting('deliveryFee', v);
     fee = v;
     toastOk(`أجور التوصيل: ${fmtIQD(v)}`);
-    buzz(10);
-  }
-  async function saveLow() {
-    await setSetting('lowStockThreshold', Math.max(0, Math.round(Number(low) || 0)));
-    toastOk('تم حفظ حد التنبيه');
     buzz(10);
   }
   async function saveDead() {
@@ -165,13 +158,6 @@
     <Glass class="rise" style="padding:16px; animation-delay:0.05s">
       <h2 class="h2" style="margin-bottom:12px"><Icon name="alert" size={17} color="var(--warn)" /> التنبيهات</h2>
       <div class="stack" style="gap:12px">
-        <div class="field">
-          <label>تنبيه عند وصول الكمية إلى (قطعة)</label>
-          <div class="row" style="gap:8px">
-            <input class="input" bind:value={low} inputmode="numeric" style="flex:1" />
-            <button class="btn primary" onclick={saveLow}>حفظ</button>
-          </div>
-        </div>
         <div class="field">
           <label>اعتبر الموديل راكداً بعد (يوم) بلا بيع</label>
           <div class="row" style="gap:8px">

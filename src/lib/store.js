@@ -63,5 +63,15 @@ export const logo = writable(null);
 export const invoicePreset = writable(null); // { supplier, lines: [line…] } → فاتورة الوارد
 export const sellPrefill = writable(null);   // search term → تبويب البيع
 
+/* ---------- Shared catalog filters (المخزون ⇄ البيع) ----------
+   One source of truth: whatever she filters in المخزون applies in البيع
+   and vice-versa — the state survives tab switches too. The الحالة dropdown
+   is the one exception: each tab keeps its own (المخزون ← الكل، البيع ← متوفر). */
+export const catalogFilters = writable({
+  q: '', cat: 'الكل', typ: 'الكل', season: 'الكل',
+  availInv: 'all', availSell: 'in',
+  sort: 'new'
+});
+
 /* ---------- Misc ui ---------- */
 export const uiFlags = writable({ sawReportsTip: false });

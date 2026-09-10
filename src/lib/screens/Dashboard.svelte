@@ -57,7 +57,6 @@
     models: products.length,
     units: products.reduce((a, p) => a + (p.qty || 0), 0),
     value: products.reduce((a, p) => a + (p.qty || 0) * (p.cost || 0), 0),
-    low: products.filter((p) => p.qty > 0 && p.qty <= (settings?.lowStockThreshold ?? 3)).length,
     out: products.filter((p) => !p.qty).length
   });
 
@@ -300,22 +299,7 @@
         {/each}
       </Glass>
     {/if}
-    {#if stock.low > 0}
-      <Glass
-        as="button"
-        class="alert rise"
-        style="animation-delay:0.08s; border-radius:var(--r-md)"
-        action={tiltAlert}
-        onclick={() => goto('inventory')}
-      >
-        <span class="a-ic warn"><Icon name="alert" size={20} /></span>
-        <div class="a-body">
-          <div class="bold">{stock.low} موديل كمية قليلة</div>
-          <div class="muted small">اضغط لمراجعة المخزون</div>
-        </div>
-        <Icon name="back" size={18} color="var(--taupe)" />
-      </Glass>
-    {:else if stock.out > 0 && !smartOn}
+    {#if stock.out > 0 && !smartOn}
       <Glass
         as="button"
         class="alert rise"
@@ -347,7 +331,7 @@
         <Icon name="back" size={18} color="var(--taupe)" />
       </Glass>
     {/if}
-    {#if !smartOn && stock.out === 0 && stock.low === 0 && dead.length === 0 && loaded && products.length > 0}
+    {#if !smartOn && stock.out === 0 && dead.length === 0 && loaded && products.length > 0}
       <Glass class="alert rise" style="animation-delay:0.08s; border-radius:var(--r-md)">
         <span class="a-ic ok"><Icon name="check" size={20} /></span>
         <div class="a-body">

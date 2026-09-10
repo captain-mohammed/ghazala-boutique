@@ -59,7 +59,6 @@ export const COLOR_SWATCHES = [
 
 export const DEFAULT_SETTINGS = {
   deliveryFee: 5000,
-  lowStockThreshold: 3,
   deadStockDays: 30,
   pin: null,
   categories: DEFAULT_CATEGORIES,
@@ -163,6 +162,11 @@ export async function adjustQty(sku, delta, note) {
 
 export async function deleteProduct(sku) {
   await db.products.delete(sku);
+}
+
+/* delete a whole model (every color × size card of it) in one go */
+export async function deleteProducts(skus) {
+  await db.products.bulkDelete(skus);
 }
 
 export async function logMovement({ sku, type, qty, note }) {

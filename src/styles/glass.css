@@ -41,8 +41,9 @@
   --line: rgba(122, 46, 58, 0.1);
   --line-2: rgba(122, 46, 58, 0.18);
 
-  --glass: rgba(255, 255, 255, 0.44);
-  --glass-strong: rgba(255, 255, 255, 0.66);
+  /* Solid enough that the drifting aurora never tints the cards — one flat color */
+  --glass: rgba(255, 255, 255, 0.84);
+  --glass-strong: rgba(255, 255, 255, 0.92);
   --glass-border: rgba(255, 255, 255, 0.6);
   --glass-shadow: 0 8px 32px rgba(122, 46, 58, 0.1);
 
@@ -82,7 +83,7 @@ body {
   z-index: -1;
   pointer-events: none;
   filter: blur(70px);
-  opacity: 0.55;
+  opacity: 0.32;
 }
 .aurora span {
   position: absolute;

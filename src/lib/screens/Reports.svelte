@@ -86,7 +86,7 @@
     return products.filter((p) => p.qty > 0 && (!lm.get(p.sku) || new Date(lm.get(p.sku)) < cutoff));
   });
 
-  const low = $derived(products.filter((p) => p.qty > 0 && p.qty <= (settings?.lowStockThreshold ?? 3)));
+  const low = $derived(products.filter((p) => p.qty > 0 && p.qty <= 3));
 
   const stockValue = $derived(products.reduce((a, p) => a + (p.qty || 0) * (p.cost || 0), 0));
 

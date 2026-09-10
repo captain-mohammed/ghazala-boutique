@@ -9,28 +9,29 @@
   import SpeedDial from '../components/SpeedDial.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
-  import { db, recordSale, getSetting, piecesSoldToday } from '../db.js';
+  import { db, recordSale, getSetting, piecesSoldToday, modelOptions } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
-  import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill } from '../store.js';
+  import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters } from '../store.js';
 
   let { goto } = $props();
 
   let products = $state([]);
-  let q = $state('');
-  let cat = $state('الكل');
-  let sort = $state('new');
-  let avail = $state('in');
+  let opts = $state({ types: [], seasons: [], colors: [] });
+
+  /* shared filters — the exact same فلاتر state as المخزون, in both directions */
+  let f = $state(JSON.parse(JSON.stringify(get(catalogFilters))));
+  $effect(() => { catalogFilters.set(f); });
 
   /* «اعرضيها بخصم» and friends can prefill the search from the dashboard */
   const prefill = get(sellPrefill);
-  if (prefill) { q = prefill; sellPrefill.set(null); }
+  if (prefill) { f.q = prefill; sellPrefill.set(null); }
 
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const p = await db.products.toArray();
-      if (alive) products = p;
+      const [p, o] = await Promise.all([db.products.toArray(), modelOptions()]);
+      if (alive) { products = p; opts = o; }
     };
     grab();
     const t = setInterval(grab, 4000);
@@ -44,12 +45,20 @@
       ...set.map((c) => ({ value: c, label: c, icon: 'tag', count: products.filter((p) => p.category === c && p.qty > 0).length }))
     ];
   });
+  const types = $derived.by(() => [
+    { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => p.type).length, clear: true },
+    ...opts.types.map((t) => ({ value: t, label: t, icon: 'list', count: products.filter((p) => p.type === t).length }))
+  ]);
+  const seasons = $derived.by(() => [
+    { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => p.season).length, clear: true },
+    ...opts.seasons.map((s) => ({ value: s, label: s, icon: 'calendar', count: products.filter((p) => p.season === s).length }))
+  ]);
 
-  /* sell defaults to what can actually go out the door; «حتى النافد» is a peek-only mode */
+  /* same three states as المخزون — one shared vocabulary (no منخفضة) */
   const AVAIL = [
     { value: 'in', label: 'متوفر', icon: 'check', clear: true },
-    { value: 'low', label: 'كمية منخفضة', icon: 'alert' },
-    { value: 'all', label: 'الكل (حتى النافد)', icon: 'dots' }
+    { value: 'all', label: 'الكل (حتى النافد)', icon: 'dots' },
+    { value: 'out', label: 'نفد', icon: 'x' }
   ];
 
   const SORTS = [
@@ -60,48 +69,51 @@
 
   const filtered = $derived.by(() => {
     let list = products;
-    if (avail === 'in') list = list.filter((p) => p.qty > 0);
-    else if (avail === 'low') list = list.filter((p) => p.qty > 0 && p.qty <= 3);
-    if (cat !== 'الكل') list = list.filter((p) => p.category === cat);
-    if (q.trim()) {
-      const s = q.trim().toLowerCase();
+    if (f.availSell === 'in') list = list.filter((p) => p.qty > 0);
+    else if (f.availSell === 'out') list = list.filter((p) => p.qty === 0);
+    if (f.cat !== 'الكل') list = list.filter((p) => p.category === f.cat);
+    if (f.typ !== 'الكل') list = list.filter((p) => p.type === f.typ);
+    if (f.season !== 'الكل') list = list.filter((p) => p.season === f.season);
+    if (f.q.trim()) {
+      const s = f.q.trim().toLowerCase();
       list = list.filter((p) =>
         [p.name, p.brand, p.color, p.sku, p.size, p.barcode, p.type, p.season, p.material].filter(Boolean).join(' ').toLowerCase().includes(s)
       );
     }
     const sorted = [...list];
-    if (sort === 'new') sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    if (sort === 'price') sorted.sort((a, b) => (b.price || 0) - (a.price || 0));
-    if (sort === 'qty') sorted.sort((a, b) => a.qty - b.qty);
+    if (f.sort === 'new') sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    if (f.sort === 'price') sorted.sort((a, b) => (b.price || 0) - (a.price || 0));
+    if (f.sort === 'qty') sorted.sort((a, b) => a.qty - b.qty);
     return sorted;
   });
 
   /* ---- Premium filter bar state ---- */
-  const activeCount = $derived((cat !== 'الكل' ? 1 : 0) + (avail !== 'in' ? 1 : 0) + (sort !== 'new' ? 1 : 0) + (q.trim() ? 1 : 0));
-  const isDefault = $derived(cat === 'الكل' && avail === 'in' && sort === 'new' && !q.trim());
+  const activeCount = $derived((f.cat !== 'الكل' ? 1 : 0) + (f.typ !== 'الكل' ? 1 : 0) + (f.season !== 'الكل' ? 1 : 0) + (f.availSell !== 'in' ? 1 : 0) + (f.sort !== 'new' ? 1 : 0) + (f.q.trim() ? 1 : 0));
+  const isDefault = $derived(f.cat === 'الكل' && f.typ === 'الكل' && f.season === 'الكل' && f.availSell === 'in' && f.sort === 'new' && !f.q.trim());
 
   function clearAllFilters() {
-    cat = 'الكل';
-    avail = 'in';
-    sort = 'new';
-    q = '';
+    f = { q: '', cat: 'الكل', typ: 'الكل', season: 'الكل', availInv: 'all', availSell: 'in', sort: 'new' };
     buzz(10);
   }
 
   const activeTags = $derived.by(() => {
     const tags = [];
-    if (q.trim()) tags.push({ key: 'q', label: `بحث: ${q.trim()}` });
-    if (cat !== 'الكل') tags.push({ key: 'cat', label: cat });
-    if (avail !== 'in') tags.push({ key: 'avail', label: AVAIL.find((a) => a.value === avail)?.label || '' });
-    if (sort !== 'new') tags.push({ key: 'sort', label: `ترتيب: ${SORTS.find((s) => s.value === sort)?.label || ''}` });
+    if (f.q.trim()) tags.push({ key: 'q', label: `بحث: ${f.q.trim()}` });
+    if (f.cat !== 'الكل') tags.push({ key: 'cat', label: f.cat });
+    if (f.typ !== 'الكل') tags.push({ key: 'typ', label: f.typ });
+    if (f.season !== 'الكل') tags.push({ key: 'season', label: f.season });
+    if (f.availSell !== 'in') tags.push({ key: 'avail', label: AVAIL.find((a) => a.value === f.availSell)?.label || '' });
+    if (f.sort !== 'new') tags.push({ key: 'sort', label: `ترتيب: ${SORTS.find((s) => s.value === f.sort)?.label || ''}` });
     return tags;
   });
 
   function removeTag(key) {
-    if (key === 'q') q = '';
-    if (key === 'cat') cat = 'الكل';
-    if (key === 'avail') avail = 'in';
-    if (key === 'sort') sort = 'new';
+    if (key === 'q') f.q = '';
+    if (key === 'cat') f.cat = 'الكل';
+    if (key === 'typ') f.typ = 'الكل';
+    if (key === 'season') f.season = 'الكل';
+    if (key === 'avail') f.availSell = 'in';
+    if (key === 'sort') f.sort = 'new';
     buzz(6);
   }
 
@@ -218,7 +230,10 @@
   /* cart bar portal — pinned to the viewport, immune to the screen transform */
   let barHost = $state(null);
   $effect(() => {
-    if (barHost && barHost.parentNode !== document.body) document.body.appendChild(barHost);
+    if (!barHost) return;
+    document.body.appendChild(barHost);
+    /* same leak-proofing as the FAB portal: without this the bar haunts other tabs */
+    return () => barHost.remove();
   });
 
   /* the three required client fields: الاسم، الهاتف، المحافظة */
@@ -249,7 +264,7 @@
       });
       checkout = false;
       cart = [];
-      cname = ''; cphone = ''; cprovince = ''; caddress = ''; barcode = ''; company = ''; q = ''; tried = false;
+      cname = ''; cphone = ''; cprovince = ''; caddress = ''; barcode = ''; company = ''; tried = false;
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.8, '🛍️');
       toastOk(`تم البيع #${sale.id} — ${fmtIQD(sale.total)}`);
@@ -276,7 +291,7 @@
     { id: 'paste', label: 'بيع من رسالة واتساب', icon: 'chat' }
   ];
   function onDial(a) {
-    if (a.id === 'scan') { q = ''; itemScanOpen = true; }
+    if (a.id === 'scan') { f.q = ''; itemScanOpen = true; }
     if (a.id === 'paste') goto('pastesell');
   }
 </script>
@@ -284,8 +299,8 @@
 <div class="stack" style="gap:12px">
   <Glass class="search" radius="var(--r-md)">
     <Icon name="search" size={18} color="var(--taupe)" />
-    <input placeholder="ابحث عن موديل…" bind:value={q} />
-    {#if q}<button class="clr" onclick={() => (q = '')}><Icon name="x" size={14} /></button>{/if}
+    <input placeholder="ابحث عن موديل…" bind:value={f.q} />
+    {#if f.q}<button class="clr" onclick={() => (f.q = '')}><Icon name="x" size={14} /></button>{/if}
   </Glass>
 
   <!-- Premium filter card -->
@@ -300,9 +315,13 @@
     </div>
 
     <div class="f-row">
-      <Dropdown bind:value={cat} options={cats} icon="tag" placeholder="التصنيف: الكل" />
-      <Dropdown bind:value={avail} options={AVAIL} icon="box" placeholder="الحالة: متوفر" />
-      <Dropdown bind:value={sort} options={SORTS} icon="sparkle" placeholder="ترتيب: الأحدث" />
+      <Dropdown bind:value={f.cat} options={cats} icon="tag" placeholder="التصنيف: الكل" />
+      <Dropdown bind:value={f.typ} options={types} icon="list" placeholder="النوع: الكل" />
+      <Dropdown bind:value={f.season} options={seasons} icon="calendar" placeholder="الموسم: الكل" />
+    </div>
+    <div class="f-row">
+      <Dropdown bind:value={f.availSell} options={AVAIL} icon="box" placeholder="الحالة: متوفر" />
+      <Dropdown bind:value={f.sort} options={SORTS} icon="sparkle" placeholder="ترتيب: الأحدث" />
     </div>
 
     {#if activeTags.length}
@@ -318,7 +337,7 @@
   </Glass>
 
   <div class="muted small sort-note">
-    {fmtNum(filtered.length)} {avail === 'in' ? 'موديل متوفر' : 'موديل'}{cat !== 'الكل' ? ` في ${cat}` : ''}
+    {fmtNum(filtered.length)} موديل{f.cat !== 'الكل' ? ` في ${f.cat}` : ''}{f.availSell === 'out' ? ' (نفد)' : ''}
   </div>
 
   {#if filtered.length === 0}
