@@ -9,7 +9,7 @@
   import ItemDetail from './ItemDetail.svelte';
   import { db, modelOptions, hexForColor, deleteProducts } from '../db.js';
   import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl } from '../utils.js';
-  import { toastErr, toastOk, askConfirm, invoicePreset, catalogFilters } from '../store.js';
+  import { toastErr, toastOk, askConfirm, invoicePreset, catalogFilters, filtersOpen } from '../store.js';
   import { get } from 'svelte/store';
 
   let { goto } = $props();
@@ -20,6 +20,10 @@
   /* shared filters — same state drives البيع too, and survives tab switches */
   let f = $state(JSON.parse(JSON.stringify(get(catalogFilters))));
   $effect(() => { catalogFilters.set(f); });
+
+  /* the filter CARD collapses by default — expanding it never touches the filter values */
+  let fOpen = $state(get(filtersOpen));
+  $effect(() => { filtersOpen.set(fOpen); });
 
   $effect(() => {
     let alive = true;
@@ -259,28 +263,32 @@
     {#if f.q}<button class="clr" onclick={() => (f.q = '')}><Icon name="x" size={14} /></button>{/if}
   </Glass>
 
-  <!-- Premium filter card -->
+  <!-- Premium filter card — collapsed until needed; values stay untouched -->
   <Glass class="filter-card">
     <div class="f-head">
-      <span class="f-title"><Icon name="sliders" size={16} color="var(--burgundy)" /> فلاتر</span>
+      <button class="f-title f-toggle" aria-expanded={fOpen} onclick={() => { fOpen = !fOpen; buzz(6); }}>
+        <Icon name="sliders" size={16} color="var(--burgundy)" /> فلاتر
+        <span class="f-chev" class:open={fOpen}><Icon name="back" size={13} color="var(--taupe)" /></span>
+      </button>
       {#if activeCount > 0}<span class="f-count">{activeCount}</span>{/if}
       <span class="f-spacer"></span>
-      {#if !isDefault}
+      {#if fOpen && !isDefault}
         <button class="f-clear" onclick={clearAllFilters}>مسح الكل</button>
       {/if}
     </div>
 
-    <div class="f-row">
-      <Dropdown bind:value={f.cat} options={cats} icon="tag" placeholder="التصنيف: الكل" />
-      <Dropdown bind:value={f.typ} options={types} icon="list" placeholder="النوع: الكل" />
-      <Dropdown bind:value={f.season} options={seasons} icon="calendar" placeholder="الموسم: الكل" />
-    </div>
-    <div class="f-row">
-      <Dropdown bind:value={f.availInv} options={AVAIL} icon="box" placeholder="الحالة: الكل" />
-      <Dropdown bind:value={f.sort} options={SORTS} icon="sparkle" placeholder="ترتيب: الأحدث" />
-    </div>
-
-    {#if activeTags.length}
+    {#if fOpen}
+      <div class="f-row">
+        <Dropdown bind:value={f.cat} options={cats} icon="tag" placeholder="التصنيف: الكل" />
+        <Dropdown bind:value={f.typ} options={types} icon="list" placeholder="النوع: الكل" />
+      </div>
+      <div class="f-row">
+        <Dropdown bind:value={f.season} options={seasons} icon="calendar" placeholder="الموسم: الكل" />
+        <Dropdown bind:value={f.availInv} options={AVAIL} icon="box" placeholder="الحالة: الكل" />
+        <Dropdown bind:value={f.sort} options={SORTS} icon="sparkle" placeholder="ترتيب: الأحدث" />
+      </div>
+    {:else if activeTags.length}
+      <!-- collapsed but filtered: the active tags stay visible and removable -->
       <div class="f-active">
         {#each activeTags as t (t.key)}
           <span class="f-tag">

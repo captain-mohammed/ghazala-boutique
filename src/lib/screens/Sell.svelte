@@ -13,7 +13,7 @@
   import { db, recordSale, getSetting, piecesSoldToday, modelOptions } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
-  import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters } from '../store.js';
+  import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters, filtersOpen } from '../store.js';
 
   let { goto } = $props();
 
@@ -23,6 +23,10 @@
   /* shared filters — the exact same فلاتر state as المخزون, in both directions */
   let f = $state(JSON.parse(JSON.stringify(get(catalogFilters))));
   $effect(() => { catalogFilters.set(f); });
+
+  /* the filter CARD collapses by default — expanding it never touches the filter values */
+  let fOpen = $state(get(filtersOpen));
+  $effect(() => { filtersOpen.set(fOpen); });
 
   /* «اعرضيها بخصم» and friends can prefill the search from the dashboard */
   const prefill = get(sellPrefill);
@@ -126,7 +130,11 @@
   function loadCart() {
     try {
       const raw = JSON.parse(localStorage.getItem(CART_KEY));
-      return Array.isArray(raw) ? raw.filter((c) => c && c.sku && c.qty > 0) : [];
+      return Array.isArray(raw)
+        ? raw
+            .filter((c) => c && c.sku && c.qty > 0)
+            .map((c) => ({ ...c, vsKey: `${c.sku}|${c.color || ''}|${c.size || ''}` }))
+        : [];
     } catch { return []; }
   }
   function loadLast() {
@@ -138,7 +146,7 @@
     } catch { return null; }
   }
 
-  let cart = $state(loadCart()); // { sku, name, price, cost, qty, max }
+  let cart = $state(loadCart()); // { sku, vsKey, name, price, cost, qty, max, color, size } — one line per variant
   let lastCart = $state(loadLast()); // { items, at } — emptied cart, one-tap reopen
   const cartCount = $derived(cart.reduce((a, c) => a + c.qty, 0));
   const subtotal = $derived(cart.reduce((a, c) => a + c.price * c.qty, 0));
@@ -149,7 +157,7 @@
     try { localStorage.setItem(CART_KEY, JSON.stringify(cart)); } catch {}
   });
 
-  /* when stock moves under an open cart (another sale, stocktake, expiry) — clamp or drop */
+  /* when stock moves under an open cart (another sale, stocktake, expiry) — clamp or drop per variant */
   $effect(() => {
     if (!products.length || !cart.length) return;
     let changed = false;
@@ -157,10 +165,11 @@
     const next = [];
     for (const c of cart) {
       const p = products.find((x) => x.sku === c.sku);
-      if (!p || p.qty === 0) { changed = true; gone.push(c.name); continue; }
-      if (c.qty > p.qty || c.max !== p.qty || (!c.color && p.color) || (!c.size && p.size)) {
+      const max = p?.qty || 0;
+      if (!p || max === 0) { changed = true; gone.push(c.name); continue; }
+      if (c.qty > max || c.max !== max || c.vsKey !== `${c.sku}|${c.color || ''}|${c.size || ''}`) {
         changed = true;
-        next.push({ ...c, qty: Math.min(c.qty, p.qty), max: p.qty, color: c.color || p.color || '', size: c.size || String(p.size || '').trim() });
+        next.push({ ...c, qty: Math.min(c.qty, max), max, vsKey: `${c.sku}|${c.color || ''}|${c.size || ''}` });
       }
       else next.push(c);
     }
@@ -191,25 +200,124 @@
 
   function addToCart(p) {
     if (p.qty <= 0) { toastErr('هذا الموديل نفد من المخزون'); return; }
-    const found = cart.find((c) => c.sku === p.sku);
-    if (found) {
-      if (found.qty >= p.qty) { toastErr('وصلت لأقصى الكمية المتوفرة'); return; }
-      found.qty++;
-      cart = cart;
-    } else {
-      cart = [...cart, { sku: p.sku, name: p.name, price: p.price, cost: p.cost, qty: 1, max: p.qty, color: p.color || '', size: String(p.size || '').trim() }];
-    }
-    buzz(8);
-    toast(`${p.name} أُضيف للسلة`);
+    /* multi-variant model → she picks اللون/المقاس at إتمام البيع; single variant adds straight away */
+    if (variantsOf(p).length > 1) { openVariants(p); return; }
+    addLine({ sku: p.sku, name: p.name, price: p.price, cost: p.cost, category: p.category, color: p.color || '', size: String(p.size || '').trim() });
   }
 
-  function setQty(sku, d) {
-    const c = cart.find((x) => x.sku === sku);
-    if (!c) return;
+  /* ---- Variant picker: colors × sizes chosen at checkout, only what's available ---- */
+  const NOCOLOR = 'بلا لون';
+  function variantsOf(p) {
+    return products
+      .filter((x) => (x.name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase() && x.category === p.category)
+      .map((x) => ({ sku: x.sku, color: (x.color || '').trim() || NOCOLOR, size: String(x.size || '').trim() || '—', qty: x.qty || 0 }))
+      .filter((v) => v.qty > 0)
+      .sort((a, b) => a.color.localeCompare(b.color, 'ar') || (parseFloat(a.size) || 0) - (parseFloat(b.size) || 0));
+  }
+  let vOpen = $state(false);
+  let vpick = $state(null); // { name, price, cost, variants: [...] }
+  let pk = $state({});      // vsKey → qty
+
+  function openVariants(p) {
+    vpick = { name: p.name, price: p.price, cost: p.cost, category: p.category, variants: variantsOf(p) };
+    pk = {};
+    vOpen = true;
+    buzz(10);
+  }
+  const vsKey = (v) => `${v.sku}|${v.color}|${v.size}`;
+  /* available = shelf stock minus what's already in the cart for that variant */
+  function freeOf(v) {
+    const [sku, color, size] = [v.sku, v.color === NOCOLOR ? '' : v.color, v.size === '—' ? '' : v.size];
+    const inCart = cart
+      .filter((c) => c.sku === sku && (c.color || '') === color && (c.size || '') === size)
+      .reduce((a, c) => a + c.qty, 0);
+    return Math.max(0, v.qty - inCart);
+  }
+  function bump(v, d) {
+    const k = vsKey(v);
+    const free = freeOf(v);
+    const cur = pk[k] || 0;
+    if (d > 0 && cur >= free) { toastErr(free === 0 ? 'هذا المقاس انتهى' : 'أقصى الكمية المتوفرة'); return; }
+    const next = cur + d;
+    if (next <= 0) { const m = { ...pk }; delete m[k]; pk = m; }
+    else pk = { ...pk, [k]: next };
+    buzz(6);
+  }
+  function confirmVariants() {
+    const chosen = vpick.variants.filter((v) => pk[vsKey(v)] > 0);
+    if (!chosen.length) { toastErr('اختاري لوناً أو مقاساً أولاً'); return; }
+    for (const v of chosen) {
+      addLine({ sku: v.sku, name: vpick.name, price: vpick.price, cost: vpick.cost, category: vpick.category, color: v.color === NOCOLOR ? '' : v.color, size: v.size === '—' ? '' : v.size }, pk[vsKey(v)]);
+    }
+    vOpen = false;
+    vpick = null;
+    pk = {};
+    buzz([12, 30, 12]);
+  }
+
+  /* one cart line per (sku, color, size) — same-kind pieces merge automatically */
+  function addLine(v, qty = 1) {
+    const found = cart.find((c) => c.sku === v.sku && (c.color || '') === (v.color || '') && (c.size || '') === (v.size || ''));
+    const max = products.find((x) => x.sku === v.sku)?.qty || 0;
+    if (found) {
+      if (found.qty + qty > max) { toastErr('وصلت لأقصى الكمية المتوفرة'); return; }
+      found.qty += qty;
+      cart = cart;
+    } else {
+      cart = [...cart, { ...v, qty, max }];
+    }
+    buzz(8);
+    toast(`${v.name} أُضيف للسلة`);
+  }
+
+  function setQty(c, d) {
     if (d > 0 && c.qty >= c.max) { toastErr('أقصى كمية متوفرة'); return; }
     c.qty += d;
-    if (c.qty <= 0) cart = cart.filter((x) => x.sku !== sku);
+    if (c.qty <= 0) cart = cart.filter((x) => x !== c);
     else cart = cart;
+    buzz(6);
+  }
+
+  /* ---- swap color/size of a cart line — only variants that actually exist in stock ---- */
+  const modelMates = (c) =>
+    products.filter((x) => (x.name || '').trim().toLowerCase() === (c.name || '').trim().toLowerCase() && (!c.category || x.category === c.category));
+  function colorOptsFor(c) {
+    const set = new Set(modelMates(c).filter((x) => x.qty > 0).map((x) => (x.color || '').trim() || NOCOLOR));
+    set.add((c.color || '').trim() || NOCOLOR); // keep the line's own choice listed
+    return [...set].sort((a, b) => a.localeCompare(b, 'ar'));
+  }
+  function sizeOptsFor(c) {
+    const col = (c.color || '').trim();
+    let mates = modelMates(c).filter((x) => x.qty > 0 && ((x.color || '').trim() || NOCOLOR) === (col || NOCOLOR));
+    if (!mates.length) mates = modelMates(c).filter((x) => x.qty > 0);
+    const set = new Set(mates.map((x) => String(x.size || '').trim() || '—'));
+    set.add(String(c.size || '').trim() || '—');
+    return [...set].sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
+  }
+  /* the line's sku must follow the chosen color/size — it IS the shelf card */
+  function rekeyLine(c) {
+    const col = (c.color || '').trim();
+    const sz = String(c.size || '').trim();
+    const match =
+      modelMates(c).find((x) => ((x.color || '').trim() || NOCOLOR) === (col || NOCOLOR) && String(x.size || '').trim() === sz && x.qty > 0) ||
+      modelMates(c).find((x) => String(x.size || '').trim() === sz && x.qty > 0) ||
+      modelMates(c).find((x) => x.qty > 0) ||
+      modelMates(c)[0];
+    if (!match) return;
+    c.sku = match.sku;
+    c.cost = match.cost ?? c.cost;
+    c.max = match.qty || 0;
+    c.color = (match.color || '').trim();
+    c.size = String(match.size || '').trim();
+    c.vsKey = `${c.sku}|${c.color}|${c.size}`;
+    if (c.qty > c.max) { c.qty = c.max; if (!c.qty) cart = cart.filter((x) => x !== c); }
+    /* another line already sells this exact variant → merge into it */
+    const twin = cart.find((x) => x !== c && x.vsKey === c.vsKey);
+    if (twin) {
+      twin.qty = Math.min(twin.qty + c.qty, twin.max);
+      cart = cart.filter((x) => x !== c);
+      toast('اندمجت مع سطر نفس المقاس');
+    }
     buzz(6);
   }
 
@@ -304,28 +412,32 @@
     {#if f.q}<button class="clr" onclick={() => (f.q = '')}><Icon name="x" size={14} /></button>{/if}
   </Glass>
 
-  <!-- Premium filter card -->
+  <!-- Premium filter card — collapsed until needed; values stay untouched -->
   <Glass class="filter-card">
     <div class="f-head">
-      <span class="f-title"><Icon name="sliders" size={16} color="var(--burgundy)" /> فلاتر</span>
+      <button class="f-title f-toggle" aria-expanded={fOpen} onclick={() => { fOpen = !fOpen; buzz(6); }}>
+        <Icon name="sliders" size={16} color="var(--burgundy)" /> فلاتر
+        <span class="f-chev" class:open={fOpen}><Icon name="back" size={13} color="var(--taupe)" /></span>
+      </button>
       {#if activeCount > 0}<span class="f-count">{activeCount}</span>{/if}
       <span class="f-spacer"></span>
-      {#if !isDefault}
+      {#if fOpen && !isDefault}
         <button class="f-clear" onclick={clearAllFilters}>مسح الكل</button>
       {/if}
     </div>
 
-    <div class="f-row">
-      <Dropdown bind:value={f.cat} options={cats} icon="tag" placeholder="التصنيف: الكل" />
-      <Dropdown bind:value={f.typ} options={types} icon="list" placeholder="النوع: الكل" />
-      <Dropdown bind:value={f.season} options={seasons} icon="calendar" placeholder="الموسم: الكل" />
-    </div>
-    <div class="f-row">
-      <Dropdown bind:value={f.availSell} options={AVAIL} icon="box" placeholder="الحالة: متوفر" />
-      <Dropdown bind:value={f.sort} options={SORTS} icon="sparkle" placeholder="ترتيب: الأحدث" />
-    </div>
-
-    {#if activeTags.length}
+    {#if fOpen}
+      <div class="f-row">
+        <Dropdown bind:value={f.cat} options={cats} icon="tag" placeholder="التصنيف: الكل" />
+        <Dropdown bind:value={f.typ} options={types} icon="list" placeholder="النوع: الكل" />
+      </div>
+      <div class="f-row">
+        <Dropdown bind:value={f.season} options={seasons} icon="calendar" placeholder="الموسم: الكل" />
+        <Dropdown bind:value={f.availSell} options={AVAIL} icon="box" placeholder="الحالة: متوفر" />
+        <Dropdown bind:value={f.sort} options={SORTS} icon="sparkle" placeholder="ترتيب: الأحدث" />
+      </div>
+    {:else if activeTags.length}
+      <!-- collapsed but filtered: the active tags stay visible and removable -->
       <div class="f-active">
         {#each activeTags as t (t.key)}
           <span class="f-tag">
@@ -429,20 +541,66 @@
   }}
 />
 
+<!-- Variant picker: اختاري الألوان والمقاسات المتوفرة قبل إتمام البيع -->
+<Sheet open={vOpen} title={vpick ? vpick.name : ''} onclose={() => { vOpen = false; vpick = null; pk = {}; }}>
+  {#if vpick}
+    <div class="stack" style="gap:12px">
+      <p class="muted small" style="margin:0">اختاري الكمية لكل لون ومقاس متوفر — تُضاف للسلة كما حددتِها.</p>
+      {#each vpick.variants as v (vsKey(v))}
+        {@const k = vsKey(v)}
+        <Glass class="vrow" radius="var(--r-md)">
+          <div class="v-info">
+            <div class="bold small">{v.color}{v.size !== '—' ? ` • مقاس ${v.size}` : ''}</div>
+            <div class="muted tiny">متوفر {fmtNum(freeOf(v))} قطعة</div>
+          </div>
+          <div class="stepper">
+            <button class="stp" onclick={() => bump(v, -1)} disabled={!pk[k]}>−</button>
+            <span class="qn">{pk[k] || 0}</span>
+            <button class="stp" onclick={() => bump(v, +1)} disabled={freeOf(v) === 0}>+</button>
+          </div>
+        </Glass>
+      {/each}
+      <button class="btn primary lg block" onclick={confirmVariants} disabled={!Object.keys(pk).length}>
+        <Icon name="check" size={20} />
+        أضيفي للسلة ({Object.values(pk).reduce((a, b) => a + b, 0)} قطعة)
+      </button>
+    </div>
+  {/if}
+</Sheet>
+
 <!-- Checkout sheet -->
 <Sheet open={checkout} title="إتمام البيع" onclose={() => (checkout = false)}>
   <div class="stack" style="gap:14px">
-    {#each cart as c (c.sku)}
+    {#each cart as c (c.vsKey)}
       <Glass class="citem" radius="var(--r-md)">
         <div class="ci-info">
           <div class="bold">{c.name}</div>
           <VariantBits variants={[c]} />
+          <!-- لكل سطر اختيار اللون والمقاس من المتاح فقط -->
+          <div class="ci-variants">
+            <select
+              class="ci-sel"
+              bind:value={c.color}
+              onchange={() => { c.size = ''; rekeyLine(c); }}
+              disabled={colorOptsFor(c).length <= 1}
+            >
+              {#each colorOptsFor(c) as o (o)}<option value={o === NOCOLOR ? '' : o}>{o}</option>{/each}
+            </select>
+            <select
+              class="ci-sel"
+              bind:value={c.size}
+              onchange={() => rekeyLine(c)}
+              disabled={sizeOptsFor(c).length <= 1}
+            >
+              {#each sizeOptsFor(c) as o (o)}<option value={o === '—' ? '' : o}>{o === '—' ? 'مقاس واحد' : `مقاس ${o}`}</option>{/each}
+            </select>
+          </div>
           <div class="muted small">{fmtIQD(c.price)} × {c.qty} = <span class="money">{fmtIQD(c.price * c.qty)}</span></div>
         </div>
         <div class="stepper">
-          <button class="stp" onclick={() => setQty(c.sku, -1)}>−</button>
+          <button class="stp" onclick={() => setQty(c, -1)}>−</button>
           <span class="qn">{c.qty}</span>
-          <button class="stp" onclick={() => setQty(c.sku, +1)}>+</button>
+          <button class="stp" onclick={() => setQty(c, +1)}>+</button>
         </div>
       </Glass>
     {/each}
@@ -492,8 +650,12 @@
             {#each companies as co (co)}<option value={co}>{co}</option>{/each}
           </select>
         {:else}
-          <input class="input" bind:value={company} placeholder="اسم الشركة (اختياري)" />
-          <span class="tiny muted" style="display:block">ضيفي شركاتك من «حساب شركات التوصيل» وتظهر لكِ هنا قائمة جاهزة</span>
+          <select class="input" style="height:50px" disabled>
+            <option>لا شركات بعد</option>
+          </select>
+          <button class="btn block" style="margin-top:6px" onclick={() => { buzz(8); goto('ledger'); }}>
+            <Icon name="plus" size={15} /> ضيفي شركاتك من حساب شركات التوصيل
+          </button>
         {/if}
       </div>
     </div>
@@ -653,6 +815,26 @@
     padding: 10px 12px;
     border-radius: var(--r-md);
   }
+  .ci-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .ci-variants { display: flex; gap: 6px; }
+  .ci-sel {
+    flex: 1;
+    min-width: 0;
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid var(--line-2);
+    background: rgba(255, 255, 255, 0.55);
+    color: var(--ink);
+    font-family: inherit;
+    font-size: 11.5px;
+    font-weight: 800;
+    padding: 0 8px;
+  }
+  :global(.vrow) {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 10px 12px;
+  }
+  .v-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .stepper { display: flex; align-items: center; gap: 8px; flex: none; }
   .stp {
     width: 34px; height: 34px;

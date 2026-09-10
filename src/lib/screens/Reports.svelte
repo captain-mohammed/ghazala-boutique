@@ -5,7 +5,7 @@
   import VariantBits from '../components/VariantBits.svelte';
   import { db, allSettings, getSetting, WOMENS_TYPES } from '../db.js';
   import Glass from '../components/Glass.svelte';
-  import { fmtIQD, fmtNum, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR } from '../utils.js';
+  import { fmtIQD, fmtNum, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR, shelfAgeDays, stockArrival } from '../utils.js';
 
   let products = $state([]);
   let sales = $state([]);
@@ -80,14 +80,44 @@
     return [...m.values()].sort((a, b) => b.qty - a.qty).slice(0, 5);
   });
 
+  /* مخزون راكد — counted from when the current shelf stock ARRIVED (creation /
+     last stock-in / restock), never from the previous sales cycle. An item
+     sitting for hours shows 0 يوم and only crosses the threshold after the
+     days chosen in الإعدادات. One card per model (colors & sizes merged). */
   const dead = $derived.by(() => {
     if (!settings) return [];
     const lm = lastSaleMap(sales.filter((s) => s.status !== 'returned'));
-    const cutoff = daysAgoStart(settings.deadStockDays ?? 30);
-    return products.filter((p) => p.qty > 0 && (!lm.get(p.sku) || new Date(lm.get(p.sku)) < cutoff));
+    const cutoff = daysAgoStart(settings.deadStockDays ?? 30).getTime();
+    const map = new Map();
+    for (const p of products) {
+      if ((p.qty || 0) <= 0) continue;
+      const since = stockArrival(p);
+      const lastSold = lm.get(p.sku) ? new Date(lm.get(p.sku)).getTime() : 0;
+      if (lastSold > since) continue; // sold more recently than it arrived — it moves
+      if (since > cutoff) continue;   // hasn't sat long enough yet
+      const k = `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+      const cur = map.get(k) || { key: k, name: p.name, color: p.color || '', size: p.size || '', items: [], qty: 0 };
+      cur.items.push(p);
+      cur.qty += p.qty || 0;
+      map.set(k, cur);
+    }
+    return [...map.values()];
   });
 
-  const low = $derived(products.filter((p) => p.qty > 0 && p.qty <= 3));
+  /* نفد — same rule as the dashboard: only models whose CURRENT shelf stock
+     is zero, and only the specific colors/sizes that hit zero. One card per
+     model listing its holes. (The old «كمية قليلة 1-3» warning is retired.) */
+  const holes = $derived.by(() => {
+    const map = new Map();
+    for (const p of products) {
+      if ((p.qty || 0) > 0) continue;
+      const k = `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+      const cur = map.get(k) || { key: k, name: p.name, items: [] };
+      cur.items.push(p);
+      map.set(k, cur);
+    }
+    return [...map.values()];
+  });
 
   const stockValue = $derived(products.reduce((a, p) => a + (p.qty || 0) * (p.cost || 0), 0));
 
@@ -118,21 +148,26 @@
   const typeRevenue = $derived(byType.reduce((a, t) => a + t.revenue, 0));
 
   /* ---- Sell-through rate: % of each model sold since it arrived ----
-     arrived = current qty + ever sold. Real buyer's metric — the shoe that
-     turns fast is worth more than the shoe that looks nice on the shelf. */
+     Per MODEL: every color × size card of the same name+category counts
+     together (a 4-color model isn't 4 strangers). arrived = what's on the
+     shelf now + everything ever sold of it. */
   const sellThrough = $derived.by(() => {
     const soldQty = new Map();
     for (const s of sales) {
       if (s.status === 'returned') continue;
       for (const it of s.items) soldQty.set(it.sku, (soldQty.get(it.sku) || 0) + (Number(it.qty) || 0));
     }
-    return products
-      .map((p) => {
-        const sold = soldQty.get(p.sku) || 0;
-        const arrived = sold + (p.qty || 0);
-        return { p, sold, arrived, rate: arrived ? Math.round((sold / arrived) * 100) : 0 };
-      })
+    const map = new Map();
+    for (const p of products) {
+      const k = `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+      const cur = map.get(k) || { key: k, name: p.name, color: p.color || '', size: p.size || '', sold: 0, arrived: 0 };
+      cur.sold += soldQty.get(p.sku) || 0;
+      cur.arrived += (soldQty.get(p.sku) || 0) + (p.qty || 0);
+      map.set(k, cur);
+    }
+    return [...map.values()]
       .filter((x) => x.arrived > 0)
+      .map((x) => ({ ...x, rate: Math.round((x.sold / x.arrived) * 100) }))
       .sort((a, b) => b.rate - a.rate);
   });
   const movingFast = $derived(sellThrough.filter((x) => x.rate >= 60 && x.sold >= 3).slice(0, 4));
@@ -211,11 +246,11 @@
       <p class="muted small" style="margin:0 0 10px">كم٪ من كل موديل انباع منذ وصل — مقياس التاجر الحقيقي.</p>
       {#if movingFast.length}
         <div class="st-head good">يدور بسرعة — ما يلبث على الرف</div>
-        {#each movingFast as x (x.p.sku)}
+        {#each movingFast as x (x.key)}
           <div class="brow" style="margin-bottom:6px">
             <div class="a-body">
-              <div class="bold small">{x.p.name}</div>
-              <VariantBits dense variants={[{ color: x.p.color, size: x.p.size }]} />
+              <div class="bold small">{x.name}</div>
+              <VariantBits dense variants={[{ color: x.color, size: x.size }]} />
               <div class="muted small">انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
             </div>
             <span class="qbadge hot">{x.rate}%</span>
@@ -224,11 +259,11 @@
       {/if}
       {#if movingSlow.length}
         <div class="st-head slow">يتثاقل — فكّري بعرض أو تصفية</div>
-        {#each movingSlow as x (x.p.sku)}
+        {#each movingSlow as x (x.key)}
           <div class="brow" style="margin-bottom:6px">
             <div class="a-body">
-              <div class="bold small">{x.p.name}</div>
-              <VariantBits dense variants={[{ color: x.p.color, size: x.p.size }]} />
+              <div class="bold small">{x.name}</div>
+              <VariantBits dense variants={[{ color: x.color, size: x.size }]} />
               <div class="muted small">انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
             </div>
             <span class="qbadge cold">{x.rate}%</span>
@@ -258,17 +293,18 @@
     </Glass>
   {/if}
 
-  {#if low.length}
+  {#if holes.length}
     <Glass class="rise" style="animation-delay:0.2s; padding:16px">
-      <h2 class="h2" style="margin-bottom:10px"><Icon name="alert" size={17} color="var(--warn)" /> كمية قليلة ({low.length})</h2>
+      <h2 class="h2" style="margin-bottom:10px"><Icon name="alert" size={17} color="var(--warn)" /> نفد من المخزون ({holes.length})</h2>
+      <p class="muted small" style="margin:0 0 10px">مقاسات وألوان محددة صارت صفر — حان وقت الاستلام.</p>
       <div class="stack" style="gap:8px">
-        {#each low as p (p.sku)}
+        {#each holes as h (h.key)}
           <div class="brow">
             <div class="a-body">
-              <div class="bold small">{p.name}</div>
-              <VariantBits dense variants={[{ color: p.color, size: p.size }]} />
+              <div class="bold small">{h.name}</div>
+              <VariantBits dense variants={h.items.map((p) => ({ color: p.color, size: p.size }))} />
             </div>
-            <span class="qbadge low">{fmtNum(p.qty)}</span>
+            <span class="qbadge low">نفد</span>
           </div>
         {/each}
       </div>
@@ -278,15 +314,16 @@
   {#if dead.length}
     <Glass class="rise" style="animation-delay:0.25s; padding:16px">
       <h2 class="h2" style="margin-bottom:10px"><Icon name="clock" size={17} color="var(--burgundy)" /> مخزون راكد ({dead.length})</h2>
-      <p class="muted small" style="margin:0 0 10px">موديلات لم تُبع منذ {settings?.deadStockDays ?? 30} يوم أو أكثر — فكّري بعرض خاص عليها.</p>
+      <p class="muted small" style="margin:0 0 10px">موديلات راكدة منذ {settings?.deadStockDays ?? 30} يوم من آخر استلام أو بيع — يُحسب من لحظة وصول القطع للرف.</p>
       <div class="stack" style="gap:8px">
-        {#each dead.slice(0, 8) as p (p.sku)}
+        {#each dead.slice(0, 8) as d (d.key)}
           <div class="brow">
             <div class="a-body">
-              <div class="bold small">{p.name}</div>
-              <VariantBits dense variants={[{ color: p.color, size: p.size }]} />
+              <div class="bold small">{d.name}</div>
+              <VariantBits dense variants={d.items.map((p) => ({ color: p.color, size: p.size }))} />
+              <div class="muted tiny">على الرف {fmtNum(Math.min(...d.items.map((p) => shelfAgeDays(p))))} يوم أو أكثر</div>
             </div>
-            <span class="qbadge">{fmtNum(p.qty)}</span>
+            <span class="qbadge">{fmtNum(d.qty)}</span>
           </div>
         {/each}
       </div>

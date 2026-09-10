@@ -137,8 +137,10 @@ export async function updateProduct(sku, changes, moveNote) {
   if (!before) throw new Error('المنتج غير موجود');
   const now = new Date().toISOString();
   const p = { ...before, ...changes, sku, updatedAt: now };
-  await db.products.put(p);
   const diff = (Number(changes.qty ?? before.qty) || 0) - before.qty;
+  /* pieces went back on the shelf → the راكد clock restarts from here */
+  if (diff > 0) p.restockedAt = now;
+  await db.products.put(p);
   if (diff !== 0) {
     await logMovement({
       sku, type: diff > 0 ? 'in' : 'out', qty: Math.abs(diff),
@@ -152,7 +154,9 @@ export async function adjustQty(sku, delta, note) {
   const p = await db.products.get(sku);
   if (!p) throw new Error('المنتج غير موجود');
   const q = Math.max(0, (Number(p.qty) || 0) + delta);
-  await db.products.update(sku, { qty: q, updatedAt: new Date().toISOString() });
+  const patch = { qty: q, updatedAt: new Date().toISOString() };
+  if (delta > 0) patch.restockedAt = patch.updatedAt;
+  await db.products.update(sku, patch);
   if (delta !== 0) {
     await logMovement({
       sku, type: delta > 0 ? 'in' : 'out', qty: Math.abs(delta),
@@ -395,7 +399,9 @@ export async function stocktakeApply(corrections) {
     const p = await db.products.get(c.sku);
     if (!p) continue;
     const diff = c.counted - p.qty;
-    await db.products.update(c.sku, { qty: Math.max(0, c.counted), updatedAt: now });
+    const patch = { qty: Math.max(0, c.counted), updatedAt: now };
+    if (diff > 0) patch.restockedAt = now;
+    await db.products.update(c.sku, patch);
     if (diff !== 0) {
       await logMovement({ sku: c.sku, type: diff > 0 ? 'in' : 'out', qty: Math.abs(diff), note: 'جرد' });
     }

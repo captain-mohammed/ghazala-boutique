@@ -3,12 +3,11 @@
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import { db, allSettings, setSetting, seedDemo, wipeAll } from '../db.js';
-  import { fmtIQD, buzz, hashPin, iqd, WA_VARS, DEFAULT_WA_TEMPLATE, buildSalesMessage } from '../utils.js';
+  import { buzz, hashPin, DEFAULT_WA_TEMPLATE } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   let { goto = () => {} } = $props();
 
-  let fee = $state('');
   let deadDays = $state(30);
   let loaded = $state(false);
 
@@ -19,7 +18,6 @@
 
   onMount(async () => {
     const s = await allSettings();
-    fee = s.deliveryFee;
     deadDays = s.deadStockDays;
     if (typeof s.waTemplate === 'string' && s.waTemplate.trim()) {
       waText = s.waTemplate;
@@ -28,13 +26,6 @@
     loaded = true;
   });
 
-  async function saveFee() {
-    const v = iqd(fee);
-    await setSetting('deliveryFee', v);
-    fee = v;
-    toastOk(`أجور التوصيل: ${fmtIQD(v)}`);
-    buzz(10);
-  }
   async function saveDead() {
     await setSetting('deadStockDays', Math.max(1, Math.round(Number(deadDays) || 30)));
     toastOk('تم حفظ مدة الرکود');
@@ -106,29 +97,18 @@
 <div class="stack" style="gap:12px">
   {#if loaded}
     <Glass class="rise" style="padding:16px">
-      <h2 class="h2" style="margin-bottom:4px"><Icon name="truck" size={17} color="var(--burgundy)" /> شركات التوصيل</h2>
-      <p class="muted small" style="margin:0 0 12px">أسماء الشركات تُدار الآن من صفحة <b>حساب شركات التوصيل</b> — جنب أرقامها وأموالها، وقائمة جاهزة تظهر عند إتمام البيع.</p>
+      <h2 class="h2" style="margin-bottom:4px"><Icon name="truck" size={17} color="var(--burgundy)" /> حساب شركات التوصيل</h2>
+      <p class="muted small" style="margin:0 0 12px">كل ما يخص التوصيل بمكان واحد: <b>أسماء الشركات</b> (تظهر قائمة جاهزة عند إتمام البيع)، <b>أجور التوصيل</b>، والأموال المعلّقة عندهم وتسويتها.</p>
       <button class="btn block" onclick={() => { buzz(8); goto('ledger'); }}>
         <Icon name="truck" size={16} /> فتح حساب شركات التوصيل
       </button>
     </Glass>
 
     <Glass class="rise" style="padding:16px; animation-delay:0.05s">
-      <h2 class="h2" style="margin-bottom:12px"><Icon name="truck" size={17} color="var(--burgundy)" /> أجور التوصيل</h2>
-      <div class="field">
-        <label>أجور التوصيل (د.ع) — لكل المحافظات <span class="muted tiny">— الآلاف: اكتب 5 = 5,000</span></label>
-        <div class="row" style="gap:8px">
-          <input class="input" bind:value={fee} inputmode="decimal" style="flex:1" />
-          <button class="btn primary" onclick={saveFee}>حفظ</button>
-        </div>
-      </div>
-    </Glass>
-
-    <Glass class="rise" style="padding:16px; animation-delay:0.05s">
       <h2 class="h2" style="margin-bottom:12px"><Icon name="alert" size={17} color="var(--warn)" /> التنبيهات</h2>
       <div class="stack" style="gap:12px">
         <div class="field">
-          <label>اعتبر الموديل راكداً بعد (يوم) بلا بيع</label>
+          <label>اعتبر الموديل راكداً بعد (يوم) من آخر استلام أو بيع</label>
           <div class="row" style="gap:8px">
             <input class="input" bind:value={deadDays} inputmode="numeric" style="flex:1" />
             <button class="btn primary" onclick={saveDead}>حفظ</button>

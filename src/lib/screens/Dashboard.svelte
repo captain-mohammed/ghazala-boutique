@@ -7,7 +7,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import VariantBits from '../components/VariantBits.svelte';
   import { db, allSettings, upcomingOccasions } from '../db.js';
-  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey } from '../utils.js';
+  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey, stockArrival, shelfAgeDays } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
   import { invoicePreset, sellPrefill } from '../store.js';
 
@@ -54,23 +54,30 @@
     profit: todaySales.reduce((a, s) => a + s.profit, 0)
   });
 
+  /* موديل = one name+category across ALL its color×size cards; قطع = physical pieces */
   const stock = $derived({
-    models: products.length,
+    models: new Set(products.map((p) => `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`)).size,
     units: products.reduce((a, p) => a + (p.qty || 0), 0),
     value: products.reduce((a, p) => a + (p.qty || 0) * (p.cost || 0), 0),
     out: products.filter((p) => !p.qty).length
   });
 
+  /* راكد = the CURRENT shelf stock has sat longer than the threshold, counted
+     from its arrival (creation / last stock-in). Hours-old items show 0 يوم
+     and only appear after the days chosen in الإعدادات. */
   const deadInfo = $derived.by(() => {
     if (!settings) return [];
     const lm = lastSaleMap(sales.filter((s) => s.status !== 'returned'));
-    const cutoff = daysAgoStart(settings.deadStockDays ?? 30);
+    const cutoff = daysAgoStart(settings.deadStockDays ?? 30).getTime();
     return products
-      .filter((p) => p.qty > 0 && (!lm.get(p.sku) || new Date(lm.get(p.sku)) < cutoff))
-      .map((p) => ({
-        p,
-        days: Math.max(0, Math.round((Date.now() - new Date(lm.get(p.sku) || p.createdAt || Date.now()).getTime()) / 86400000))
-      }))
+      .filter((p) => {
+        if ((p.qty || 0) <= 0) return false;
+        const since = stockArrival(p);
+        const lastSold = lm.get(p.sku) ? new Date(lm.get(p.sku)).getTime() : 0;
+        if (lastSold > since) return false;
+        return since <= cutoff;
+      })
+      .map((p) => ({ p, days: shelfAgeDays(p) }))
       .sort((a, b) => b.days - a.days);
   });
   const dead = $derived(deadInfo.map((d) => d.p));

@@ -3,16 +3,27 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
-  import { db, settleSale, moneyInTransit, setSetting } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, buzz, copyText, sendWhatsApp } from '../utils.js';
+  import { db, settleSale, moneyInTransit, setSetting, getSetting } from '../db.js';
+  import { fmtIQD, fmtNum, fmtDate, buzz, copyText, sendWhatsApp, iqd } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   let sales = $state([]);
   let companies = $state([]);
   let newCo = $state('');
+  let fee = $state('');
   let defaultCompany = $state('');
   let detail = $state(null); // company being viewed/settled
   let showHistory = $state(false);
+
+  /* أجور التوصيل live here too — everything delivery-related in one place */
+  (async () => { fee = String(await getSetting('deliveryFee', 5000)); })();
+  async function saveFee() {
+    const v = iqd(fee);
+    await setSetting('deliveryFee', v);
+    fee = String(v);
+    toastOk(`أجور التوصيل: ${fmtIQD(v)}`);
+    buzz(10);
+  }
 
   /* ---- شركات التوصيل live here now: one place for money + names ---- */
   async function addCo() {
@@ -152,6 +163,15 @@
     <div class="row" style="gap:8px">
       <input class="input" style="flex:1" bind:value={newCo} placeholder="اسم الشركة…" onkeydown={(e) => e.key === 'Enter' && addCo()} />
       <button class="btn" onclick={addCo}><Icon name="plus" size={16} /> إضافة</button>
+    </div>
+    <hr class="divider-gold" style="margin:12px 0 10px" />
+    <div class="field">
+      <label>أجور التوصيل الافتراضية (د.ع) <span class="muted tiny">— الآلاف: اكتب 5 = 5,000</span></label>
+      <div class="row" style="gap:8px">
+        <input class="input" bind:value={fee} inputmode="decimal" style="flex:1" />
+        <button class="btn primary" onclick={saveFee}>حفظ</button>
+      </div>
+      <span class="muted tiny" style="display:block; margin-top:5px">تُقدَّم مسبقاً عند إتمام أي بيع — وتقدرين تغيرينها لكل عملية من نفس الشاشة.</span>
     </div>
   </Glass>
 

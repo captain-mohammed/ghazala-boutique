@@ -191,6 +191,18 @@ export function lastSaleMap(sales) {
   return map;
 }
 
+/* When did this SKU's current shelf stock actually arrive? The latest of:
+   the card's creation, its last stock-IN, or the sold-then-restocked point.
+   راكد must count from the shelf moment — never from a previous cycle. */
+export function stockArrival(p) {
+  const cands = [p.createdAt, p.updatedAt, p.restockedAt].filter(Boolean).map((x) => new Date(x).getTime());
+  return cands.length ? Math.max(...cands) : Date.now();
+}
+/* Days since the current stock arrived (0 = arrived today) */
+export function shelfAgeDays(p, now = Date.now()) {
+  return Math.max(0, Math.floor((now - stockArrival(p)) / 86400000));
+}
+
 /* ---------- WhatsApp delivery message ----------
    The template is stored as a setting ("waTemplate") and editable in
    الإعدادات ← رسالة الواتساب. Variables: {customer} {order} {items}

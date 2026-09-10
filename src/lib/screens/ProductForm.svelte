@@ -148,6 +148,8 @@
           const twin = idx.get(modelKey({ name: base.name, category: base.category, size: sz, color }));
           if (twin) {
             if (editing) {
+              /* pieces kept/changed on the shelf don't reset the راكد clock —
+                 only a real restock (qty increase) does, and updateProduct handles that */
               await updateProduct(twin.sku, { ...base, color, size: sz, qty: q });
             } else if (q > 0) {
               await updateProduct(twin.sku, {
@@ -419,16 +421,4 @@
     padding: 6px;
     border-radius: var(--r-md);
   }
-  .step {
-    width: 48px; height: 48px;
-    border-radius: 14px;
-    border: 1px solid var(--line-2);
-    background: rgba(255, 255, 255, 0.6);
-    font-size: 24px;
-    font-weight: 800;
-    color: var(--burgundy);
-    cursor: pointer;
-    transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-  .step:active { transform: scale(0.86); }
 </style>

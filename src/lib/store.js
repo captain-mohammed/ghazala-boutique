@@ -73,5 +73,9 @@ export const catalogFilters = writable({
   sort: 'new'
 });
 
+/* the premium filter card starts collapsed in both tabs — expanded only
+   when needed; the filter VALUES above are never touched by this */
+export const filtersOpen = writable(false);
+
 /* ---------- Misc ui ---------- */
 export const uiFlags = writable({ sawReportsTip: false });
