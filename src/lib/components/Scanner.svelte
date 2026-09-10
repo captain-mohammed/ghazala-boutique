@@ -133,7 +133,7 @@
       </div>
 
       <form class="row manual" onsubmit={manualSubmit}>
-        <input class="input" name="code" placeholder="أو أدخل الرقم يدوياً…" autocomplete="off" />
+        <input class="input" name="code" placeholder="أو أدخلي الرقم يدوياً…" autocomplete="off" />
         <button class="btn primary" type="submit">حفظ</button>
       </form>
     </div>

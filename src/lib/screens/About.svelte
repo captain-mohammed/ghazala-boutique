@@ -28,8 +28,8 @@
   <Glass class="rise" style="padding:16px; animation-delay:0.1s">
     <h2 class="h2" style="margin-bottom:10px"><Icon name="download" size={17} color="var(--gold)" /> تثبيت على الهاتف</h2>
     <ol class="muted small" style="margin:0; padding-right:18px; line-height:2">
-      <li>افتح الرابط في متصفح Chrome على هاتفك</li>
-      <li>اضغط قائمة Chrome ⋮ ثم «إضافة إلى الشاشة الرئيسية»</li>
+      <li>افتحي الرابط في متصفح Chrome على هاتفك</li>
+      <li>اضغطي قائمة Chrome ⋮ ثم «إضافة إلى الشاشة الرئيسية»</li>
       <li>سيظهر التطبيق بأيقونة بوتيك غزالة كأي تطبيق آخر</li>
     </ol>
   </Glass>

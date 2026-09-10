@@ -3,6 +3,7 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
+  import VariantBits from '../components/VariantBits.svelte';
   import { db, sweepExpiredReservations, cancelReservation, convertReservation, piecesSoldToday } from '../db.js';
   import { fmtIQD, fmtDate, fmtNum, buzz, iqd } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt, milestoneFor } from '../store.js';
@@ -10,13 +11,22 @@
   let reservations = $state([]);
   let converting = $state(null); // reservation in the convert sheet
   let fee = $state(5000);
+  let variantOf = $state({}); // sku → { color, size } for the variant line on each card
 
   $effect(() => {
     let alive = true;
     const grab = async () => {
       await sweepExpiredReservations();
       const r = await db.reservations.toArray();
-      if (alive) reservations = r.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      if (!alive) return;
+      reservations = r.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      const need = reservations.filter((x) => x.status === 'active').map((x) => x.sku);
+      if (need.length) {
+        const ps = await db.products.bulkGet(need);
+        const m = {};
+        for (const p of ps) if (p) m[p.sku] = { color: p.color || '', size: String(p.size || '').trim() };
+        variantOf = m;
+      }
     };
     grab();
     const t = setInterval(grab, 5000);
@@ -103,6 +113,9 @@
             <span class="chip-n warn-chip">{hoursLeft(r) < 6 ? '⏳' : ''} {fmtNum(Math.floor(hoursLeft(r)))} ساعة</span>
           </div>
           <div class="muted small">{r.customerName || 'زبونة'}{r.customerPhone ? ' • ' + r.customerPhone : ''} • حُجز {fmtDate(r.createdAt)}</div>
+          {#if variantOf[r.sku]}
+            <VariantBits dense variants={[variantOf[r.sku]]} />
+          {/if}
           <div class="row" style="justify-content:space-between; margin-top:10px">
             <span class="money">{fmtIQD(r.price)}</span>
             <div class="row" style="gap:8px">
@@ -157,7 +170,7 @@
         <div class="field" style="flex:1">
           <label>المحافظة <span class="req">*</span></label>
           <select class="input" bind:value={cProvince} class:invalid={tried && !cProvince} style="height:50px">
-            <option value="" disabled>اختر…</option>
+            <option value="" disabled>اختاري…</option>
             {#each PROVINCES as pv (pv)}<option value={pv}>{pv}</option>{/each}
           </select>
           {#if tried && !cProvince}<span class="err">مطلوبة</span>{/if}

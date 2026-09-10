@@ -4,6 +4,7 @@
   import { screenIn } from './lib/motion.js';
   import Lock from './lib/components/Lock.svelte';
   import BottomNav from './lib/components/BottomNav.svelte';
+  import BackBtn from './lib/components/BackBtn.svelte';
   import Dashboard from './lib/screens/Dashboard.svelte';
   import Inventory from './lib/screens/Inventory.svelte';
   import Sell from './lib/screens/Sell.svelte';
@@ -35,6 +36,8 @@
     { id: 'more', label: 'المزيد', icon: 'dots' }
   ];
   const MAIN_TABS = new Set(NAV_TABS.map((t) => t.id));
+  /* sub-pages (كل ما يفتح من «المزيد») get the bespoke back button in their header */
+  const isSub = (id) => id !== 'home' && !MAIN_TABS.has(id);
 
   const SUBTITLES = {
     home: 'بوتيك غزالة',
@@ -98,6 +101,9 @@
       <div class="screen" in:screenIn={{ x: slideX, y: 14, duration: 430 }}>
         {#if screen !== 'home'}
           <header class="head">
+            {#if isSub(screen)}
+              <BackBtn onback={() => goto('more')} />
+            {/if}
             <h1 class="h1">{SUBTITLES[screen] || ''}</h1>
           </header>
         {/if}
@@ -149,7 +155,7 @@
     padding: calc(14px + var(--sat)) 14px calc(var(--nav-h) + 40px + var(--sab));
   }
   .screen { min-height: 60dvh; }
-  .head { margin-bottom: 14px; }
+  .head { margin-bottom: 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
   .update {
     position: fixed;
     top: calc(12px + var(--sat));

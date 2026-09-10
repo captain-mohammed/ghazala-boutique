@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import Icon from '../components/Icon.svelte';
   import Ticker from '../components/Ticker.svelte';
+  import VariantBits from '../components/VariantBits.svelte';
   import { db, allSettings, getSetting, WOMENS_TYPES } from '../db.js';
   import Glass from '../components/Glass.svelte';
   import { fmtIQD, fmtNum, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR } from '../utils.js';
@@ -71,7 +72,7 @@
   const best = $derived.by(() => {
     const m = new Map();
     for (const s of inPeriod) for (const it of s.items) {
-      const cur = m.get(it.sku) || { sku: it.sku, name: it.name, qty: 0, revenue: 0 };
+      const cur = m.get(it.sku) || { sku: it.sku, name: it.name, color: it.color || '', size: it.size || '', qty: 0, revenue: 0 };
       cur.qty += it.qty;
       cur.revenue += it.qty * it.price;
       m.set(it.sku, cur);
@@ -173,6 +174,7 @@
             <span class="rank">{i + 1}</span>
             <div class="a-body">
               <div class="bold small">{b.name}</div>
+              <VariantBits dense variants={[{ color: b.color, size: b.size }]} />
               <div class="muted small">{fmtNum(b.qty)} قطعة</div>
             </div>
             <div class="money small">{fmtIQD(b.revenue)}</div>
@@ -213,7 +215,8 @@
           <div class="brow" style="margin-bottom:6px">
             <div class="a-body">
               <div class="bold small">{x.p.name}</div>
-              <div class="muted small">{x.p.color || x.p.category}{x.p.size ? ' • ' + x.p.size : ''} — انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
+              <VariantBits dense variants={[{ color: x.p.color, size: x.p.size }]} />
+              <div class="muted small">انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
             </div>
             <span class="qbadge hot">{x.rate}%</span>
           </div>
@@ -225,7 +228,8 @@
           <div class="brow" style="margin-bottom:6px">
             <div class="a-body">
               <div class="bold small">{x.p.name}</div>
-              <div class="muted small">{x.p.color || x.p.category}{x.p.size ? ' • ' + x.p.size : ''} — انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
+              <VariantBits dense variants={[{ color: x.p.color, size: x.p.size }]} />
+              <div class="muted small">انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
             </div>
             <span class="qbadge cold">{x.rate}%</span>
           </div>
@@ -262,7 +266,7 @@
           <div class="brow">
             <div class="a-body">
               <div class="bold small">{p.name}</div>
-              <div class="muted small">{p.color || p.category}{p.size ? ' • ' + p.size : ''}</div>
+              <VariantBits dense variants={[{ color: p.color, size: p.size }]} />
             </div>
             <span class="qbadge low">{fmtNum(p.qty)}</span>
           </div>
@@ -274,13 +278,13 @@
   {#if dead.length}
     <Glass class="rise" style="animation-delay:0.25s; padding:16px">
       <h2 class="h2" style="margin-bottom:10px"><Icon name="clock" size={17} color="var(--burgundy)" /> مخزون راكد ({dead.length})</h2>
-      <p class="muted small" style="margin:0 0 10px">موديلات لم تُبع منذ {settings?.deadStockDays ?? 30} يوم أو أكثر — فكّر بعرض خاص عليها.</p>
+      <p class="muted small" style="margin:0 0 10px">موديلات لم تُبع منذ {settings?.deadStockDays ?? 30} يوم أو أكثر — فكّري بعرض خاص عليها.</p>
       <div class="stack" style="gap:8px">
         {#each dead.slice(0, 8) as p (p.sku)}
           <div class="brow">
             <div class="a-body">
               <div class="bold small">{p.name}</div>
-              <div class="muted small">{p.color || p.category}{p.size ? ' • ' + p.size : ''}</div>
+              <VariantBits dense variants={[{ color: p.color, size: p.size }]} />
             </div>
             <span class="qbadge">{fmtNum(p.qty)}</span>
           </div>

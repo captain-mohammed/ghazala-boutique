@@ -45,7 +45,7 @@
           <button type="button" class="m-btn" onclick={() => bump(s, +1)} aria-label="زيادة {s}">+</button>
         </div>
       {:else}
-        <button type="button" class="take" onclick={() => bump(s, +1)}>أضف</button>
+        <button type="button" class="take" onclick={() => bump(s, +1)}>أضيفي</button>
       {/if}
     </div>
   {/each}

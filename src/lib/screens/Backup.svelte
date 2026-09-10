@@ -99,10 +99,10 @@
   }
 
   const reminder = $derived.by(() => {
-    if (!lastBackup) return { on: true, level: 'bad', days: null, score: 0, msg: 'لم تأخذ نسخة احتياطية بعد — خُذ أول نسخة الآن.' };
+    if (!lastBackup) return { on: true, level: 'bad', days: null, score: 0, msg: 'لم تأخذي نسخة احتياطية بعد — خُذي أول نسخة الآن.' };
     const days = Math.floor((Date.now() - new Date(lastBackup)) / 86400000);
-    if (days >= 14) return { on: true, level: 'bad', days, score: 1, msg: `آخر نسخة منذ ${days} يوم — بياناتك في خطر لو انمسحت. خذ نسخة جديدة الحين.` };
-    if (days >= 7) return { on: true, level: 'gold', days, score: 2, msg: `التذكير الأسبوعي: آخر نسخة منذ ${days} يوم — جِدِّد نسختك.` };
+    if (days >= 14) return { on: true, level: 'bad', days, score: 1, msg: `آخر نسخة منذ ${days} يوم — بياناتك في خطر لو انمسحت. خذي نسخة جديدة الحين.` };
+    if (days >= 7) return { on: true, level: 'gold', days, score: 2, msg: `التذكير الأسبوعي: آخر نسخة منذ ${days} يوم — جدّدي نسختك.` };
     return { on: false, level: 'good', days, score: 3, msg: `آخر نسخة: ${fmtDate(lastBackup)}` };
   });
 </script>
@@ -124,7 +124,7 @@
 
   <Glass class="rise" style="padding:16px; animation-delay:0.05s">
     <h2 class="h2" style="margin-bottom:10px"><Icon name="upload" size={17} color="var(--burgundy)" /> استعادة نسخة</h2>
-    <p class="muted small" style="margin:0 0 12px">اختر ملف ghazala-backup-…json لاستعادة بياناتك على هذا الجهاز أو جهاز جديد.</p>
+    <p class="muted small" style="margin:0 0 12px">اختاري ملف ghazala-backup-…json لاستعادة بياناتك على هذا الجهاز أو جهاز جديد.</p>
     <input type="file" accept=".json,application/json" style="display:none" bind:this={fileInput} onchange={onFile} />
     <button class="btn block" onclick={pickFile}>
       <Icon name="file" size={18} /> اختيار ملف النسخة

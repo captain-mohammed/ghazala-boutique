@@ -3,15 +3,34 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
-  import { db, settleSale, moneyInTransit } from '../db.js';
+  import { db, settleSale, moneyInTransit, setSetting } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz, copyText, sendWhatsApp } from '../utils.js';
-  import { toastOk, askConfirm } from '../store.js';
+  import { toastOk, toastErr, askConfirm } from '../store.js';
 
   let sales = $state([]);
   let companies = $state([]);
+  let newCo = $state('');
   let defaultCompany = $state('');
   let detail = $state(null); // company being viewed/settled
   let showHistory = $state(false);
+
+  /* ---- شركات التوصيل live here now: one place for money + names ---- */
+  async function addCo() {
+    const name = newCo.trim();
+    if (!name) return;
+    if (companies.includes(name)) { toastErr('الشركة موجودة مسبقاً'); return; }
+    companies = [...companies, name];
+    await setSetting('deliveryCompanies', [...companies]);
+    newCo = '';
+    toastOk('أُضيفت شركة التوصيل');
+    buzz(8);
+  }
+  async function rmCo(name) {
+    companies = companies.filter((c) => c !== name);
+    await setSetting('deliveryCompanies', [...companies]);
+    toastOk('حُذفت الشركة');
+    buzz(6);
+  }
 
   $effect(() => {
     let alive = true;
@@ -92,13 +111,13 @@
   async function copyManifest(group) {
     const ok = await copyText(buildManifest(group));
     buzz([14, 30, 14]);
-    toastOk(ok ? 'نُسخ كشف التسليم — الصقه وأرسله للسائق 📋' : 'تعذّر النسخ');
+    toastOk(ok ? 'نُسخ كشف التسليم — الصقيه وأرسليه للسائق 📋' : 'تعذّر النسخ');
   }
 
   async function sendManifest(group) {
     const { opened, copied } = await sendWhatsApp(buildManifest(group));
     buzz([14, 30, 14]);
-    if (opened) toastOk('فُتح واتساب بالكشف — أرسله للسائق 🚚');
+    if (opened) toastOk('فُتح واتساب بالكشف — أرسليه للسائق 🚚');
     else if (copied) toastOk('نُسخ الكشف — واتساب غير متاح هنا');
   }
 </script>
@@ -112,6 +131,27 @@
         <div class="t-amount"><span>{fmtIQD(inTransit)}</span></div>
         <div class="muted small">{fmtNum(inTransitCount)} قطعة لم تُستلم بعد</div>
       </div>
+    </div>
+  </Glass>
+
+  <!-- names & money in one place: the companies list is edited right here -->
+  <Glass class="rise co-edit" style="animation-delay:0.045s">
+    <h2 class="h2" style="margin-bottom:4px"><Icon name="truck" size={17} color="var(--burgundy)" /> شركات التوصيل</h2>
+    <p class="muted small" style="margin:0 0 10px">ضيفي الشركات اللي تتعاملين معها — تظهر لكِ قائمة جاهزة عند إتمام البيع.</p>
+    <div class="row wrap" style="gap:8px; margin-bottom:10px">
+      {#each companies as c (c)}
+        <span class="chip on">
+          {c}
+          <button class="chip-x" onclick={() => rmCo(c)} aria-label="حذف {c}">
+            <Icon name="x" size={12} color="#fff" />
+          </button>
+        </span>
+      {/each}
+      {#if !companies.length}<span class="muted small">لا شركات بعد — ضيفي الأولى</span>{/if}
+    </div>
+    <div class="row" style="gap:8px">
+      <input class="input" style="flex:1" bind:value={newCo} placeholder="اسم الشركة…" onkeydown={(e) => e.key === 'Enter' && addCo()} />
+      <button class="btn" onclick={addCo}><Icon name="plus" size={16} /> إضافة</button>
     </div>
   </Glass>
 
@@ -137,7 +177,7 @@
           </div>
           <div class="col" style="align-items:flex-end; gap:2px">
             <div class="money">{fmtIQD(g.amount)}</div>
-            <span class="muted tiny">اضغط للتفاصيل</span>
+            <span class="muted tiny">اضغطي للتفاصيل</span>
           </div>
         </Glass>
       {/each}
@@ -220,6 +260,16 @@
     flex: none;
   }
   .t-amount { font-size: 24px; font-weight: 800; color: var(--ink); line-height: 1.25; }
+  :global(.co-edit) { padding: 16px; }
+  .chip-x {
+    background: rgba(255, 255, 255, 0.25);
+    border: none;
+    border-radius: 50%;
+    width: 16px; height: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    padding: 0;
+  }
   :global(.co) {
     display: flex; align-items: center; gap: 12px;
     padding: 12px 14px;

@@ -9,6 +9,7 @@
   import SpeedDial from '../components/SpeedDial.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
+  import VariantBits from '../components/VariantBits.svelte';
   import { db, recordSale, getSetting, piecesSoldToday, modelOptions } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
@@ -343,7 +344,7 @@
   {#if filtered.length === 0}
     <EmptyState
       title={isDefault ? (products.length ? 'لا شيء متوفر حالياً' : 'لا موديلات للبيع') : 'لا نتائج مطابقة'}
-      subtitle={isDefault ? (products.length ? 'كل الموديلات نفدت — استكمل الكميات من المخزون أولاً' : 'أضف موديلات أولاً من تبويب المخزون') : 'الموديلات موجودة لكن الفلاتر الحالية تخفيها'}
+      subtitle={isDefault ? (products.length ? 'كل الموديلات نفدت — استكملي الكميات من المخزون أولاً' : 'أضيفي موديلات أولاً من تبويب المخزون') : 'الموديلات موجودة لكن الفلاتر الحالية تخفيها'}
       actionLabel={isDefault ? 'إلى المخزون' : 'عرض الكل'}
       onaction={isDefault ? () => goto('inventory') : clearAllFilters}
       icon={isDefault ? 'box' : 'search'}
@@ -416,7 +417,7 @@
     itemScanOpen = false;
     const p = products.find((x) => x.barcode === code || x.sku === code);
     if (p) addToCart(p);
-    else toastErr('لا يوجد موديل بهذا الكود — أضف الباركود من تفاصيل الموديل');
+    else toastErr('لا يوجد موديل بهذا الكود — أضيفي الباركود من تفاصيل الموديل');
   }}
 />
 
@@ -435,7 +436,7 @@
       <Glass class="citem" radius="var(--r-md)">
         <div class="ci-info">
           <div class="bold">{c.name}</div>
-          {#if c.color || c.size}<div class="ci-variant">{c.color ? `● ${c.color}` : ''}{c.color && c.size ? ' • ' : ''}{c.size ? `مقاس ${c.size}` : ''}</div>{/if}
+          <VariantBits variants={[c]} />
           <div class="muted small">{fmtIQD(c.price)} × {c.qty} = <span class="money">{fmtIQD(c.price * c.qty)}</span></div>
         </div>
         <div class="stepper">
@@ -465,7 +466,7 @@
       <div class="field" style="flex:1">
         <label>المحافظة <span class="req">*</span></label>
         <select class="input" bind:value={cprovince} class:invalid={tried && !cprovince} style="height:50px">
-          <option value="" disabled>اختر المحافظة…</option>
+          <option value="" disabled>اختاري المحافظة…</option>
           {#each PROVINCES as pv (pv)}<option value={pv}>{pv}</option>{/each}
         </select>
         {#if tried && !cprovince}<span class="err">المحافظة مطلوبة</span>{/if}
@@ -492,6 +493,7 @@
           </select>
         {:else}
           <input class="input" bind:value={company} placeholder="اسم الشركة (اختياري)" />
+          <span class="tiny muted" style="display:block">ضيفي شركاتك من «حساب شركات التوصيل» وتظهر لكِ هنا قائمة جاهزة</span>
         {/if}
       </div>
     </div>
@@ -652,7 +654,6 @@
     border-radius: var(--r-md);
   }
   .stepper { display: flex; align-items: center; gap: 8px; flex: none; }
-  .ci-variant { font-size: 11.5px; font-weight: 800; color: var(--burgundy-deep); }
   .stp {
     width: 34px; height: 34px;
     border-radius: 11px;

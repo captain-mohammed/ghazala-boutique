@@ -11,8 +11,6 @@
   let fee = $state('');
   let deadDays = $state(30);
   let loaded = $state(false);
-  let companies = $state([]);
-  let newCo = $state('');
 
   /* WhatsApp message template */
   let waText = $state(DEFAULT_WA_TEMPLATE);
@@ -23,29 +21,12 @@
     const s = await allSettings();
     fee = s.deliveryFee;
     deadDays = s.deadStockDays;
-    companies = Array.isArray(s.deliveryCompanies) ? [...s.deliveryCompanies] : [];
     if (typeof s.waTemplate === 'string' && s.waTemplate.trim()) {
       waText = s.waTemplate;
       waTouched = true;
     }
     loaded = true;
   });
-
-  async function addCo() {
-    const name = newCo.trim();
-    if (!name) return;
-    if (companies.includes(name)) { toastErr('الشركة موجودة مسبقاً'); return; }
-    companies = [...companies, name];
-    await setSetting('deliveryCompanies', companies);
-    newCo = '';
-    toastOk('أُضيفت شركة التوصيل');
-    buzz(8);
-  }
-  async function rmCo(name) {
-    companies = companies.filter((c) => c !== name);
-    await setSetting('deliveryCompanies', companies);
-    toastOk('حُذفت الشركة');
-  }
 
   async function saveFee() {
     const v = iqd(fee);
@@ -115,7 +96,7 @@
     toastOk('أُضيفت بيانات تجريبية');
   }
   async function wipe() {
-    const ok = await askConfirm({ title: 'مسح كل البيانات؟', body: 'سيُحذف كل المخزون والمبيعات نهائياً. خذ نسخة احتياطية أولاً!', okLabel: 'مسح الكل', danger: true });
+    const ok = await askConfirm({ title: 'مسح كل البيانات؟', body: 'سيُحذف كل المخزون والمبيعات نهائياً. خذي نسخة احتياطية أولاً!', okLabel: 'مسح الكل', danger: true });
     if (!ok) return;
     await wipeAll();
     toastOk('تم مسح جميع البيانات');
@@ -126,22 +107,10 @@
   {#if loaded}
     <Glass class="rise" style="padding:16px">
       <h2 class="h2" style="margin-bottom:4px"><Icon name="truck" size={17} color="var(--burgundy)" /> شركات التوصيل</h2>
-      <p class="muted small" style="margin:0 0 12px">ضيفي شركات التوصيل اللي تتعاملين معها — عند إتمام البيع تختارين الشركة من القائمة بدل الكتابة.</p>
-      <div class="row wrap" style="gap:8px; margin-bottom:10px">
-        {#each companies as c (c)}
-          <span class="chip on">
-            {c}
-            <button class="chip-x" onclick={() => rmCo(c)} aria-label="حذف {c}">
-              <Icon name="x" size={12} color="#fff" />
-            </button>
-          </span>
-        {/each}
-        {#if !companies.length}<span class="muted small">لا شركات بعد — ضيفي الأولى</span>{/if}
-      </div>
-      <div class="row" style="gap:8px">
-        <input class="input" style="flex:1" bind:value={newCo} placeholder="اسم الشركة…" onkeydown={(e) => e.key === 'Enter' && addCo()} />
-        <button class="btn" onclick={addCo}><Icon name="plus" size={16} /> إضافة</button>
-      </div>
+      <p class="muted small" style="margin:0 0 12px">أسماء الشركات تُدار الآن من صفحة <b>حساب شركات التوصيل</b> — جنب أرقامها وأموالها، وقائمة جاهزة تظهر عند إتمام البيع.</p>
+      <button class="btn block" onclick={() => { buzz(8); goto('ledger'); }}>
+        <Icon name="truck" size={16} /> فتح حساب شركات التوصيل
+      </button>
     </Glass>
 
     <Glass class="rise" style="padding:16px; animation-delay:0.05s">
@@ -195,7 +164,7 @@
             {/each}
           </div>
           <textarea class="input wa-ta" bind:value={waText} rows="9" dir="rtl"></textarea>
-          <p class="muted small">اضغط على أي متغير لإضافته للنص — يتحول تلقائياً لبيانات كل عملية عند الإرسال.</p>
+          <p class="muted small">اضغطي على أي متغير لإضافته للنص — يتحول تلقائياً لبيانات كل عملية عند الإرسال.</p>
           <div class="row" style="gap:8px">
             <button class="btn ghost" style="flex:1" onclick={() => (waBox = false)}>إغلاق</button>
             <button class="btn" style="flex:1" onclick={resetWaTemplate}>الافتراضية</button>
@@ -203,7 +172,7 @@
           </div>
         </div>
       {:else}
-        <p class="muted small" style="margin-bottom:10px">نص الرسالة الجاهزة التي تُرسل للزبون عند البيع — عدّلها كما تحب.</p>
+        <p class="muted small" style="margin-bottom:10px">نص الرسالة الجاهزة التي تُرسل للزبون عند البيع — عدّليه كما تحبين.</p>
         <button class="btn block" onclick={() => { waBox = true; buzz(8); }}>
           <Icon name="edit" size={16} /> تعديل نص الرسالة
         </button>
@@ -251,15 +220,6 @@
     background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 4px 12px rgba(122, 46, 58, 0.25);
-  }
-  .chip-x {
-    background: rgba(255, 255, 255, 0.25);
-    border: none;
-    border-radius: 50%;
-    width: 16px; height: 16px;
-    display: inline-flex; align-items: center; justify-content: center;
-    cursor: pointer;
-    padding: 0;
   }
 
   .wa-ta {

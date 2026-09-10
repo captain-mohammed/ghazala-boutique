@@ -90,9 +90,9 @@
     <div class="tag">أناقة تمشي بخطى واثقة</div>
 
     {#if mode === 'set' || mode === 'set2'}
-      <p class="prompt">{mode === 'set' ? 'اختر رقماً سرياً (4 أرقام)' : 'أعد إدخال الرقم للتأكيد'}</p>
+      <p class="prompt">{mode === 'set' ? 'اختاري رقماً سرياً (4 أرقام)' : 'أعيدي إدخال الرقم للتأكيد'}</p>
     {:else if mode === 'unlock'}
-      <p class="prompt">أدخل الرقم السري</p>
+      <p class="prompt">أدخلي الرقم السري</p>
     {:else}
       <p class="prompt">…</p>
     {/if}

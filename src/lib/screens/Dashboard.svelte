@@ -5,6 +5,7 @@
   import Logo from '../components/Logo.svelte';
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
+  import VariantBits from '../components/VariantBits.svelte';
   import { db, allSettings, upcomingOccasions } from '../db.js';
   import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
@@ -221,7 +222,7 @@
       <span class="tr-ic"><Icon name="truck" size={18} color="#fff" /></span>
       <div class="a-body">
         <div class="bold">عند شركات التوصيل: {fmtIQD(transit)}</div>
-        <div class="muted small">{fmtNum(transitCount)} عملية — اضغط للحساب والتسوية</div>
+        <div class="muted small">{fmtNum(transitCount)} عملية — اضغطي للحساب والتسوية</div>
       </div>
       <Icon name="back" size={16} color="var(--taupe)" />
     </Glass>
@@ -310,7 +311,7 @@
         <span class="a-ic warn"><Icon name="alert" size={20} /></span>
         <div class="a-body">
           <div class="bold">{stock.out} موديل نفد من المخزون</div>
-          <div class="muted small">اضغط لمراجعة المخزون</div>
+          <div class="muted small">اضغطي لمراجعة المخزون</div>
         </div>
         <Icon name="back" size={18} color="var(--taupe)" />
       </Glass>
@@ -326,7 +327,7 @@
         <span class="a-ic dead"><Icon name="clock" size={20} /></span>
         <div class="a-body">
           <div class="bold">{dead.length} موديل بلا حركة منذ {settings?.deadStockDays ?? 30} يوم</div>
-          <div class="muted small">شاهد تقرير المخزون الراكد</div>
+          <div class="muted small">شوفي تقرير المخزون الراكد</div>
         </div>
         <Icon name="back" size={18} color="var(--taupe)" />
       </Glass>
@@ -355,6 +356,7 @@
             <div class="a-body">
               <div class="bold">{s.customerName || 'زبون'}</div>
               <div class="muted small">{fmtNum(salePieces(s))} قطعة</div>
+              {#if s.items?.length}<VariantBits dense variants={s.items} />{/if}
             </div>
             <div class="money">{fmtIQD(s.total)}</div>
           </div>
@@ -365,7 +367,7 @@
     <div style="animation-delay:0.16s">
       <EmptyState
         title="ابدأ بجرد بوتيكك"
-        subtitle="أضف أول حذاء من تبويب المخزون — كل شيء يبقى محفوظاً في جهازك"
+        subtitle="أضيفي أول حذاء من تبويب المخزون — كل شيء يبقى محفوظاً في جهازك"
         actionLabel="إضافة أول موديل"
         onaction={() => goto('inventory')}
       />

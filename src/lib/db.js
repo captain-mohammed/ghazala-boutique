@@ -77,7 +77,9 @@ export async function getSetting(key, fallback) {
 }
 
 export async function setSetting(key, value) {
-  await db.settings.put({ key, value });
+  /* Svelte $state proxies cannot be structured-cloned into IndexedDB — the put
+     would silently reject. A JSON round-trip strips the proxy to a plain value. */
+  await db.settings.put({ key, value: JSON.parse(JSON.stringify(value ?? null)) });
 }
 
 export async function allSettings() {

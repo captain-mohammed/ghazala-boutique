@@ -299,7 +299,7 @@
   {#if sorted.length === 0}
     <EmptyState
       title={isDefault ? 'المخزون فارغ' : 'لا نتائج مطابقة'}
-      subtitle={isDefault ? 'أضف أول حذاء الآن — العملية لا تستغرق إلا ثوانٍ' : 'الموديلات موجودة لكن الفلاتر الحالية تخفيها'}
+      subtitle={isDefault ? 'أضيفي أول حذاء الآن — العملية لا تستغرق إلا ثوانٍ' : 'الموديلات موجودة لكن الفلاتر الحالية تخفيها'}
       actionLabel={isDefault ? 'إضافة موديل' : 'عرض الكل'}
       onaction={isDefault ? openAddFlow : clearAllFilters}
       icon={isDefault ? 'box' : 'search'}

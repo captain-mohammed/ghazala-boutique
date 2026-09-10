@@ -1,6 +1,7 @@
 <script>
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
+  import VariantBits from '../components/VariantBits.svelte';
   import { db, recordSale, piecesSoldToday } from '../db.js';
   import { fmtIQD, fmtNum, parseOrderText, buzz } from '../utils.js';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor } from '../store.js';
@@ -133,7 +134,7 @@
 
   {#if text.trim() && matches.length === 0 && cart.length === 0}
     <Glass class="rise" style="padding:18px; text-align:center">
-      <div class="muted small">ما لقينا موديل مطابق — جرّب كلمات أخرى أو أضف البيع يدوياً من تبويب بيع</div>
+      <div class="muted small">ما لقينا موديل مطابق — جرّبي كلمات أخرى أو أضيفي البيع يدوياً من تبويب بيع</div>
     </Glass>
   {/if}
 
@@ -147,7 +148,7 @@
         >
           <div class="pinfo">
             <div class="pname">{m.p.name}</div>
-            <div class="pmeta muted small">{m.p.color || m.p.category}{m.p.size ? ' • مقاس ' + m.p.size : ''}</div>
+            <VariantBits dense variants={[{ color: m.p.color, size: m.p.size }]} />
           </div>
           <span class="pprice">{fmtIQD(m.p.price)}</span>
           <span class="add-ic"><Icon name="plus" size={15} color="#fff" /></span>
@@ -163,6 +164,7 @@
           <div class="row" style="justify-content:space-between">
             <div>
               <div class="bold small">{c.name}</div>
+              <VariantBits dense variants={[{ color: c.color, size: c.size }]} />
               <div class="muted tiny">{fmtIQD(c.price)} × {c.qty}</div>
             </div>
             <div class="stepper">
@@ -189,7 +191,7 @@
           <div class="field" style="flex:1">
             <label>المحافظة <span class="req">*</span></label>
             <select class="input" bind:value={customerProvince} class:invalid={tried && !customerProvince} style="height:50px">
-              <option value="" disabled>اختر…</option>
+              <option value="" disabled>اختاري…</option>
               {#each PROVINCES as pv (pv)}<option value={pv}>{pv}</option>{/each}
             </select>
             {#if tried && !customerProvince}<span class="err">مطلوبة</span>{/if}

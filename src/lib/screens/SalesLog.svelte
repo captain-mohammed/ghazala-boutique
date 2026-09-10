@@ -3,6 +3,7 @@
   import Sheet from '../components/Sheet.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
+  import VariantBits from '../components/VariantBits.svelte';
   import { db, setSaleStatus, returnSale } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz, buildSalesMessage, sendWhatsApp, salePieces } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
@@ -109,7 +110,7 @@
     const { opened, copied } = await sendWhatsApp(msg, s.customerPhone);
     buzz([14, 30, 14]);
     if (opened) {
-      toastOk(s.customerPhone ? 'فُتح واتساب برسالة جاهزة — أرسلها 💬' : 'فُتح واتساب — اختر محادثة الزبون وأرسل 💬');
+      toastOk(s.customerPhone ? 'فُتح واتساب برسالة جاهزة — أرسليها 💬' : 'فُتح واتساب — اختاري محادثة الزبون وأرسلي 💬');
     } else if (copied) {
       toastOk('تعذر فتح واتساب — نُسخت الرسالة للصقها 💬');
     } else {
@@ -145,18 +146,21 @@
           onpointerup={swipeEnd}
           onpointercancel={swipeEnd}
         >
-          <div class="swipe-actions">
-            {#if s.status !== 'delivered'}
-              <button class="sw-btn ok" onclick={() => { swipedId = null; markDelivered(s); }}>
-                <Icon name="check" size={17} /> تم التسليم
-              </button>
-            {/if}
-            {#if s.status !== 'returned'}
-              <button class="sw-btn ret" onclick={() => { swipedId = null; doReturn(s); }}>
-                <Icon name="undo" size={16} /> راجع
-              </button>
-            {/if}
-          </div>
+          <!-- actions exist only while a row is open — nothing ever hides behind the card -->
+          {#if swipedId === s.id}
+            <div class="swipe-actions">
+              {#if s.status !== 'delivered'}
+                <button class="sw-btn ok" onclick={() => { swipedId = null; markDelivered(s); }}>
+                  <Icon name="check" size={17} /> تم التسليم
+                </button>
+              {/if}
+              {#if s.status !== 'returned'}
+                <button class="sw-btn ret" onclick={() => { swipedId = null; doReturn(s); }}>
+                  <Icon name="undo" size={16} /> راجع
+                </button>
+              {/if}
+            </div>
+          {/if}
           <Glass
             as="button"
             class="sale rise"
@@ -170,6 +174,9 @@
               <span class="st {STATUS[s.status]?.cls}">{STATUS[s.status]?.label}</span>
             </div>
             <div class="muted small">{fmtDate(s.date)} • {fmtNum(salePieces(s))} قطعة {s.barcode ? '• ' + s.barcode : ''}</div>
+            {#if s.items?.length}
+              <VariantBits dense variants={s.items} />
+            {/if}
           </div>
           <div class="col" style="align-items:flex-end; gap:6px">
             <div class="money">{fmtIQD(s.total)}</div>
@@ -218,7 +225,7 @@
           <Glass class="row" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
             <div>
               <div class="bold small">{it.name}</div>
-              {#if it.color || it.size}<div class="sl-variant">{it.color ? `● ${it.color}` : ''}{it.color && it.size ? ' • ' : ''}{it.size ? `مقاس ${it.size}` : ''}</div>{/if}
+              <VariantBits variants={[it]} />
               <div class="muted small">{fmtIQD(it.price)} × {it.qty}</div>
             </div>
             <div class="money small">{fmtIQD(it.price * it.qty)}</div>
@@ -291,7 +298,6 @@
   }
   .sw-btn.ok { background: linear-gradient(135deg, #4e8a5f, #3c7050); }
   .sw-btn.ret { background: linear-gradient(135deg, var(--burgundy), var(--burgundy-deep)); }
-  .sl-variant { font-size: 11.5px; font-weight: 800; color: var(--burgundy-deep); }
   .swipe-wrap :global(.sale) {
     position: relative;
     z-index: 1;
