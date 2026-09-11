@@ -555,7 +555,7 @@
 <div class="bar-portal" bind:this={barHost}>
   {#if cart.length}
     <div class="cartbar glass-strong">
-      <button class="cart-info" onclick={() => { buzz(8); checkout = true; }}>
+      <button class="cart-info" onclick={() => { buzz(8); openCheckout(); }}>
         <span class="cart-badge pop">{cartCount}</span>
         <div class="cart-txt">
           <div class="bold">متابعة البيع</div>

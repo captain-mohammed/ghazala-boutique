@@ -3,7 +3,7 @@
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import { db, allSettings, setSetting, seedDemo, wipeAll } from '../db.js';
-  import { buzz, hashPin, DEFAULT_WA_TEMPLATE, baghdadMonthKey } from '../utils.js';
+  import { buzz, hashPin, DEFAULT_WA_TEMPLATE, WA_VARS, baghdadMonthKey } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   let { goto = () => {} } = $props();
