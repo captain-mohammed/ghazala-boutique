@@ -25,6 +25,20 @@ db.version(3).stores({
   occasions: '++id, customerName, customerPhone, month, day, date'
 });
 
+/* v4: + vault (خزنة الغزالة — every sale deposits its profit, returns withdraw)
+   Entries never get edited — new ones appear next to old ones, so the vault
+   history is a trustworthy ledger of what actually happened. */
+db.version(4).stores({
+  products: 'sku, name, category, brand, color, size, qty, updatedAt',
+  sales: '++id, date, status, customerName, customerPhone, barcode, deliveryCompany, settledAt, fromReservation',
+  movements: '++id, sku, date, type',
+  settings: 'key',
+  expenses: '++id, date, category',
+  reservations: '++id, sku, createdAt, expiresAt, status',
+  occasions: '++id, customerName, customerPhone, month, day, date',
+  vault: '++id, date, saleId, kind'
+});
+
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
 export const WOMENS_TYPES = ['بوت', 'سلامبر', 'موال', 'كعب عالي'];
 
@@ -68,7 +82,11 @@ export const DEFAULT_SETTINGS = {
   modelColors: COLOR_SWATCHES,
   backupReminderAt: null,
   deliveryCompanies: [],
-  waTemplate: null // null → app default (see DEFAULT_WA_TEMPLATE in utils.js)
+  waTemplate: null, // null → app default (see DEFAULT_WA_TEMPLATE in utils.js)
+  dailyTarget: 0,      // قطع — daily goal ring on the dashboard (0 = off)
+  vaultGoal: 500000,   // د.ع — the vault celebration threshold (0 = off)
+  seasonMoods: null,   // { '2026-09': 'أعراس' } — مزاج الموسم per month
+  archiveDays: 30      // sold-out this long → المدينة القديمة (archive shelf)
 };
 
 export async function getSetting(key, fallback) {
@@ -151,6 +169,8 @@ export async function updateProduct(sku, changes, moveNote) {
   const diff = (Number(changes.qty ?? before.qty) || 0) - before.qty;
   /* pieces went back on the shelf → the راكد clock restarts from here */
   if (diff > 0) p.restockedAt = now;
+  const oosSince = applyOosStamp(before, p);
+  if (oosSince !== undefined) p.oosSince = oosSince;
   await db.products.put(p);
   if (diff !== 0) {
     await logMovement({
@@ -167,6 +187,8 @@ export async function adjustQty(sku, delta, note) {
   const q = Math.max(0, (Number(p.qty) || 0) + delta);
   const patch = { qty: q, updatedAt: new Date().toISOString() };
   if (delta > 0) patch.restockedAt = patch.updatedAt;
+  const oosSince = applyOosStamp(p, { ...p, qty: q });
+  if (oosSince !== undefined) patch.oosSince = oosSince;
   await db.products.update(sku, patch);
   if (delta !== 0) {
     await logMovement({
@@ -301,9 +323,16 @@ export async function recordSale({ items, customerName, customerPhone, province,
   const id = await db.sales.add(sale);
   for (const it of items) {
     const p = await db.products.get(it.sku);
-    if (p && !stockDeducted) await db.products.update(it.sku, { qty: Math.max(0, p.qty - it.qty), updatedAt: now });
+    if (p && !stockDeducted) {
+      const nq = Math.max(0, p.qty - it.qty);
+      const patch = { qty: nq, updatedAt: now };
+      const oosSince = applyOosStamp(p, { ...p, qty: nq });
+      if (oosSince !== undefined) patch.oosSince = oosSince;
+      await db.products.update(it.sku, patch);
+    }
     await logMovement({ sku: it.sku, type: 'out', qty: it.qty, note: `بيع #${id}${fromReservation ? ' • من حجز' : ''}` });
   }
+  await vaultDeposit({ amount: sale.profit, saleId: id, note: `بيع #${id}` });
   return { ...sale, id };
 }
 
@@ -343,6 +372,93 @@ export async function returnSale(id) {
     await logMovement({ sku: it.sku, type: 'in', qty: it.qty, note: `إرجاع بيع #${id}` });
   }
   await db.sales.update(id, { status: 'returned' });
+  /* the sale's profit leaves the vault — recorded, never hidden */
+  await vaultWithdraw({ amount: s.profit, saleId: id, note: `إرجاع بيع #${id}` });
+}
+
+/* ---------------- خزنة الغزالة (the vault) ----------------
+   Every sale quietly drops its profit in; a return takes it back out.
+   The balance is the sum of entries — nothing is ever overwritten, so
+   the history doubles as an honest ledger. When the balance crosses
+   vaultGoal (settings), the dashboard celebrates once per goal. */
+
+export async function vaultDeposit({ amount, saleId = null, note = '' }) {
+  if (!(Number(amount) > 0)) return;
+  await db.vault.add({ date: new Date().toISOString(), kind: 'in', amount: Math.round(Number(amount)), saleId, note });
+}
+
+export async function vaultWithdraw({ amount, saleId = null, note = '' }) {
+  if (!(Number(amount) > 0)) return;
+  await db.vault.add({ date: new Date().toISOString(), kind: 'out', amount: Math.round(Number(amount)), saleId, note });
+}
+
+/* manual entry — vault money taken out (مشتريات، مصاريف شخصية…) */
+export async function vaultManual(kind, amount, note) {
+  const a = Math.round(Number(amount) || 0);
+  if (a <= 0) return;
+  await db.vault.add({ date: new Date().toISOString(), kind: kind === 'in' ? 'in' : 'out', amount: a, saleId: null, note: note || (kind === 'in' ? 'إيداع يدوي' : 'سحب') });
+}
+
+export async function vaultState() {
+  const [entries, goal] = await Promise.all([db.vault.toArray(), getSetting('vaultGoal', 500000)]);
+  const balance = entries.reduce((a, e) => a + (e.kind === 'in' ? e.amount : -e.amount), 0);
+  const g = Math.max(0, Number(goal) || 0);
+  /* celebrate exactly once per goal-crossing: stamp the moment in settings */
+  let justReached = false;
+  if (g > 0 && balance >= g) {
+    const stamp = await getSetting('vaultCelebratedAt', null);
+    const celebratedBalance = Number(stamp?.balance) || 0;
+    if (celebratedBalance < g) {
+      justReached = true;
+      await setSetting('vaultCelebratedAt', { at: new Date().toISOString(), balance });
+    }
+  }
+  return { balance, goal: g, entries: entries.sort((a, b) => new Date(b.date) - new Date(a.date)), justReached };
+}
+
+/* مسح السجل فقط (الميزانية تبقى محسوبة من الصفر) — من الشاشة نفسها */
+export async function vaultClear() {
+  await db.vault.clear();
+  await setSetting('vaultCelebratedAt', null);
+}
+
+/* ---------------- المدينة القديمة (the archive shelf) ----------------
+   Models whose every card has been sold-out (qty 0) for at least
+   archiveDays (settings) — they stop counting as «نفد» noise in the
+   dashboard and move to a quiet shelf with a «أعيدي طلبي منه» button. */
+
+export function archivedModels(products, days) {
+  const d = Math.max(1, Number(days) || 30);
+  const cutoff = Date.now() - d * 86400000;
+  const groups = new Map();
+  for (const p of products) {
+    const k = p.modelId || `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(p);
+  }
+  const out = [];
+  for (const [key, members] of groups) {
+    /* every card empty AND empty since before the cutoff */
+    const emptySince = Math.max(...members.map((m) => {
+      const t = m.oosSince ? new Date(m.oosSince).getTime() : new Date(m.updatedAt || m.createdAt || Date.now()).getTime();
+      return t;
+    }));
+    if (members.every((m) => (m.qty || 0) === 0) && emptySince <= cutoff) {
+      const rep = members.find((m) => m.photo) || members[0];
+      out.push({ key, items: members, rep, qty: 0, emptySince });
+    }
+  }
+  return out.sort((a, b) => a.emptySince - b.emptySince);
+}
+
+/* stamp oosSince the first time a card hits zero (cleared automatically when
+   stock returns) — called from updateProduct/adjustQty/recordSale paths */
+export function applyOosStamp(prev, next) {
+  const wasEmpty = (Number(prev?.qty) || 0) === 0;
+  const isEmpty = (Number(next?.qty) || 0) === 0;
+  if (!wasEmpty && isEmpty) return new Date().toISOString();
+  if (wasEmpty && !isEmpty) return null;
+  return prev?.oosSince ?? null;
 }
 
 /* ---------------- Reservations (حجز) ----------------
@@ -455,21 +571,21 @@ export async function stocktakeApply(corrections) {
 /* ---------------- Backup / Restore ---------------- */
 
 export async function backupJSON() {
-  const [products, sales, movements, settings, expenses, reservations, occasions] = await Promise.all([
+  const [products, sales, movements, settings, expenses, reservations, occasions, vault] = await Promise.all([
     db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray(),
-    db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray()
+    db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.vault.toArray()
   ]);
   return {
-    app: 'ghazala-boutique', version: 3, exportedAt: new Date().toISOString(),
-    products, sales, movements, settings, expenses, reservations, occasions
+    app: 'ghazala-boutique', version: 4, exportedAt: new Date().toISOString(),
+    products, sales, movements, settings, expenses, reservations, occasions, vault
   };
 }
 
 export async function restoreJSON(data, { merge = false } = {}) {
   if (!data || data.app !== 'ghazala-boutique') throw new Error('ملف النسخة غير صالح');
   if (!merge) {
-    await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, async () => {
-      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear()]);
+    await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, async () => {
+      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear()]);
     });
   }
   await db.products.bulkPut(data.products || []);
@@ -481,11 +597,12 @@ export async function restoreJSON(data, { merge = false } = {}) {
   if (Array.isArray(data.expenses)) await db.expenses.bulkPut(data.expenses);
   if (Array.isArray(data.reservations)) await db.reservations.bulkPut(data.reservations);
   if (Array.isArray(data.occasions)) await db.occasions.bulkPut(data.occasions);
+  if (Array.isArray(data.vault)) await db.vault.bulkPut(data.vault);
 }
 
 export async function wipeAll() {
-  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, async () => {
-    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear()]);
+  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, async () => {
+    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear()]);
   });
 }
 

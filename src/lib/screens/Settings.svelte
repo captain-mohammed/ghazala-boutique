@@ -9,6 +9,9 @@
   let { goto = () => {} } = $props();
 
   let deadDays = $state(30);
+  let dailyTarget = $state(0);
+  let vaultGoal = $state(500000);
+  let archiveDays = $state(30);
   let loaded = $state(false);
 
   /* WhatsApp message template */
@@ -19,6 +22,9 @@
   onMount(async () => {
     const s = await allSettings();
     deadDays = s.deadStockDays;
+    dailyTarget = s.dailyTarget ?? 0;
+    vaultGoal = s.vaultGoal ?? 500000;
+    archiveDays = s.archiveDays ?? 30;
     if (typeof s.waTemplate === 'string' && s.waTemplate.trim()) {
       waText = s.waTemplate;
       waTouched = true;
@@ -30,6 +36,13 @@
     await setSetting('deadStockDays', Math.max(1, Math.round(Number(deadDays) || 30)));
     toastOk('تم حفظ مدة الرکود');
     buzz(10);
+  }
+  async function saveTargets() {
+    await setSetting('dailyTarget', Math.max(0, Math.round(Number(dailyTarget) || 0)));
+    await setSetting('vaultGoal', Math.max(0, Math.round(Number(vaultGoal) || 0)));
+    await setSetting('archiveDays', Math.max(1, Math.round(Number(archiveDays) || 30)));
+    toastOk('تم حفظ الأهداف');
+    buzz([12, 30, 12]);
   }
 
   /* WhatsApp template save / reset */
@@ -114,6 +127,26 @@
             <button class="btn primary" onclick={saveDead}>حفظ</button>
           </div>
         </div>
+      </div>
+    </Glass>
+
+    <Glass class="rise" style="padding:16px; animation-delay:0.07s">
+      <h2 class="h2" style="margin-bottom:4px"><Icon name="flag" size={17} color="var(--gold)" /> الأهداف والخزنة</h2>
+      <p class="muted small" style="margin:0 0 12px">هدف يومي يشتغل حلقة ذهبية في الرئيسية، وهدف الخزنة يحتفل عندما تكتمل — و«المدينة القديمة» تجمع الموديلات النافدة بعد هذه المدة.</p>
+      <div class="stack" style="gap:12px">
+        <div class="field">
+          <label>هدف القطع اليومي (0 = مطفي)</label>
+          <input class="input" bind:value={dailyTarget} inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label>هدف الخزنة (د.ع)</label>
+          <input class="input" bind:value={vaultGoal} inputmode="numeric" />
+        </div>
+        <div class="field">
+          <label>انقل الموديل للمدينة القديمة بعد نفاد (يوم)</label>
+          <input class="input" bind:value={archiveDays} inputmode="numeric" />
+        </div>
+        <button class="btn primary block" onclick={saveTargets}>حفظ الأهداف</button>
       </div>
     </Glass>
 

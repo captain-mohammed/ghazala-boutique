@@ -6,10 +6,13 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, allSettings, upcomingOccasions } from '../db.js';
-  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey, stockArrival, shelfAgeDays } from '../utils.js';
+  import TargetRing from '../components/TargetRing.svelte';
+  import { db, allSettings, upcomingOccasions, vaultState, vaultManual, archivedModels, getSetting, setSetting } from '../db.js';
+  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, baghdadMonthKey, monthRange, dayLabelFromKey, stockArrival, shelfAgeDays } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
-  import { invoicePreset, sellPrefill } from '../store.js';
+  import Sheet from '../components/Sheet.svelte';
+  import { invoicePreset, sellPrefill, toastOk, toastErr, celebrateAt } from '../store.js';
+  import { sparkFromRect } from '../motion.js';
 
   /* tilt for Glass-hosted alert buttons (Glass applies it via its action prop) */
   const tiltAlert = (node) => tilt(node, { max: 5, scale: 1.01 });
@@ -22,15 +25,18 @@
   let loaded = $state(false);
   let occasions = $state([]);
   let reservations = $state([]);
+  let vault = $state(null);
+  let moods = $state(null); // seasonMoods map — editable copy once settings arrive
 
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, s, r] = await Promise.all([db.products.toArray(), db.sales.toArray(), db.reservations.toArray()]);
+      const [p, s, r, v] = await Promise.all([db.products.toArray(), db.sales.toArray(), db.reservations.toArray(), vaultState()]);
       if (!alive) return;
       products = p;
       sales = s;
       reservations = r.filter((x) => x.status === 'active');
+      vault = v;
       loaded = true;
     };
     grab();
@@ -45,7 +51,61 @@
     return () => { alive = false; clearInterval(t); };
   });
 
-  onMount(async () => { settings = await allSettings(); });
+  onMount(async () => {
+    settings = await allSettings();
+    moods = { ...(settings.seasonMoods || {}) };
+  });
+
+  /* ---- مزاج الموسم: one mood word per month, with a real sales insight ---- */
+  const MOODS = [
+    { label: 'هادي', hex: '#9c7b6b' },
+    { label: 'أعراس', hex: '#b5495b' },
+    { label: 'رمضان', hex: '#c9a15a' },
+    { label: 'عيد', hex: '#3e6b4f' },
+    { label: 'صيف', hex: '#c07f3a' },
+    { label: 'شتاء', hex: '#232c49' },
+    { label: 'تخرج', hex: '#7a2e3a' }
+  ];
+  const monthKey = baghdadMonthKey(0);
+  const moodNow = $derived(moods?.[monthKey] || null);
+  const moodHex = $derived(moodNow ? (MOODS.find((m) => m.label === moodNow)?.hex || '#c9a15a') : null);
+  const lastMonthInsight = $derived.by(() => {
+    const key = baghdadMonthKey(1);
+    const [a, b] = monthRange(key);
+    let pieces = 0;
+    const types = new Map();
+    for (const s of sales) {
+      if (s.status === 'returned') continue;
+      const d = new Date(s.date);
+      if (d < a || d >= b) continue;
+      pieces += salePieces(s);
+      for (const it of s.items || []) {
+        const p = products.find((x) => x.sku === it.sku);
+        const t = p?.type || p?.category || 'أخرى';
+        types.set(t, (types.get(t) || 0) + (Number(it.qty) || 0));
+      }
+    }
+    if (pieces === 0) return null;
+    const top = [...types.entries()].sort((x, y) => y[1] - x[1])[0];
+    return { pieces, top: top ? top[0] : null };
+  });
+  async function setMood(label) {
+    const next = moods?.[monthKey] === label ? null : label; // same chip → clear
+    moods = { ...moods, [monthKey]: next };
+    await setSetting('seasonMoods', moods);
+    buzz(10);
+    if (next) toastOk(`مزاج ${monthLabel(monthKey)}: ${next} 🌷`);
+  }
+  function monthLabel(key) {
+    const m = Number(key.split('-')[1]);
+    return ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'][m - 1] || '';
+  }
+
+  /* ---- المدينة القديمة: sold-out too long → quiet shelf, off the alerts ---- */
+  const archived = $derived(
+    settings ? archivedModels(products, settings.archiveDays ?? 30) : []
+  );
+  const archivedSkus = $derived(new Set(archived.flatMap((a) => a.items.map((x) => x.sku))));
 
   const todaySales = $derived(sales.filter((s) => s.status !== 'returned' && isSameDay(s.date)));
   const today = $derived({
@@ -54,12 +114,13 @@
     profit: todaySales.reduce((a, s) => a + s.profit, 0)
   });
 
-  /* موديل = one internal number across ALL its color×size cards; قطع = physical pieces */
+  /* موديل = one internal number across ALL its color×size cards; قطع = physical pieces.
+     Archived (المدينة القديمة) pieces are excluded from the نفد alert count. */
   const stock = $derived({
     models: new Set(products.map((p) => p.modelId || `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`)).size,
     units: products.reduce((a, p) => a + (p.qty || 0), 0),
     value: products.reduce((a, p) => a + (p.qty || 0) * (p.cost || 0), 0),
-    out: products.filter((p) => !p.qty).length
+    out: products.filter((p) => !p.qty && !archivedSkus.has(p.sku)).length
   });
 
   /* راكد = the CURRENT shelf stock has sat longer than the threshold, counted
@@ -72,6 +133,7 @@
     return products
       .filter((p) => {
         if ((p.qty || 0) <= 0) return false;
+        if (archivedSkus.has(p.sku)) return false; // المدينة القديمة — off the radar
         const since = stockArrival(p);
         const lastSold = lm.get(p.sku) ? new Date(lm.get(p.sku)).getTime() : 0;
         if (lastSold > since) return false;
@@ -201,6 +263,61 @@
     return () => clearTimeout(beamTimer);
   });
 
+  /* الهدف اليومي: the ring celebrates exactly once a day when it fills */
+  const target = $derived(Number(settings?.dailyTarget) || 0);
+  const todayPieces = $derived(
+    sales.filter((s) => s.status !== 'returned' && isSameDay(s.date)).reduce((a, s) => a + salePieces(s), 0)
+  );
+  let ringDay = null;
+  let ringLevel = 0;
+  $effect(() => {
+    if (!(target > 0) || todayPieces < target) return;
+    const key = new Date().toDateString();
+    if (ringDay !== key) { ringDay = key; ringLevel = 0; }
+    if (ringLevel === 0) {
+      ringLevel = 1;
+      celebrateAt(window.innerWidth / 2, window.innerHeight / 2.8, '🎯');
+      toastOk(`خمّصتي هدف اليوم! ${fmtNum(target)} قطعة 🎯`, 'success', 3600);
+    }
+  });
+
+  /* الخزنة: celebrate once per goal-crossing (vaultState stamps it) */
+  let vaultHeroEl = $state(null);
+  $effect(() => {
+    if (!vault?.justReached) return;
+    celebrateAt(window.innerWidth / 2, window.innerHeight / 2.6, '👑');
+    toastOk(`الخزنة وصلت ${fmtIQD(vault.goal)}! 🎉`, 'success', 4200);
+    if (vaultHeroEl) sparkFromRect(vaultHeroEl, 22);
+  });
+
+  /* vault sheet state */
+  let vaultOpen = $state(false);
+  let vaultAmount = $state('');
+  let vaultNote = $state('');
+  async function vaultMove(kind) {
+    const a = Math.round(Number(vaultAmount) || 0);
+    if (a <= 0) { toastErr('اكتبي المبلغ أولاً'); return; }
+    await vaultManual(kind, a, vaultNote.trim());
+    vaultAmount = ''; vaultNote = '';
+    toastOk(kind === 'in' ? 'أودعتِ في الخزنة 💰' : 'سُحب من الخزنة');
+    buzz([10, 30, 10]);
+  }
+  async function restockArchived(a) {
+    const p = a.rep;
+    invoicePreset.set({
+      supplier: p.supplier || '',
+      lines: [{
+        name: p.name, category: p.category, type: p.type || '',
+        color: p.color || '', cost: p.cost, price: p.price,
+        sizes: { [String(p.size || '').trim() || '38']: 3 },
+        photo: p.photo || null,
+        modelId: p.modelId
+      }]
+    });
+    buzz(10);
+    goto('receive');
+  }
+
 </script>
 
 <div class="stack" style="gap:14px">
@@ -216,6 +333,29 @@
       <div class="a-body">
         <div class="bold small">{greeting}</div>
         <div class="muted small">{briefing.join(' • ')}</div>
+      </div>
+    </Glass>
+  {/if}
+
+  <!-- مزاج الموسم: one word per month — the dashboard quietly follows the shop's rhythm -->
+  {#if loaded}
+    <Glass class="mood rise" style="animation-delay:0.05s">
+      <div class="mood-head">
+        <span class="mood-ic" style={moodHex ? `background:${moodHex}` : ''}><Icon name="flag" size={13} color="#fff" /></span>
+        <span class="bold small">مزاج {monthLabel(monthKey)}</span>
+        {#if lastMonthInsight}
+          <span class="muted tiny">الشهر الماضي بيعنا {fmtNum(lastMonthInsight.pieces)} قطعة{lastMonthInsight.top ? ` — أكثر شيوع: ${lastMonthInsight.top}` : ''}</span>
+        {/if}
+      </div>
+      <div class="mood-chips">
+        {#each MOODS as m (m.label)}
+          <button
+            class="mood-chip"
+            class:active={moodNow === m.label}
+            style={moodNow === m.label ? `background:${m.hex}; border-color:${m.hex}; color:#fff` : ''}
+            onclick={() => setMood(m.label)}
+          >{m.label}</button>
+        {/each}
       </div>
     </Glass>
   {/if}
@@ -237,6 +377,18 @@
   {/if}
 
   <Glass class="hero rise beam-host {beamOn ? 'beam-run' : ''}" style="animation-delay:0.03s; padding:18px">
+    {#if target > 0}
+      <div class="target-row">
+        <div class="target-wrap">
+          <TargetRing value={todayPieces} {target} size={52} stroke={4.5} />
+          <span class="target-num" class:hit={todayPieces >= target}>{fmtNum(todayPieces)}</span>
+        </div>
+        <div class="target-text">
+          <div class="bold small">هدف اليوم: {fmtNum(target)} قطعة</div>
+          <div class="muted tiny">{todayPieces >= target ? 'تحققت الهدف اليوم 🎯' : `باقي ${fmtNum(Math.max(0, target - todayPieces))} قطعة`}</div>
+        </div>
+      </div>
+    {/if}
     <div class="grid2">
       <div class="stat spot" use:spotlight>
         <div class="muted small">مبيعات اليوم</div>
@@ -260,6 +412,29 @@
       </div>
     </div>
   </Glass>
+
+  <!-- خزنة الغزالة: كل بيعة تُسقّط ربحها في الخزنة بصمت -->
+  {#if loaded && vault}
+    <Glass
+      bind:this={vaultHeroEl}
+      as="button"
+      class="vault rise"
+      style="animation-delay:0.09s"
+      onclick={() => { buzz(8); vaultOpen = true; }}
+    >
+      <span class="v-ic"><Icon name="wallet" size={18} color="#fff" /></span>
+      <div class="a-body">
+        <div class="bold">الخزنة: {fmtIQD(vault.balance)}</div>
+        {#if vault.goal > 0}
+          <div class="v-bar"><i style="width:{Math.max(2, Math.min(100, (vault.balance / vault.goal) * 100))}%"></i></div>
+          <div class="muted tiny">{vault.balance >= vault.goal ? 'الهدف تحقق — مبروك! 🎉' : `هدفها ${fmtIQD(vault.goal)}`}</div>
+        {:else}
+          <div class="muted tiny">أرباح كل المبيعات، بلا مصاريف</div>
+        {/if}
+      </div>
+      <Icon name="back" size={16} color="var(--taupe)" />
+    </Glass>
+  {/if}
 
   {#if bestDay || streak >= 3 || bkKind === 'warn' || bkKind === 'bad' || bkKind === 'none'}
     <div class="medals">
@@ -351,8 +526,28 @@
     {/if}
   </section>
 
+  <!-- المدينة القديمة: موديلات نفدت من زمان — رف هادي بعيد عن التنبيهات -->
+  {#if loaded && archived.length > 0}
+    <Glass class="rise" style="animation-delay:0.18s; padding:16px">
+      <div class="row" style="justify-content:space-between; margin-bottom:8px">
+        <h2 class="h2"><Icon name="clock" size={16} color="var(--taupe)" /> المدينة القديمة</h2>
+        <span class="muted tiny">نفد من {fmtNum(settings?.archiveDays ?? 30)} يوم أو أكثر</span>
+      </div>
+      <div class="arch-row">
+        {#each archived.slice(0, 6) as a (a.key)}
+          {@const ph = a.rep.photo}
+          <div class="arch-card">
+            <span class="arch-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={18} color="var(--taupe)" />{/if}</span>
+            <span class="muted tiny">{fmtNum(Math.floor((Date.now() - a.emptySince) / 86400000))} يوم</span>
+            <button class="btn ghost arch-btn" onclick={() => restockArchived(a)}>أعيدي طلبي</button>
+          </div>
+        {/each}
+      </div>
+    </Glass>
+  {/if}
+
   {#if recent.length}
-    <Glass class="rise" style="animation-delay:0.16s; padding:16px">
+    <Glass class="rise" style="animation-delay:0.2s; padding:16px">
       <div class="row" style="justify-content:space-between; margin-bottom:10px">
         <h2 class="h2">آخر العمليات</h2>
         <button class="btn ghost" style="min-height:36px; padding:0 12px" onclick={() => goto('saleslog')}>السجل الكامل</button>
@@ -383,6 +578,45 @@
   {/if}
 </div>
 
+<!-- Vault sheet: history + manual in/out -->
+<Sheet open={vaultOpen} title="خزنة الغزالة" onclose={() => (vaultOpen = false)}>
+  {#if vault}
+    <div class="stack" style="gap:14px">
+      <div class="v-sheet-top">
+        <div class="muted small">الرصيد الحالي</div>
+        <div class="v-balance">{fmtIQD(vault.balance)}</div>
+        {#if vault.goal > 0}
+          <div class="muted tiny">الهدف {fmtIQD(vault.goal)} — {vault.balance >= vault.goal ? 'تحقق 🎉' : `باقي ${fmtIQD(Math.max(0, vault.goal - vault.balance))}`}</div>
+        {/if}
+      </div>
+
+      <div class="row" style="gap:8px">
+        <input class="input" placeholder="مبلغ" bind:value={vaultAmount} inputmode="numeric" style="flex:1" />
+        <input class="input" placeholder="سبب (اختياري)" bind:value={vaultNote} style="flex:2" />
+      </div>
+      <div class="row" style="gap:8px">
+        <button class="btn primary block" onclick={() => vaultMove('in')}><Icon name="plus" size={15} /> إيداع</button>
+        <button class="btn block" onclick={() => vaultMove('out')}><Icon name="x" size={15} /> سحب</button>
+      </div>
+
+      <div class="stack" style="gap:6px; max-height:280px; overflow-y:auto">
+        {#each vault.entries.slice(0, 30) as e (e.id)}
+          <div class="v-entry">
+            <span class="v-dot" class:in={e.kind === 'in'}></span>
+            <div class="a-body">
+              <div class="small bold">{e.kind === 'in' ? '+' : '−'}{fmtIQD(e.amount)}</div>
+              <div class="muted tiny">{e.note} • {fmtDate(e.date)}</div>
+            </div>
+          </div>
+        {/each}
+        {#if vault.entries.length === 0}
+          <div class="muted small" style="text-align:center; padding:10px">الخزنة فاضية — أول بيعة تبدأها 💰</div>
+        {/if}
+      </div>
+    </div>
+  {/if}
+</Sheet>
+
 <style>  .brand {
     display: flex;
     align-items: center;
@@ -398,6 +632,87 @@
     text-align: right; width: 100%; cursor: pointer;
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+  /* ---- مزاج الموسم ---- */
+  .mood { padding: 11px 14px; border-radius: var(--r-md); display: flex; flex-direction: column; gap: 8px; }
+  .mood-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .mood-ic {
+    width: 22px; height: 22px; border-radius: 7px;
+    background: var(--taupe);
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.3s ease;
+  }
+  .mood-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mood-chip {
+    font-family: inherit; font-size: 11.5px; font-weight: 800;
+    color: var(--ink-2);
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 4px 11px;
+    cursor: pointer;
+    transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease;
+  }
+  .mood-chip:active { transform: scale(0.92); }
+
+  /* ---- الهدف اليومي ---- */
+  .target-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .target-wrap { position: relative; flex: none; display: flex; align-items: center; justify-content: center; }
+  .target-num {
+    position: absolute; font-size: 13px; font-weight: 800; color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .target-num.hit { color: #8a6a35; }
+  .target-text { display: flex; flex-direction: column; gap: 1px; }
+
+  /* ---- خزنة الغزالة ---- */
+  :global(.vault) {
+    display: flex; align-items: center; gap: 12px;
+    padding: 13px 15px; border-radius: var(--r-md);
+    text-align: right; width: 100%; cursor: pointer;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  :global(.vault:active) { transform: scale(0.98); }
+  .v-ic {
+    flex: none; width: 40px; height: 40px; border-radius: 13px;
+    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 12px rgba(122, 46, 58, 0.3);
+  }
+  .v-bar {
+    height: 5px; border-radius: 999px; margin: 4px 0 3px;
+    background: rgba(122, 46, 58, 0.12);
+    overflow: hidden;
+  }
+  .v-bar i {
+    display: block; height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, var(--gold), #a4803e);
+    transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .v-sheet-top { text-align: center; display: flex; flex-direction: column; gap: 2px; }
+  .v-balance { font-size: 26px; font-weight: 800; color: var(--burgundy); }
+  .v-entry { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--r-sm); background: rgba(255, 255, 255, 0.35); border: 1px solid var(--line); }
+  .v-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--taupe); }
+  .v-dot.in { background: var(--good); }
+
+  /* ---- المدينة القديمة ---- */
+  .arch-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; }
+  .arch-card {
+    flex: none; width: 118px;
+    display: flex; flex-direction: column; align-items: center; gap: 5px;
+    padding: 10px 8px;
+    border-radius: var(--r-sm);
+    background: rgba(255, 255, 255, 0.35);
+    border: 1px solid var(--line);
+  }
+  .arch-thumb {
+    width: 56px; height: 56px; border-radius: 12px; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(156, 123, 107, 0.1);
+    filter: grayscale(0.35); opacity: 0.85;
+  }
+  .arch-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .arch-btn { min-height: 28px; padding: 0 10px; font-size: 11.5px; }
+
   :global(.brief) {
     display: flex; align-items: center; gap: 11px;
     padding: 11px 14px; border-radius: var(--r-md);
