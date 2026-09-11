@@ -146,6 +146,10 @@
       tried = true;
       buzz([30, 40, 30]);
       toastErr(`مطلوب: ${missing.slice(0, 3).join('، ')}${missing.length > 3 ? '…' : ''}`);
+      /* مرّري العين لأول حقل ناقص — الحفظ الفاشل لا يُترك بلا وجهة */
+      await new Promise((r) => setTimeout(r, 60));
+      const firstBad = document.querySelector('.err-line, .photo-tile.need, .color-block.bad');
+      firstBad?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
     try {
@@ -191,7 +195,11 @@
             } else if (q > 0) {
               await updateProduct(twin.sku, {
                 qty: (twin.qty || 0) + q, cost: base.cost, price: base.price,
-                type: twin.type || base.type, season: twin.season || base.season,
+                type: twin.type || base.type,
+                typeSub: twin.typeSub || base.typeSub || '',
+                typeSub2: twin.typeSub2 || base.typeSub2 || '',
+                typeSub3: twin.typeSub3 || base.typeSub3 || '',
+                season: twin.season || base.season,
                 material: twin.material || base.material, photo: twin.photo || base.photo,
                 modelId: twin.modelId || freshId
               });

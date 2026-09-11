@@ -51,7 +51,7 @@
   <Glass class="rise" style="animation-delay:0.03s; padding:16px">
     <div class="row" style="gap:8px; margin-bottom:12px">
       <div class="field" style="flex:1">
-        <label>المبلغ (د.ع) <span class="muted tiny">— 5 = 5,000</span></label>
+        <label>المبلغ (د.ع)</label>
         <input class="input" bind:value={amount} inputmode="numeric" placeholder="0" />
       </div>
       <div class="field" style="flex:1">

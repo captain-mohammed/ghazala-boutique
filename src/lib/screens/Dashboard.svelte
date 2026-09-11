@@ -426,7 +426,7 @@
       <div class="a-body">
         <div class="bold">الخزنة: {fmtIQD(vault.balance)}</div>
         {#if vault.goal > 0}
-          <div class="v-bar"><i style="width:{Math.max(2, Math.min(100, (vault.balance / vault.goal) * 100))}%"></i></div>
+          <div class="v-bar"><i style="width:{vault.balance > 0 ? Math.max(2, Math.min(100, (vault.balance / vault.goal) * 100)) : 0}%"></i></div>
           <div class="muted tiny">{vault.balance >= vault.goal ? 'الهدف تحقق — مبروك! 🎉' : `هدفها ${fmtIQD(vault.goal)}`}</div>
         {:else}
           <div class="muted tiny">أرباح كل المبيعات، بلا مصاريف</div>

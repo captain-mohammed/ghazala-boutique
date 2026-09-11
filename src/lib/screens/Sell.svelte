@@ -10,7 +10,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3 } from '../db.js';
+  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters, filtersOpen } from '../store.js';
@@ -532,8 +532,12 @@
             {#if p.photo}<img src={p.photo} alt={p.name} />{:else}<Icon name="box" size={24} color="var(--taupe)" />{/if}
           </div>
           <div class="pinfo">
-            <div class="pname">{p.name}</div>
-            <div class="pmeta muted small">{[p.type, p.typeSub, p.typeSub2, p.typeSub3, p.color || p.category].filter(Boolean).join(' • ')}</div>
+            <!-- سلسلة النوع هي العنوان بجانب الصورة — واللون تحتها بدائرته -->
+            <div class="pname">{[p.type, p.typeSub, p.typeSub2, p.typeSub3].filter(Boolean).join(' • ') || p.name}</div>
+            <div class="pmeta muted small">
+              {#if p.color}<i class="pdot" style="background:{hexForColor(p.color, opts.colors)}"></i>{/if}
+              {p.color || p.category}
+            </div>
             <div class="psizes muted tiny">مقاسات: {sizesLabel(p)}</div>
             <div class="prow">
               <span class="pprice">{fmtIQD(p.price)}</span>
@@ -701,7 +705,7 @@
 
     <div class="row" style="gap:10px">
       <div class="field" style="flex:1">
-        <label>أجور التوصيل (د.ع) <span class="muted tiny">— 5 = 5,000</span></label>
+        <label>أجور التوصيل (د.ع)</label>
         <input class="input" bind:value={fee} inputmode="decimal" />
       </div>
       <div class="field" style="flex:1">
@@ -781,6 +785,11 @@
   .sort-note { margin-top: -4px; }
 
   .grid { display: flex; flex-direction: column; gap: 10px; padding-bottom: 150px; }
+  .pdot {
+    display: inline-block; width: 10px; height: 10px;
+    border-radius: 50%; border: 1px solid var(--line-2);
+    margin-inline-end: 4px; vertical-align: -1px;
+  }
   :global(.pcard) {
     display: flex;
     align-items: center;

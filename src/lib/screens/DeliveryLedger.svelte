@@ -166,7 +166,7 @@
     </div>
     <hr class="divider-gold" style="margin:12px 0 10px" />
     <div class="field">
-      <label>أجور التوصيل الافتراضية (د.ع) <span class="muted tiny">— الآلاف: اكتب 5 = 5,000</span></label>
+      <label>أجور التوصيل الافتراضية (د.ع)</label>
       <div class="row" style="gap:8px">
         <input class="input" bind:value={fee} inputmode="decimal" style="flex:1" />
         <button class="btn primary" onclick={saveFee}>حفظ</button>

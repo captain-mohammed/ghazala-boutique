@@ -183,7 +183,7 @@
         </div>
       </div>
       <div class="field">
-        <label>أجور التوصيل (د.ع) <span class="muted tiny">— 5 = 5,000</span></label>
+        <label>أجور التوصيل (د.ع)</label>
         <input class="input" bind:value={fee} inputmode="decimal" />
       </div>
       <button class="btn primary lg block" onclick={doConvert}>
