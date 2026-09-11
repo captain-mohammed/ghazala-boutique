@@ -348,9 +348,15 @@
               {:else}
                 <Icon name="image" size={34} color="var(--taupe)" />
               {/if}
-              {#if g.qty === 0}<span class="oos-flag">نفد</span>{/if}
+              <!-- النفد أو الكمية: شارة وسيطة أسفل الصورة -->
+              {#if g.qty === 0}
+                <span class="thumb-badge oos">نفد</span>
+              {:else}
+                <span class="thumb-badge">{fmtNum(g.qty)}</span>
+              {/if}
             </div>
             <div class="card-body">
+              <!-- الدوائر يميناً كبيرة، والمعلومات يساراً -->
               {#if g.colorRows.some((cr) => cr.color)}
                 <div class="card-colors">
                   {#each g.colorRows as cr (cr.color)}
@@ -360,12 +366,22 @@
                     </span>
                   {/each}
                 </div>
+                <div class="card-info">
+                  {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, g.typeSub, g.typeSub2, g.typeSub3].filter(Boolean).join(' - ')}</div>{/if}
+                  <div class="card-sizes muted">
+                    <span class="sz-label">القياسات المتوفر:</span>
+                    {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
+                  </div>
+                </div>
+              {:else}
+                <div class="card-info solo">
+                  {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, g.typeSub, g.typeSub2, g.typeSub3].filter(Boolean).join(' - ')}</div>{/if}
+                  <div class="card-sizes muted">
+                    <span class="sz-label">القياسات المتوفر:</span>
+                    {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
+                  </div>
+                </div>
               {/if}
-              {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, g.typeSub, g.typeSub2, g.typeSub3].filter(Boolean).join(' - ')}</div>{/if}
-              <div class="card-sizes muted">
-                <span class="sz-label">القياسات المتوفر:</span>
-                {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
-              </div>
             </div>
             <div class="card-price">{fmtIQD(g.price)}</div>
           </Glass>
@@ -501,31 +517,65 @@
   }
   .thumb.oos { opacity: 0.75; }
   .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .oos-flag {
+  /* شارة وسيطة أسفل الصورة: الكمية أو «نفد» */
+  .thumb-badge {
     position: absolute;
     bottom: 8px;
-    left: 8px;
-    font-size: 10.5px;
+    left: 50%;
+    transform: translateX(-50%);
+    min-width: 26px;
+    font-size: 11px;
     font-weight: 800;
-    color: #fff;
-    background: rgba(122, 46, 58, 0.92);
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--line);
     border-radius: 999px;
     padding: 3px 10px;
+    box-shadow: 0 2px 8px rgba(58, 26, 32, 0.14);
+    font-variant-numeric: tabular-nums;
   }
-  .card-body { padding: 10px 12px 6px; display: flex; flex-direction: column; gap: 6px; flex: 1; align-items: center; text-align: center; }
-  .card-colors { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-  /* الدائرة فوق والكمية تحتها — أوضح وأجمل من سطر واحد */
-  .cc-item { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
-  .cc-dot { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
-  .cc-qty { color: var(--ink-2); font-weight: 800; font-size: 10.5px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .thumb-badge.oos {
+    color: #fff;
+    background: rgba(122, 46, 58, 0.92);
+    border-color: transparent;
+    letter-spacing: 0.5px;
+  }
+  /* الدوائر يسار البطاقة — والألوان الجديدة تتزايد نحو اليمين */
+  .card-body { padding: 10px 12px 6px; display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: stretch; gap: 12px; flex: 1; }
+  /* حاوية الدوائر: تتمركز داخلها نفسها، وتمتد بطول منطقة المعلومات */
+  .card-colors {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    justify-content: center;
+    max-height: 96px;
+    min-width: 58px;
+    padding: 8px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: rgba(255, 255, 255, 0.35);
+    align-content: center;
+  }
+  .cc-item { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
+  .cc-dot { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
+  .cc-qty { color: var(--ink-2); font-weight: 800; font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .card-info { flex: 1; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: right; min-width: 0; }
+  .card-info.solo { align-items: center; text-align: center; width: 100%; }
   .card-type { font-weight: 800; font-size: 13.5px; color: var(--ink); }
   .card-sizes { font-size: 10.5px; line-height: 1.6; }
   .sz-label { font-weight: 800; color: var(--taupe); }
   .card-price {
-    margin: 6px 12px 12px;
-    border-top: 1px solid var(--line);
-    padding-top: 9px;
-    text-align: center;
+    margin: 8px 12px 12px;
+    border-top: 1.5px solid var(--line-2);
+    padding-top: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     font-weight: 800;
     font-size: 15.5px;
     color: var(--burgundy);
