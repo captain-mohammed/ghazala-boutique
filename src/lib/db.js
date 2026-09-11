@@ -377,12 +377,13 @@ export async function settleSale(id) {
   await db.sales.update(id, { settledAt: new Date().toISOString() });
 }
 
-/* Money currently held by delivery companies (delivered but not yet settled) */
+/* Money currently held by delivery companies (delivered but not yet settled).
+   بضعة البوتيك فقط — أجرة التوصيل تجوزها الزبونة للشركة مباشرة */
 export async function moneyInTransit() {
   const sales = await db.sales.toArray();
   return sales
     .filter((s) => s.status !== 'returned' && !s.settledAt)
-    .reduce((a, s) => a + (Number(s.total) || 0), 0);
+    .reduce((a, s) => a + (Number(s.subtotal) || 0), 0);
 }
 
 export async function returnSale(id) {

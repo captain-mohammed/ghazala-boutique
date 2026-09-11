@@ -64,7 +64,9 @@
       const key = s.deliveryCompany || 'بدون شركة';
       const cur = m.get(key) || { company: key, count: 0, amount: 0, sales: [] };
       cur.count++;
-      cur.amount += Number(s.total) || 0;
+      /* المبلغ مع الشركة يشمل أجرة التوصيل — الزبونة ستدفعها للشركة،
+         والبوتيك يسترد بضعه فقط (المجموع) */
+      cur.amount += Number(s.subtotal) || 0;
       cur.sales.push(s);
       m.set(key, cur);
     }
@@ -80,7 +82,7 @@
       .sort((a, b) => new Date(b.settledAt) - new Date(a.settledAt))
       .slice(0, 10)
   );
-  const settledTotal = $derived(settled.reduce((a, s) => a + (Number(s.total) || 0), 0));
+  const settledTotal = $derived(settled.reduce((a, s) => a + (Number(s.subtotal) || 0), 0));
 
   function groupOf(company) {
     return byCompany.find((c) => c.company === company);
@@ -97,7 +99,7 @@
       if (s.customerPhone) lines.push(`   📞 ${s.customerPhone}`);
       const area = [s.province, s.address].filter(Boolean).join(' — ');
       if (area) lines.push(`   📍 ${area}`);
-      lines.push(`   💰 المبلغ: ${fmtIQD(s.total)}`);
+      lines.push(`   💰 المبلغ: ${fmtIQD(s.total)}`); /* الشركة تحصن الإجمالي من الزبونة */
       if (s.barcode) lines.push(`   #️⃣ ${s.barcode}`);
       lines.push('');
     }
@@ -216,7 +218,7 @@
             <div class="hist-row">
               <span class="bold small">#{s.id} {s.customerName || 'زبون'}</span>
               <span class="muted tiny">{s.deliveryCompany || 'بدون شركة'}</span>
-              <span class="money small">{fmtIQD(s.total)}</span>
+              <span class="money small">{fmtIQD(s.subtotal)}</span>
               <span class="muted tiny">{fmtDate(s.settledAt)}</span>
             </div>
           {/each}
@@ -247,7 +249,7 @@
               <div class="bold small">#{s.id} {s.customerName || 'زبون'}</div>
               <div class="muted tiny">{s.status === 'delivered' ? 'تم التسليم' : 'قيد التوصيل'}{s.barcode ? ' - ' + s.barcode : ''}</div>
             </div>
-            <div class="money small">{fmtIQD(s.total)}</div>
+            <div class="money small">{fmtIQD(s.subtotal)}</div>
           </Glass>
         {/each}
       </div>

@@ -80,7 +80,7 @@
       converting = null;
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.8, '🛍️');
-      toastOk(`تم البيع #${sale.id} — ${fmtIQD(sale.total)}`);
+      toastOk(`تم البيع — ${fmtIQD(sale.subtotal)}`);
       const sold = await piecesSoldToday();
       const ms = milestoneFor(sold);
       if (ms) {

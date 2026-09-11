@@ -45,7 +45,7 @@
 
   const totals = $derived({
     count: inPeriod.length,
-    revenue: inPeriod.reduce((a, s) => a + s.total, 0),
+    revenue: inPeriod.reduce((a, s) => a + s.subtotal, 0),
     profit: inPeriod.reduce((a, s) => a + s.profit, 0),
     fees: inPeriod.reduce((a, s) => a + (s.deliveryFee || 0), 0),
     expenses: expenses.filter((e) => new Date(e.date) >= from).reduce((a, e) => a + (Number(e.amount) || 0), 0),
@@ -60,7 +60,7 @@
       const next = new Date(d); next.setDate(d.getDate() + 1);
       const total = sales
         .filter((s) => s.status !== 'returned' && new Date(s.date) >= d && new Date(s.date) < next)
-        .reduce((a, s) => a + s.total, 0);
+        .reduce((a, s) => a + (s.subtotal ?? s.total), 0);
       days.push({ d, total });
     }
     return days;
@@ -371,7 +371,7 @@
                 <div class="small bold">{s.customer || 'بدون اسم'}{s.phone ? ` - ${s.phone}` : ''}</div>
                 <div class="muted tiny">{fmtDate(s.date)} - {fmtNum(salePieces(s))} قطعة</div>
               </div>
-              <span class="money">{fmtIQD(s.total)}</span>
+              <span class="money">{fmtIQD(s.subtotal)}</span>
             </div>
           {/each}
         </div>

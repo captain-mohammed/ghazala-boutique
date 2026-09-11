@@ -144,7 +144,7 @@
   const todaySales = $derived(sales.filter((s) => s.status !== 'returned' && isSameDay(s.date)));
   const today = $derived({
     count: todaySales.length,
-    total: todaySales.reduce((a, s) => a + s.total, 0),
+    total: todaySales.reduce((a, s) => a + s.subtotal, 0),
     profit: todaySales.reduce((a, s) => a + s.profit, 0)
   });
 
@@ -249,11 +249,11 @@
 
   const recent = $derived([...sales].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 4));
 
-  /* Money currently held by delivery companies (not yet settled) */
+  /* Money currently held by delivery companies (not yet settled) — بضعة البوتيك فقط */
   const transit = $derived(
     sales
       .filter((s) => s.status !== 'returned' && !s.settledAt)
-      .reduce((a, s) => a + (Number(s.total) || 0), 0)
+      .reduce((a, s) => a + (Number(s.subtotal) || 0), 0)
   );
   const transitCount = $derived(sales.filter((s) => s.status !== 'returned' && !s.settledAt).length);
 
@@ -604,7 +604,7 @@
               <div class="muted small">{fmtNum(salePieces(s))} قطعة</div>
               {#if s.items?.length}<VariantBits dense variants={s.items} />{/if}
             </div>
-            <div class="money">{fmtIQD(s.total)}</div>
+            <div class="money">{fmtIQD(s.subtotal)}</div>
           </div>
         {/each}
       </div>

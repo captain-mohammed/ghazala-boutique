@@ -180,7 +180,7 @@
           <span class="s-ic"><Icon name={s.status === 'returned' ? 'undo' : 'truck'} size={19} color="var(--burgundy)" /></span>
           <div class="a-body">
             <div class="row" style="gap:8px">
-              <span class="bold">#{s.id} {s.customerName || 'زبون'}</span>
+              <span class="bold">{s.customerName || 'زبون'}</span>
               <span class="st {STATUS[s.status]?.cls}">{STATUS[s.status]?.label}</span>
             </div>
             <div class="muted small">{fmtDate(s.date)} - {fmtNum(salePieces(s))} قطعة {s.barcode ? '- ' + s.barcode : ''}</div>
@@ -189,7 +189,7 @@
             {/if}
           </div>
           <div class="col" style="align-items:flex-end; gap:6px">
-            <div class="money">{fmtIQD(s.total)}</div>
+            <div class="money">{fmtIQD(s.subtotal)}</div>
             {#if waEligible(s)}
               <span
                 class="wa-chip"
@@ -215,7 +215,7 @@
     <div class="stack" style="gap:12px">
       <Glass class="head-card">
         <div class="row" style="justify-content:space-between">
-          <span class="bold">#{detail.id} — {detail.customerName || 'زبون'}</span>
+          <span class="bold">{detail.customerName || 'زبون'}</span>
           <span class="st {STATUS[detail.status]?.cls}">{STATUS[detail.status]?.label}</span>
         </div>
         <div class="muted small">{fmtDate(detail.date)}</div>
@@ -252,10 +252,10 @@
 
       <Glass style="padding:12px 16px; display:flex; flex-direction:column; gap:5px">
         <div class="row" style="justify-content:space-between"><span class="muted small">المجموع</span><span class="money">{fmtIQD(detail.subtotal)}</span></div>
-        <div class="row" style="justify-content:space-between"><span class="muted small">التوصيل</span><span class="money">{fmtIQD(detail.deliveryFee)}</span></div>
+        <div class="row" style="justify-content:space-between"><span class="muted small">أجور التوصيل (تدفعها الزبونة للشركة)</span><span class="money muted">{fmtIQD(detail.deliveryFee)}</span></div>
         <hr class="divider-gold" style="margin:2px 0" />
-        <div class="row" style="justify-content:space-between"><span class="bold">الإجمالي</span><span class="money" style="color:var(--burgundy)">{fmtIQD(detail.total)}</span></div>
-        <div class="row" style="justify-content:space-between"><span class="muted small">الربح</span><span class="money" style="color:var(--good)">{fmtIQD(detail.profit)}</span></div>
+        <div class="row" style="justify-content:space-between"><span class="bold">إجمالي الفاتورة</span><span class="money" style="color:var(--burgundy)">{fmtIQD(detail.total)}</span></div>
+        <div class="row" style="justify-content:space-between"><span class="muted small">ربح البوتيك (يدخل الخزنة)</span><span class="money" style="color:var(--good)">{fmtIQD(detail.profit)}</span></div>
       </Glass>
 
       {#if waEligible(detail)}
