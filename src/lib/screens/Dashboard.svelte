@@ -337,8 +337,8 @@
     </Glass>
   {/if}
 
-  <!-- مزاج الموسم: one word per month — the dashboard quietly follows the shop's rhythm -->
-  {#if loaded}
+  <!-- مزاج الموسم: يظهر عندما يتنفس البوتيك — لا قبل أول موديل -->
+  {#if loaded && products.length > 0}
     <Glass class="mood rise" style="animation-delay:0.05s">
       <div class="mood-head">
         <span class="mood-ic" style={moodHex ? `background:${moodHex}` : ''}><Icon name="flag" size={13} color="#fff" /></span>
@@ -567,7 +567,7 @@
       </div>
     </Glass>
   {:else if loaded && products.length === 0}
-    <div style="animation-delay:0.16s">
+    <div style="animation-delay:0.16s; margin-bottom:96px">
       <EmptyState
         title="ابدأ بجرد بوتيكك"
         subtitle="أضيفي أول حذاء من تبويب المخزون — كل شيء يبقى محفوظاً في جهازك"

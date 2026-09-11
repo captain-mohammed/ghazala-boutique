@@ -1,5 +1,6 @@
 <script>
   import { fade, fly } from 'svelte/transition';
+  import { onDestroy } from 'svelte';
   import { getSetting, setSetting, allSettings } from '../db.js';
   import { hashPin, buzz } from '../utils.js';
   import { toastErr, toastOk } from '../store.js';
@@ -13,8 +14,11 @@
   let pin = $state('');
   let firstPin = $state('');
   let error = $state(false);
+  let success = $state(false);
   let cool = $state(0);
   let tries = 0;
+  let coolTimer = null;
+  onDestroy(() => clearInterval(coolTimer));
 
   const hasPin = $state({ v: false });
 
@@ -29,16 +33,23 @@
   const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', 'del'];
 
   function press(k) {
-    if (cool > 0 || k === '') return;
+    if (cool > 0 || k === '' || success) return;
     buzz(8);
     if (k === 'del') { pin = pin.slice(0, -1); return; }
-    if (pin.length >= 6) return;
+    if (pin.length >= 4) return; /* 4 نقاط فقط — لا أرقام خفية خلفها */
     pin += k;
     if (pin.length === 4) setTimeout(judge, 140);
   }
 
+  /* لوحة مفاتيح الحاسوب: الأرقام والـ Backspace تعمل كالأزرار */
+  function onKey(e) {
+    if (mode === 'loading' || cool > 0) return;
+    if (/^[0-9]$/.test(e.key)) press(e.key);
+    else if (e.key === 'Backspace') press('del');
+  }
+
   async function judge() {
-    const code = pin;
+    const code = pin.slice(0, 4);
     if (mode === 'set') {
       firstPin = code;
       mode = 'set2';
@@ -51,28 +62,34 @@
         return;
       }
       await setSetting('pin', await hashPin(code));
-      toastOk('تم تعيين الرقم السري');
-      buzz([30, 60, 30]);
-      onunlock();
+      await win();
     } else if (mode === 'unlock') {
       const ok = (await hashPin(code)) === (await getSetting('pin', null));
       if (ok) {
-        buzz([30, 60, 30]);
-        toastOk('مرحباً بعودتك 👋');
-        onunlock();
+        await win('مرحباً بعودتك 👋');
       } else {
         fail('رقم سري خاطئ');
         tries++;
         if (tries % 3 === 0) {
           cool = 30;
-          const t = setInterval(() => {
+          clearInterval(coolTimer);
+          coolTimer = setInterval(() => {
             cool--;
-            if (cool <= 0) clearInterval(t);
+            if (cool <= 0) clearInterval(coolTimer);
           }, 1000);
         }
         pin = '';
       }
     }
+  }
+
+  /* لحظة النجاح: النقاط تذهب ذهباً ثم يدخل التطبيق — إحساس لا مجرد قفزة */
+  async function win(msg = 'تم تعيين الرقم السري') {
+    success = true;
+    toastOk(msg);
+    buzz([30, 60, 30]);
+    await new Promise((r) => setTimeout(r, 480));
+    onunlock();
   }
 
   function fail(msg) {
@@ -82,7 +99,9 @@
   }
 </script>
 
-<div class="lock" class:shake={error}>
+<svelte:window onkeydown={onKey} />
+
+<div class="lock" class:shake={error} class:win={success}>
   <div class="lock-inner" in:fade={{ duration: 300 }}>
     <div class="floaty" use:tilt={{ max: 14, scale: 1.06 }}><Logo size={86} /></div>
     <div class="wordmark shimmer-text">GHAZALA BOUTIQUE</div>
@@ -97,15 +116,18 @@
       <p class="prompt">…</p>
     {/if}
 
-    <div class="dots" class:err={error}>
+    <div class="dots" class:err={error} class:gold={success}>
       {#each Array(4) as _, i}
         <span class="dot" class:fill={i < pin.length} style={i < pin.length ? 'animation: dot-in .32s cubic-bezier(.34,1.56,.64,1) both' : ''}></span>
       {/each}
     </div>
-
     {#if cool > 0}
       <p class="muted small">انتظر {cool} ثانية…</p>
     {:else}
+      <p class="hint-key muted tiny">لوحة الأرقام أو Backspace من لوحة المفاتيح تعمل أيضاً</p>
+    {/if}
+
+    {#if cool <= 0}
       <div class="pad">
         {#each KEYS as k, i (i)}
           {#if k === 'del'}
@@ -180,6 +202,18 @@
     box-shadow: 0 3px 10px rgba(181, 73, 91, 0.4);
   }
   .dots.err .dot { border-color: var(--burgundy-deep); }
+  .dots.gold .dot.fill {
+    background: var(--gold);
+    border-color: var(--gold);
+    box-shadow: 0 3px 14px rgba(201, 161, 90, 0.55);
+    animation: dot-win .45s cubic-bezier(.34, 1.56, .64, 1) both;
+  }
+  @keyframes dot-win {
+    0% { transform: scale(1.15); }
+    50% { transform: scale(1.45); }
+    100% { transform: scale(1.2); }
+  }
+  .hint-key { margin: -6px 0 10px; opacity: 0.75; user-select: none; }
   .pad {
     display: grid;
     grid-template-columns: repeat(3, 72px);
@@ -202,4 +236,5 @@
     box-shadow: 0 4px 14px rgba(122, 46, 58, 0.08);
   }
   .key:active { transform: scale(0.88); background: var(--accent-soft); }
+  .lock.win .pad .key { opacity: 0.35; pointer-events: none; transition: opacity .3s; }
 </style>
