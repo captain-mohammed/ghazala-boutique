@@ -57,19 +57,58 @@
     return () => { alive = false; clearInterval(t); };
   });
 
-  /* ---- مزاج الموسم: كلمات المستونة فقط — الألوان القديمة تبقى مفهومة ---- */
+  /* ---- مزاج الموسم: كل كلمة لها لونها ورمزها واحتفالها ---- */
   const MOODS = [
-    { label: 'هادي', hex: '#9c7b6b' },
-    { label: 'أعراس', hex: '#b5495b' },
-    { label: 'رمضان', hex: '#c9a15a' },
-    { label: 'عيد', hex: '#3e6b4f' },
-    { label: 'صيف', hex: '#c07f3a' },
-    { label: 'شتاء', hex: '#232c49' },
-    { label: 'تخرج', hex: '#7a2e3a' }
+    { label: 'هادي', hex: '#9c7b6b', emoji: '🌿', t: 'rgba(156,123,107,0.10)' },
+    { label: 'أعراس', hex: '#b5495b', emoji: '💍', t: 'rgba(181,73,91,0.12)' },
+    { label: 'رمضان', hex: '#c9a15a', emoji: '🌙', t: 'rgba(201,161,90,0.14)' },
+    { label: 'عيد', hex: '#3e6b4f', emoji: '✨', t: 'rgba(62,107,79,0.11)' },
+    { label: 'صيف', hex: '#c07f3a', emoji: '☀️', t: 'rgba(192,127,58,0.12)' },
+    { label: 'شتاء', hex: '#232c49', emoji: '❄️', t: 'rgba(35,44,73,0.10)' },
+    { label: 'تخرج', hex: '#7a2e3a', emoji: '🎓', t: 'rgba(122,46,58,0.12)' }
   ];
   const monthKey = baghdadMonthKey(0);
   const moodNow = $derived(moods?.[monthKey] || null);
-  const moodHex = $derived(moodNow ? (MOODS.find((m) => m.label === moodNow)?.hex || '#c9a15a') : null);
+  /* كلماتها الخاصة تأخذ شخصيتها من اسمها — نفس الكلمة = نفس اللون دائماً */
+  const CUSTOM_FACES = [
+    { hex: '#c2586f', emoji: '💝', t: 'rgba(194,88,111,0.12)' },
+    { hex: '#b8860b', emoji: '🌟', t: 'rgba(184,134,11,0.13)' },
+    { hex: '#6b7f3e', emoji: '🍀', t: 'rgba(107,127,62,0.11)' },
+    { hex: '#7d5ba6', emoji: '🦋', t: 'rgba(125,91,166,0.11)' },
+    { hex: '#3e7a8a', emoji: '🌊', t: 'rgba(62,122,138,0.11)' },
+    { hex: '#c0632e', emoji: '🔥', t: 'rgba(192,99,46,0.12)' }
+  ];
+  const moodFace = (label) => {
+    const known = MOODS.find((m) => m.label === label);
+    if (known) return known;
+    let h = 0;
+    for (const ch of String(label)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+    return CUSTOM_FACES[h % CUSTOM_FACES.length];
+  };
+  const moodDef = $derived(moodNow ? moodFace(moodNow) : null);
+  const moodHex = $derived(moodDef?.hex || null);
+  const moodEmoji = $derived(moodDef?.emoji || null);
+  const moodTint = $derived(moodDef?.t || null);
+  /* وميض احتفالي عند اختيار المزاج — الرمز ينطلق من الزر نفسه */
+  let moodFx = $state(null); // { key, emoji, hex }
+  async function setMood(label, evt) {
+    const next = moods?.[monthKey] === label ? null : label; // same chip → clear
+    moods = { ...moods, [monthKey]: next };
+    await setSetting('seasonMoods', moods);
+    buzz(next ? [12, 40, 12] : 8);
+    if (next) {
+      const def = moodFace(next);
+      const emoji = def.emoji;
+      const hex = def.hex;
+      const r = evt?.currentTarget?.getBoundingClientRect();
+      const x = r ? r.left + r.width / 2 : window.innerWidth / 2;
+      const y = r ? r.top : window.innerHeight / 2.5;
+      celebrateAt(x, y - 8, emoji, { x, y });
+      moodFx = { key: Date.now(), emoji, hex };
+      setTimeout(() => (moodFx = null), 1400);
+      toastOk(`مزاج ${monthLabel(monthKey)}: ${next} ${emoji}`);
+    }
+  }
   const lastMonthInsight = $derived.by(() => {
     const key = baghdadMonthKey(1);
     const [a, b] = monthRange(key);
@@ -90,13 +129,7 @@
     const top = [...types.entries()].sort((x, y) => y[1] - x[1])[0];
     return { pieces, top: top ? top[0] : null };
   });
-  async function setMood(label) {
-    const next = moods?.[monthKey] === label ? null : label; // same chip → clear
-    moods = { ...moods, [monthKey]: next };
-    await setSetting('seasonMoods', moods);
-    buzz(10);
-    if (next) toastOk(`مزاج ${monthLabel(monthKey)}: ${next} 🌷`);
-  }
+
   function monthLabel(key) {
     const m = Number(key.split('-')[1]);
     return ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'][m - 1] || '';
@@ -340,10 +373,19 @@
 
   <!-- مزاج الموسم: يظهر عندما يتنفس البوتيك — لا قبل أول موديل -->
   {#if loaded && products.length > 0}
-    <Glass class="mood rise" style="animation-delay:0.05s">
+    <Glass class="mood rise {moodTint ? 'washing' : ''}" style="animation-delay:0.05s; {moodTint ? `--mood-tint:${moodTint}; --mood-hex:${moodHex}` : ''}">
+      {#if moodFx}
+        {#key moodFx.key}
+          <div class="mood-fx" style="--fx-hex:{moodFx.hex}">
+            <span class="fx-ring"></span>
+            <span class="fx-emoji">{moodFx.emoji}</span>
+          </div>
+        {/key}
+      {/if}
       <div class="mood-head">
-        <span class="mood-ic" style={moodHex ? `background:${moodHex}` : ''}><Icon name="flag" size={13} color="#fff" /></span>
+        <span class="mood-ic" class:beat={!!moodNow} style={moodHex ? `background:${moodHex}` : ''}><Icon name="flag" size={13} color="#fff" /></span>
         <span class="bold small">مزاج {monthLabel(monthKey)}</span>
+        {#if moodNow}<span class="mood-word" style="color:{moodHex}">{moodEmoji} {moodNow}</span>{/if}
         {#if lastMonthInsight}
           <span class="muted tiny">الشهر الماضي بيعنا {fmtNum(lastMonthInsight.pieces)} قطعة{lastMonthInsight.top ? ` — أكثر شيوع: ${lastMonthInsight.top}` : ''}</span>
         {/if}
@@ -354,7 +396,7 @@
             class="mood-chip"
             class:active={moodNow === w}
             style={moodNow === w ? `background:${moodHex}; border-color:${moodHex}; color:#fff` : ''}
-            onclick={() => setMood(w)}
+            onclick={(e) => setMood(w, e)}
           >{w}</button>
         {/each}
       </div>
@@ -654,6 +696,67 @@
     transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.2s ease;
   }
   .mood-chip:active { transform: scale(0.92); }
+
+  /* ---- انيميشن المزاج: غسلة لون حية + انفجار الرمز من الزر ---- */
+  :global(.mood.washing) {
+    position: relative;
+    overflow: hidden;
+  }
+  :global(.mood.washing)::before {
+    content: '';
+    position: absolute; inset: -40%;
+    background:
+      radial-gradient(38% 55% at 25% 30%, var(--mood-tint), transparent 70%),
+      radial-gradient(42% 58% at 78% 65%, var(--mood-tint), transparent 72%);
+    animation: mood-aurora 7s ease-in-out infinite alternate;
+    pointer-events: none;
+  }
+  @keyframes mood-aurora {
+    0% { transform: translateX(-4%) rotate(-2deg) scale(1); opacity: 0.75; }
+    50% { transform: translateX(4%) rotate(2deg) scale(1.08); opacity: 1; }
+    100% { transform: translateX(-3%) rotate(-1deg) scale(1.04); opacity: 0.8; }
+  }
+  .mood-fx {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+    z-index: 2;
+  }
+  .fx-ring {
+    position: absolute; width: 70px; height: 70px; border-radius: 50%;
+    border: 2.5px solid var(--fx-hex);
+    opacity: 0.9;
+    animation: fx-ring 0.9s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  @keyframes fx-ring {
+    0% { transform: scale(0.3); opacity: 0.95; }
+    100% { transform: scale(2.6); opacity: 0; }
+  }
+  .fx-emoji {
+    font-size: 34px;
+    animation: fx-pop 1.1s cubic-bezier(0.22, 1.4, 0.36, 1) forwards;
+    filter: drop-shadow(0 4px 14px rgba(58, 26, 32, 0.25));
+  }
+  @keyframes fx-pop {
+    0% { transform: scale(0.4) translateY(6px); opacity: 0; }
+    30% { transform: scale(1.25) translateY(0); opacity: 1; }
+    70% { transform: scale(1) translateY(-6px); opacity: 1; }
+    100% { transform: scale(0.9) translateY(-22px); opacity: 0; }
+  }
+  .mood-word {
+    font-weight: 900; font-size: 12.5px;
+    animation: word-in 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  @keyframes word-in {
+    from { opacity: 0; transform: translateY(5px) scale(0.9); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  :global(.mood-ic.beat) { animation: ic-beat 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  @keyframes ic-beat {
+    0%, 100% { transform: scale(1); }
+    35% { transform: scale(1.28) rotate(-6deg); }
+    65% { transform: scale(1.12) rotate(3deg); }
+  }
 
   /* ---- الهدف اليومي ---- */
   .target-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
