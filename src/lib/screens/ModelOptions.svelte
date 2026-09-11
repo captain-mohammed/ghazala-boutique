@@ -1,7 +1,7 @@
 <script>
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
-  import { setSetting, modelOptions } from '../db.js';
+  import { setSetting, modelOptions, subsOfType, subsOfType2, subsOfType3 } from '../db.js';
   import { buzz } from '../utils.js';
   import { toastOk } from '../store.js';
 
@@ -12,6 +12,12 @@
   let newMaterial = $state('');
   let newColorName = $state('');
   let newColorHex = $state('#b5495b');
+  let subFor = $state('');    // النوع المفتوح لتحرير قائمته الفرعية
+  let newSub = $state('');
+  let sub2For = $state('');   // التفصيل المفتوح لتحرير قائمته الثالثة
+  let newSub2 = $state('');
+  let sub3For = $state('');   // تفصيل أدق المفتوح لتحرير قائمته الرابعة
+  let newSub3 = $state('');
 
   (async () => { opts = await modelOptions(); })();
 
@@ -31,6 +37,14 @@
   }
   async function rm(listKey, name) {
     opts = { ...opts, [listKey]: opts[listKey].filter((x) => x !== name) };
+    if (listKey === 'types') {
+      /* حذف النوع يمحو شجرته كاملة — الأبناء يتبعون الأب */
+      const t1 = { ...(opts.typeSubs || {}) }; delete t1[name];
+      const t2 = { ...(opts.typeSubs2 || {}) }; delete t2[name];
+      const t3 = { ...(opts.typeSubs3 || {}) }; delete t3[name];
+      opts = { ...opts, typeSubs: t1, typeSubs2: t2, typeSubs3: t3 };
+      await setSetting('typeSubs', t1); await setSetting('typeSubs2', t2); await setSetting('typeSubs3', t3);
+    }
     await save(listKey, opts[listKey], 'حُذف');
   }
   async function addColor() {
@@ -48,6 +62,89 @@
   async function recolor(label, hex) {
     opts = { ...opts, colors: opts.colors.map((c) => (c.label === label ? { ...c, hex } : c)) };
     await save('modelColors', opts.colors, 'دُبطت درجة اللون');
+  }
+
+  /* ---- القوائم الفرعية تحت النوع (بوت ← كعب عالي…) — عدديها كما تحبين ---- */
+  async function addSub(type, name) {
+    const n = String(name || '').trim();
+    if (!n || !type) return;
+    const subs = opts.typeSubs?.[type] || [];
+    if (subs.includes(n)) { newSub = ''; return; }
+    const next = { ...opts.typeSubs, [type]: [...subs, n] };
+    opts = { ...opts, typeSubs: next };
+    newSub = '';
+    await save('typeSubs', next, 'أُضيفت للقائمة الفرعية');
+  }
+  async function rmSub(type, name) {
+    const subs = (opts.typeSubs?.[type] || []).filter((x) => x !== name);
+    const next = { ...opts.typeSubs, [type]: subs };
+    const next2 = { ...opts.typeSubs2 };
+    if (next2[type]) { delete next2[type][name]; /* الأبناء يتبعون الأب */ }
+    const next3 = { ...(opts.typeSubs3 || {}) };
+    if (next3[type]) { delete next3[type][name]; }
+    opts = { ...opts, typeSubs: next, typeSubs2: next2, typeSubs3: next3 };
+    if (sub2For === name) sub2For = '';
+    await save('typeSubs', next, 'حُذفت من القائمة الفرعية');
+    await setSetting('typeSubs2', next2);
+    await setSetting('typeSubs3', next3);
+  }
+
+  /* ---- القوائم الثالثة تحت التفصيل (بوت ← كعب عالي ← جيب جانبي…) ---- */
+  async function addSub2(type, sub, name) {
+    const n = String(name || '').trim();
+    if (!n || !type || !sub) return;
+    const tree = { ...(opts.typeSubs2 || {}) };
+    const leaf = { ...(tree[type] || {}) };
+    const list = leaf[sub] || [];
+    if (list.includes(n)) { newSub2 = ''; return; }
+    leaf[sub] = [...list, n];
+    tree[type] = leaf;
+    opts = { ...opts, typeSubs2: tree };
+    newSub2 = '';
+    await save('typeSubs2', tree, 'أُضيفت للقائمة الثالثة');
+  }
+  async function rmSub2(type, sub, name) {
+    const tree = { ...(opts.typeSubs2 || {}) };
+    const leaf = { ...(tree[type] || {}) };
+    leaf[sub] = (leaf[sub] || []).filter((x) => x !== name);
+    tree[type] = leaf;
+    const tree3 = { ...(opts.typeSubs3 || {}) };
+    if (tree3[type]?.[sub]) {
+      const leaf3 = { ...tree3[type][sub] };
+      delete leaf3[name];
+      tree3[type] = { ...tree3[type], [sub]: leaf3 };
+    }
+    opts = { ...opts, typeSubs2: tree, typeSubs3: tree3 };
+    if (sub3For === name) sub3For = '';
+    await save('typeSubs2', tree, 'حُذفت من القائمة الثالثة');
+    await setSetting('typeSubs3', tree3);
+  }
+
+  /* ---- القوائم الرابعة تحت تفصيل أدق ---- */
+  async function addSub3(type, sub, sub2, name) {
+    const n = String(name || '').trim();
+    if (!n || !type || !sub || !sub2) return;
+    const tree = { ...(opts.typeSubs3 || {}) };
+    const branch = { ...(tree[type] || {}) };
+    const leaf = { ...(branch[sub] || {}) };
+    const list = leaf[sub2] || [];
+    if (list.includes(n)) { newSub3 = ''; return; }
+    leaf[sub2] = [...list, n];
+    branch[sub] = leaf;
+    tree[type] = branch;
+    opts = { ...opts, typeSubs3: tree };
+    newSub3 = '';
+    await save('typeSubs3', tree, 'أُضيفت للقائمة الرابعة');
+  }
+  async function rmSub3(type, sub, sub2, name) {
+    const tree = { ...(opts.typeSubs3 || {}) };
+    const branch = { ...(tree[type] || {}) };
+    const leaf = { ...(branch[sub] || {}) };
+    leaf[sub2] = (leaf[sub2] || []).filter((x) => x !== name);
+    branch[sub] = leaf;
+    tree[type] = branch;
+    opts = { ...opts, typeSubs3: tree };
+    await save('typeSubs3', tree, 'حُذفت من القائمة الرابعة');
   }
 </script>
 
@@ -84,6 +181,96 @@
       <div class="row" style="gap:8px">
         <input class="input" style="flex:1" bind:value={newType} placeholder="نوع جديد…" onkeydown={(e) => e.key === 'Enter' && add('types', (v) => (newType = v), newType)} />
         <button class="btn" onclick={() => add('types', (v) => (newType = v), newType)}><Icon name="plus" size={16} /> إضافة</button>
+      </div>
+
+      <!-- القوائم الفرعية: بعد النوع تظهر قائمة ثانية (بوت ← كعب عالي…) -->
+      <div class="stack" style="gap:8px; margin-top:14px; padding-top:12px; border-top:1px dashed var(--line)">
+        <div class="muted tiny bold">القوائم الفرعية — أربعة مستويات: نوع ← تفصيل ← تفصيل أدق ← تفصيل أخير (تُعرف في الفلاتر والفورم والبطاقات)</div>
+        {#each opts.types as t (t)}
+          {@const subs = opts.typeSubs?.[t] || []}
+          <div class="sub-block">
+            <button type="button" class="sub-toggle" onclick={() => { subFor = subFor === t ? '' : t; newSub = ''; }}>
+              <Icon name={subFor === t ? 'x' : 'list'} size={13} color="var(--burgundy)" />
+              <b>{t}</b>
+              <span class="muted tiny">{subs.length ? `${subs.length} فرعي` : 'بلا قائمة فرعية'}</span>
+              <i class="sub-chev" class:open={subFor === t}></i>
+            </button>
+            {#if subFor === t}
+              {#if subs.length}
+                <div class="row wrap" style="gap:6px; margin-top:7px">
+                  {#each subs as st (st)}
+                    <span class="chip on">
+                      {st}
+                      <button class="opt-x" onclick={() => rmSub(t, st)} aria-label="حذف {st}"><Icon name="x" size={12} color="#fff" /></button>
+                    </span>
+                  {/each}
+                </div>
+              {/if}
+              <div class="row" style="gap:8px; margin-top:7px">
+                <input class="input" style="flex:1" bind:value={newSub} placeholder={`فرعي جديد تحت «${t}»…`} onkeydown={(e) => e.key === 'Enter' && addSub(t, newSub)} />
+                <button class="btn" onclick={() => addSub(t, newSub)}><Icon name="plus" size={15} /> إضافة</button>
+              </div>
+
+              <!-- القائمة الثالثة: تحت كل تفصيل قائمة خاصة به -->
+              {#each subs as st (st)}
+                {@const subs2 = subsOfType2(opts.typeSubs2, t, st)}
+                <div class="sub-block" style="margin-top:7px; padding-inline-start:14px">
+                  <button type="button" class="sub-toggle" onclick={() => { sub2For = sub2For === st ? '' : st; newSub2 = ''; }}>
+                    <Icon name={sub2For === st ? 'x' : 'list'} size={12} color="var(--gold)" />
+                    <b>{st}</b>
+                    <span class="muted tiny">{subs2.length ? `${subs2.length} ثالث` : 'بلا قائمة ثالثة'}</span>
+                    <i class="sub-chev" class:open={sub2For === st}></i>
+                  </button>
+                  {#if sub2For === st}
+                    {#if subs2.length}
+                      <div class="row wrap" style="gap:6px; margin-top:6px">
+                        {#each subs2 as st2 (st2)}
+                          <span class="chip on">
+                            {st2}
+                            <button class="opt-x" onclick={() => rmSub2(t, st, st2)} aria-label="حذف {st2}"><Icon name="x" size={12} color="#fff" /></button>
+                          </span>
+                        {/each}
+                      </div>
+                    {/if}
+                    <div class="row" style="gap:8px; margin-top:6px">
+                      <input class="input" style="flex:1" bind:value={newSub2} placeholder={`ثالث جديد تحت «${st}»…`} onkeydown={(e) => e.key === 'Enter' && addSub2(t, st, newSub2)} />
+                      <button class="btn" onclick={() => addSub2(t, st, newSub2)}><Icon name="plus" size={14} /> إضافة</button>
+                    </div>
+
+                    <!-- القائمة الرابعة: تحت كل تفصيل أدق قائمتها الخاصة -->
+                    {#each subs2 as st2 (st2)}
+                      {@const subs3 = subsOfType3(opts.typeSubs3, t, st, st2)}
+                      <div class="sub-block" style="margin-top:6px; padding-inline-start:14px">
+                        <button type="button" class="sub-toggle" onclick={() => { sub3For = sub3For === st2 ? '' : st2; newSub3 = ''; }}>
+                          <Icon name={sub3For === st2 ? 'x' : 'list'} size={11} color="var(--gold)" />
+                          <b>{st2}</b>
+                          <span class="muted tiny">{subs3.length ? `${subs3.length} رابع` : 'بلا قائمة رابعة'}</span>
+                          <i class="sub-chev" class:open={sub3For === st2}></i>
+                        </button>
+                        {#if sub3For === st2}
+                          {#if subs3.length}
+                            <div class="row wrap" style="gap:6px; margin-top:6px">
+                              {#each subs3 as st3 (st3)}
+                                <span class="chip on">
+                                  {st3}
+                                  <button class="opt-x" onclick={() => rmSub3(t, st, st2, st3)} aria-label="حذف {st3}"><Icon name="x" size={12} color="#fff" /></button>
+                                </span>
+                              {/each}
+                            </div>
+                          {/if}
+                          <div class="row" style="gap:8px; margin-top:6px">
+                            <input class="input" style="flex:1" bind:value={newSub3} placeholder={`رابع جديد تحت «${st2}»…`} onkeydown={(e) => e.key === 'Enter' && addSub3(t, st, st2, newSub3)} />
+                            <button class="btn" onclick={() => addSub3(t, st, st2, newSub3)}><Icon name="plus" size={14} /> إضافة</button>
+                          </div>
+                        {/if}
+                      </div>
+                    {/each}
+                  {/if}
+                </div>
+              {/each}
+            {/if}
+          </div>
+        {/each}
       </div>
     </Glass>
 
@@ -181,4 +368,23 @@
     padding: 4px;
     cursor: pointer;
   }
+
+  .sub-block { display: flex; flex-direction: column; }
+  .sub-toggle {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(255, 255, 255, 0.4);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 9px 12px;
+    font-family: inherit; font-size: 13px; color: var(--ink);
+    cursor: pointer;
+  }
+  .sub-toggle b { flex: none; }
+  .sub-toggle span { flex: 1; text-align: right; }
+  .sub-chev {
+    width: 8px; height: 8px;
+    border-inline-end: 2px solid var(--taupe); border-bottom: 2px solid var(--taupe);
+    transform: rotate(-45deg); transition: transform 0.2s ease;
+  }
+  .sub-chev.open { transform: rotate(45deg); }
 </style>

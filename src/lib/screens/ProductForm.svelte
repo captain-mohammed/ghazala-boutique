@@ -3,7 +3,7 @@
   import Glass from '../components/Glass.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
-  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId } from '../db.js';
+  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3 } from '../db.js';
   import { fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
   import { toastOk, toastErr, celebrateAt } from '../store.js';
 
@@ -15,12 +15,15 @@
   /* الصورة هي الهوية — لا اسم موديل. يُشتق اسم داخلي من النوع واللون فقط
      لغرض تجميع بطاقات نفس الموديل (الألوان × المقاسات) ودمج الاستلامات. */
   const autoName = $derived(
-    [type, selColors[0] && selColors[0] !== NOCOLOR ? selColors[0] : ''].filter(Boolean).join(' ') ||
+    [type, typeSub, typeSub2, typeSub3, selColors[0] && selColors[0] !== NOCOLOR ? selColors[0] : ''].filter(Boolean).join(' ') ||
     category ||
     'موديل'
   );
   let category = $state(product?.category ?? '');
   let type = $state(product?.type ?? '');
+  let typeSub = $state(product?.typeSub ?? ''); // القائمة الثانية تحت النوع
+  let typeSub2 = $state(product?.typeSub2 ?? ''); // القائمة الثالثة تحت التفصيل
+  let typeSub3 = $state(product?.typeSub3 ?? ''); // القائمة الرابعة تحت تفصيل أدق
   let brand = $state(product?.brand ?? '');
   let season = $state(product?.season ?? '');
   let material = $state(product?.material ?? '');
@@ -33,10 +36,9 @@
   let byColor = $state({});   // label → { size: qty }
   let siblings = $state([]);  // loaded existing variants (edit mode)
 
-  let opts = $state({ categories: [], types: [], seasons: [], materials: [], colors: [] });
+  let opts = $state({ categories: [], types: [], seasons: [], materials: [], colors: [], typeSubs: {} });
   (async () => {
     opts = await modelOptions();
-    if (!category) category = opts.categories[0] || 'نسائية';
     if (product) {
       /* group by the internal model number — الصورة هي الهوية، والرقم هو الجامع */
       const all = await db.products.toArray();
@@ -92,6 +94,14 @@
       byColor = { ...byColor, [label]: byColor[label] || {} };
     }
   }
+
+  /* القائمة الفرعية تتغير مع النوع — والقيمة القديمة تُمسح إذا خرجت عن القائمة */
+  const subsNow = $derived(subsOfType(opts.typeSubs, type));
+  $effect(() => { if (typeSub && !subsNow.includes(typeSub)) typeSub = ''; });
+  const subs2Now = $derived(subsOfType2(opts.typeSubs2, type, typeSub));
+  $effect(() => { if (typeSub2 && !subs2Now.includes(typeSub2)) typeSub2 = ''; });
+  const subs3Now = $derived(subsOfType3(opts.typeSubs3, type, typeSub, typeSub2));
+  $effect(() => { if (typeSub3 && !subs3Now.includes(typeSub3)) typeSub3 = ''; });
 
   const baseSizes = $derived(SIZE_RUNS[category] || SIZE_RUNS['نسائية']);
   const colorPieces = (c) => Object.values(byColor[c] || {}).reduce((a, n) => a + (Number(n) || 0), 0);
@@ -156,7 +166,8 @@
       }
       if (!freshId) freshId = await nextModelId();
       const base = {
-        name: (product?.name || '').trim() || autoName, category, type, brand: brand.trim(),
+        name: (product?.name || '').trim() || autoName, category, type, typeSub, typeSub2, typeSub3,
+        brand: brand.trim(),
         season, material, cost: iqd(cost), price: iqd(price), photo: img, notes: notes.trim(),
         modelId: freshId
       };
@@ -221,25 +232,22 @@
 </script>
 
 <div class="stack" style="gap:14px">
-  <!-- الصورة أولاً: هي هوية الموديل في كل التطبيق -->
-  <div class="row nm-row" style="gap:12px">
-    <div class="field" style="flex:1">
-      <label>صورة الموديل * <span class="muted tiny">— هي هوية الموديل في كل مكان</span></label>
-      <div class="photo-wrap">
-        <button type="button" class="photo-tile" class:has={!!img} class:need={isMissing('الصورة')} onclick={() => camInput?.click()}>
-          {#if img}
-            <img src={img} alt="preview" />
-            <span class="re-take"><Icon name="image" size={12} /> تغيير</span>
-          {:else}
-            <Icon name="image" size={24} color="var(--taupe)" />
-            <span class="ph-txt">صوّري</span>
-          {/if}
-        </button>
-        {#if img}<span class="ph-x-wrap"><button type="button" class="ph-x" aria-label="إزالة الصورة" onclick={() => { img = null; }}><Icon name="x" size={13} /></button></span>{/if}
-        <input type="file" accept="image/*" capture="environment" style="display:none" bind:this={camInput} onchange={onPhoto} />
-      </div>
-      {#if isMissing('الصورة')}<span class="err-line">الصورة مطلوبة — صوّري الحذاء</span>{/if}
+  <!-- الصورة أولاً: أوسع، بالمنتصف، هي هوية الموديل -->
+  <div class="field photo-field">
+    <div class="photo-wrap">
+      <button type="button" class="photo-tile" class:has={!!img} class:need={isMissing('الصورة')} onclick={() => camInput?.click()}>
+        {#if img}
+          <img src={img} alt="preview" />
+          <span class="re-take"><Icon name="image" size={13} /> تغيير</span>
+        {:else}
+          <Icon name="image" size={40} color="var(--taupe)" />
+          <span class="ph-txt">صوّري الحذاء</span>
+        {/if}
+      </button>
+      {#if img}<span class="ph-x-wrap"><button type="button" class="ph-x" aria-label="إزالة الصورة" onclick={() => { img = null; }}><Icon name="x" size={13} /></button></span>{/if}
+      <input type="file" accept="image/*" capture="environment" style="display:none" bind:this={camInput} onchange={onPhoto} />
     </div>
+    {#if isMissing('الصورة')}<span class="err-line">الصورة مطلوبة — صوّري الحذاء</span>{/if}
   </div>
 
   <div class="field">
@@ -259,6 +267,39 @@
       {/each}
     </div>
   </div>
+
+  {#if type && subsNow.length}
+    <div class="field">
+      <label>التفصيل <span class="muted tiny">— {type}</span></label>
+      <div class="row wrap" style="gap:8px">
+        {#each subsNow as st (st)}
+          <button type="button" class="chip" class:on={typeSub === st} onclick={() => (typeSub = typeSub === st ? '' : st)}>{st}</button>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if type && typeSub && subs2Now.length}
+    <div class="field">
+      <label>تفصيل أدق <span class="muted tiny">— {typeSub}</span></label>
+      <div class="row wrap" style="gap:8px">
+        {#each subs2Now as st2 (st2)}
+          <button type="button" class="chip" class:on={typeSub2 === st2} onclick={() => (typeSub2 = typeSub2 === st2 ? '' : st2)}>{st2}</button>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
+  {#if type && typeSub && typeSub2 && subs3Now.length}
+    <div class="field">
+      <label>تفصيل أخير <span class="muted tiny">— {typeSub2}</span></label>
+      <div class="row wrap" style="gap:8px">
+        {#each subs3Now as st3 (st3)}
+          <button type="button" class="chip" class:on={typeSub3 === st3} onclick={() => (typeSub3 = typeSub3 === st3 ? '' : st3)}>{st3}</button>
+        {/each}
+      </div>
+    </div>
+  {/if}
 
   <div class="field">
     <label>تصنيف الموسم *</label>
@@ -298,11 +339,11 @@
 
   <div class="row" style="gap:10px">
     <div class="field" style="flex:1">
-      <label>سعر التكلفة (د.ع) * <span class="muted tiny">— 18 = 18,000</span></label>
+      <label>سعر التكلفة (د.ع) *</label>
       <input class="input" style={bad('التكلفة')} bind:value={cost} inputmode="decimal" placeholder="0" />
     </div>
     <div class="field" style="flex:1">
-      <label>سعر البيع (د.ع) * <span class="muted tiny">— 32 = 32,000</span></label>
+      <label>سعر البيع (د.ع) *</label>
       <input class="input" style={bad('سعر البيع')} bind:value={price} inputmode="decimal" placeholder="0" />
     </div>
   </div>
@@ -359,11 +400,14 @@
 </div>
 
 <style>
-  :global(.nm-row) { align-items: flex-start; }
+
   .photo-tile.need { border-color: rgba(181, 73, 91, 0.6); box-shadow: 0 0 0 3px rgba(181, 73, 91, 0.1); }
   .photo-wrap { position: relative; display: inline-flex; }
+  /* الصورة بالمنتصف وأوسع — تشوفين الحذاء بوضوح */
+  .photo-field { align-items: center; display: flex; flex-direction: column; gap: 6px; }
+  .photo-field .photo-wrap { margin-inline: auto; }
   .photo-tile {
-    width: 86px; height: 86px;
+    width: 148px; height: 148px;
     border-radius: var(--r-md);
     border: 1.5px dashed var(--line-2);
     background: linear-gradient(150deg, rgba(255, 255, 255, 0.6), rgba(181, 73, 91, 0.06));
@@ -376,7 +420,7 @@
   .photo-tile:active { transform: scale(0.95); }
   .photo-tile.has { border-style: solid; border-color: rgba(181, 73, 91, 0.45); }
   .photo-tile img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .ph-txt { font-size: 10.5px; font-weight: 800; color: var(--taupe); }
+  .ph-txt { font-size: 12px; font-weight: 800; color: var(--taupe); }
   .re-take {
     position: absolute; bottom: 4px; inset-inline-start: 4px;
     display: inline-flex; align-items: center; gap: 3px;

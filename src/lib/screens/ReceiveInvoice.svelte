@@ -3,7 +3,7 @@
   import Glass from '../components/Glass.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
-  import { receiveBatch, modelOptions, SIZE_RUNS } from '../db.js';
+  import { receiveBatch, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3 } from '../db.js';
   import { fmtNum, fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, celebrateAt, invoicePreset } from '../store.js';
@@ -51,7 +51,7 @@
     const last = lines[lines.length - 1];
     if (!last) { addLine(); return; }
     lines = [...lines, blank({
-      category: last.category, type: last.type, season: last.season, material: last.material,
+      category: last.category, type: last.type, typeSub: last.typeSub || '', typeSub2: last.typeSub2 || '', typeSub3: last.typeSub3 || '', season: last.season, material: last.material,
       color: '', cost: last.cost, price: last.price, photo: last.photo, modelId: last.modelId || ++uid /* placeholder؛ يُثبَّت عند الحفظ */
     })];
     buzz(8);
@@ -87,7 +87,7 @@
       const r = await receiveBatch({
         supplier, invoice, note,
         lines: good.map((l) => ({
-          name: lineAutoName(l), category: l.category, type: l.type, season: l.season, material: l.material, color: l.color,
+          name: lineAutoName(l), category: l.category, type: l.type, typeSub: l.typeSub || '', typeSub2: l.typeSub2 || '', typeSub3: l.typeSub3 || '', season: l.season, material: l.material, color: l.color,
           cost: iqd(l.cost), price: iqd(l.price),
           sizes: l.sizes, photo: l.photo,
           modelId: typeof l.modelId === 'string' && l.modelId.startsWith('M-') ? l.modelId : undefined
@@ -161,7 +161,40 @@
             <label>النوع</label>
             <div class="row wrap" style="gap:8px">
               {#each opts.types as t (t)}
-                <button type="button" class="chip" class:on={l.type === t} onclick={() => (l.type = l.type === t ? '' : t)}>{t}</button>
+                <button type="button" class="chip" class:on={l.type === t} onclick={() => { l.type = l.type === t ? '' : t; l.typeSub = ''; l.typeSub2 = ''; }}>{t}</button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        {#if l.type && subsOfType(opts.typeSubs, l.type).length}
+          <div class="field">
+            <label>التفصيل <span class="muted tiny">— {l.type}</span></label>
+            <div class="row wrap" style="gap:8px">
+              {#each subsOfType(opts.typeSubs, l.type) as st (st)}
+                <button type="button" class="chip" class:on={l.typeSub === st} onclick={() => { l.typeSub = l.typeSub === st ? '' : st; l.typeSub2 = ''; l.typeSub3 = ''; }}>{st}</button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        {#if l.type && l.typeSub && subsOfType2(opts.typeSubs2, l.type, l.typeSub).length}
+          <div class="field">
+            <label>تفصيل أدق <span class="muted tiny">— {l.typeSub}</span></label>
+            <div class="row wrap" style="gap:8px">
+              {#each subsOfType2(opts.typeSubs2, l.type, l.typeSub) as st2 (st2)}
+                <button type="button" class="chip" class:on={l.typeSub2 === st2} onclick={() => { l.typeSub2 = l.typeSub2 === st2 ? '' : st2; l.typeSub3 = ''; }}>{st2}</button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+
+        {#if l.type && l.typeSub && l.typeSub2 && subsOfType3(opts.typeSubs3, l.type, l.typeSub, l.typeSub2).length}
+          <div class="field">
+            <label>تفصيل أخير <span class="muted tiny">— {l.typeSub2}</span></label>
+            <div class="row wrap" style="gap:8px">
+              {#each subsOfType3(opts.typeSubs3, l.type, l.typeSub, l.typeSub2) as st3 (st3)}
+                <button type="button" class="chip" class:on={l.typeSub3 === st3} onclick={() => (l.typeSub3 = l.typeSub3 === st3 ? '' : st3)}>{st3}</button>
               {/each}
             </div>
           </div>
@@ -193,11 +226,11 @@
 
         <div class="row" style="gap:10px">
           <div class="field" style="flex:1">
-            <label>التكلفة (د.ع) <span class="muted tiny">— 18 = 18,000</span></label>
+            <label>التكلفة (د.ع)</label>
             <input class="input" bind:value={l.cost} inputmode="decimal" placeholder="0" />
           </div>
           <div class="field" style="flex:1">
-            <label>سعر البيع (د.ع) <span class="muted tiny">— 32 = 32,000</span></label>
+            <label>سعر البيع (د.ع)</label>
             <input class="input" bind:value={l.price} inputmode="decimal" placeholder="0" />
           </div>
         </div>

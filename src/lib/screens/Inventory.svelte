@@ -7,7 +7,7 @@
   import Glass from '../components/Glass.svelte';
   import ProductForm from './ProductForm.svelte';
   import ItemDetail from './ItemDetail.svelte';
-  import { db, modelOptions, hexForColor, deleteProducts, modelGroupKey } from '../db.js';
+  import { db, modelOptions, hexForColor, deleteProducts, modelGroupKey, subsOfType, subsOfType2, subsOfType3 } from '../db.js';
   import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl } from '../utils.js';
   import { toastErr, toastOk, askConfirm, invoicePreset, catalogFilters, filtersOpen } from '../store.js';
   import { get } from 'svelte/store';
@@ -38,13 +38,37 @@
     return () => { alive = false; clearInterval(t); };
   });
 
+  /* نوع ذو شجرة: بوت ← كعب عالي ← جيب جانبي… — كل مستوى بصف مستأنف في القائمة */
+  /* بادئة صامتة لكل مستوى (محارف صفرية العرض) — الفحص دائماً الأطول أولاً */
+  const TYPE_SEP = '\u200b', TYPE_SEP2 = '\u200b\u200b', TYPE_SEP3 = '\u200b\u200b\u200b';
+  const typeRows = $derived.by(() => {
+    const rows = [];
+    for (const t of opts.types) {
+      rows.push({ value: t, label: t, icon: 'list', count: products.filter((p) => p.type === t).length });
+      for (const st of subsOfType(opts.typeSubs, t)) {
+        rows.push({ value: TYPE_SEP + st, label: '↳ ' + st, icon: 'list', count: products.filter((p) => p.typeSub === st).length });
+        for (const st2 of subsOfType2(opts.typeSubs2, t, st)) {
+          rows.push({ value: TYPE_SEP2 + st2, label: '↳ ' + st2, icon: 'list', count: products.filter((p) => p.typeSub2 === st2).length });
+          for (const st3 of subsOfType3(opts.typeSubs3, t, st, st2))
+            rows.push({ value: TYPE_SEP3 + st3, label: '↳ ' + st3, icon: 'list', count: products.filter((p) => p.typeSub3 === st3).length });
+        }
+      }
+    }
+    return rows;
+  });
+  const matchType = (p, tv) => {
+    if (String(tv).startsWith(TYPE_SEP3)) return p.typeSub3 === tv.slice(3);
+    if (String(tv).startsWith(TYPE_SEP2)) return p.typeSub2 === tv.slice(2);
+    if (String(tv).startsWith(TYPE_SEP)) return p.typeSub === tv.slice(1);
+    return p.type === tv;
+  };
   const cats = $derived.by(() => [
     { value: 'الكل', label: 'الكل', icon: 'dots', count: products.length, clear: true },
     ...[...new Set(products.map((p) => p.category))].map((c) => ({ value: c, label: c, icon: 'tag', count: products.filter((p) => p.category === c).length }))
   ]);
   const types = $derived.by(() => [
     { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => p.type).length, clear: true },
-    ...opts.types.map((t) => ({ value: t, label: t, icon: 'list', count: products.filter((p) => p.type === t).length }))
+    ...typeRows
   ]);
   const seasons = $derived.by(() => [
     { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => p.season).length, clear: true },
@@ -65,7 +89,7 @@
   const groups = $derived.by(() => {
     let list = products;
     if (f.cat !== 'الكل') list = list.filter((p) => p.category === f.cat);
-    if (f.typ !== 'الكل') list = list.filter((p) => p.type === f.typ);
+    if (f.typ !== 'الكل') list = list.filter((p) => matchType(p, f.typ));
     if (f.season !== 'الكل') list = list.filter((p) => p.season === f.season);
     if (f.q.trim()) {
       const s = f.q.trim().toLowerCase();
@@ -100,7 +124,7 @@
         key: modelGroupKey(lead),
         items, qty, price, lead,
         name: lead.name, category: lead.category,
-        type: lead.type, season: lead.season, material: lead.material,
+        type: lead.type, typeSub: lead.typeSub || '', typeSub2: lead.typeSub2 || '', typeSub3: lead.typeSub3 || '', season: lead.season, material: lead.material,
         photo: items.find((x) => x.photo)?.photo || null,
         createdAt: Math.max(...items.map((x) => new Date(x.createdAt || 0).getTime())),
         colorRows,
@@ -155,7 +179,6 @@
   let editing = $state(null);
   let detailGroup = $state(null);
   let openSku = $state(null);
-  let photoGate = $state(false);
   let formPhoto = $state(null);
   let wraps = $state([]); // card host elements — for pinning the long-press menu below its card
 
@@ -166,26 +189,8 @@
     showForm = true;
     buzz(8);
   }
-  /* photo-first: the camera asks before the form does */
-  function openAddFlow() {
-    photoGate = true;
-    buzz(8);
-  }
-  async function gatePhoto(e) {
-    const f = e.target.files?.[0];
-    e.target.value = '';
-    if (!f) return;
-    try {
-      formPhoto = await fileToPhotoDataUrl(f, 640);
-      photoGate = false;
-      openAdd();
-    } catch { toastErr('تعذّرت قراءة الصورة'); }
-  }
-  function gateSkip() {
-    photoGate = false;
-    formPhoto = null;
-    openAdd();
-  }
+  /* الصورة إجبارية داخل الفورم نفسه — لا بوابة وسيطة */
+  const openAddFlow = openAdd;
   function openEdit(p) {
     editing = p;
     formPhoto = null;
@@ -206,13 +211,21 @@
 
   /* ---- Long-press power moves: menu fixed below the selected card,
           everything else behind a soft blur veil ---- */
-  let quickOps = $state(null); // { g, top }
+  let quickOps = $state(null); // { g, top, left } — pinned centered under its card
 
   function onLongPress(e, g, node) {
     const r = node?.getBoundingClientRect?.();
-    const below = r ? Math.min(r.bottom + 8, window.innerHeight - 190) : window.innerHeight / 3;
+    if (!r) { quickOps = { g, top: window.innerHeight / 3, left: window.innerWidth / 2 }; buzz([18, 40, 18]); return; }
+    /* CENTER of the card — the menu never drifts: it opens centered below,
+       clamped to stay fully on screen (18px margins, menu ≈ 230px wide). */
+    const cx = r.left + r.width / 2;
+    const halfW = 115; // ~half of the 230px menu
+    const left = Math.max(halfW + 10, Math.min(window.innerWidth - halfW - 10, cx));
+    const estH = 118;
+    let top = r.bottom + 8;
+    if (top + estH > window.innerHeight - 14) top = Math.max(64, r.top - estH - 8); // flip above if no room
     buzz([18, 40, 18]);
-    quickOps = { g, top: Math.max(below, 70) };
+    quickOps = { g, top, left };
   }
   /* delete a whole model (all its colors & sizes) — from the card, long-press menu, or detail sheet */
   async function askDelete(g) {
@@ -250,7 +263,7 @@
         const sizes = {};
         for (const sz of cr.sizes) if (sz.qty === 0) sizes[sz.size] = 2;
         return {
-          name: g.name, category: g.category, type: g.type || '', season: g.season || '',
+          name: g.name, category: g.category, type: g.type || '', typeSub: g.typeSub || '', typeSub2: g.typeSub2 || '', typeSub3: g.typeSub3 || '', season: g.season || '',
           material: g.material || '', color: cr.color,
           cost: g.lead.cost, price: g.price, sizes, photo: cr.sizes.find((s) => s.p?.photo)?.p?.photo || g.photo,
           modelId: g.lead.modelId
@@ -343,12 +356,12 @@
                   {#each g.colorRows as cr (cr.color)}
                     <span class="cc-item" title="{cr.color} — {fmtNum(cr.qty)} قطعة">
                       <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
-                      <b>{fmtNum(cr.qty)}</b>
+                      <b class="cc-qty">{fmtNum(cr.qty)}</b>
                     </span>
                   {/each}
                 </div>
               {/if}
-              {#if g.type}<div class="card-type">{g.type}</div>{/if}
+              {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, g.typeSub, g.typeSub2, g.typeSub3].filter(Boolean).join(' • ')}</div>{/if}
               <div class="card-sizes muted">
                 <span class="sz-label">القياسات المتوفر:</span>
                 {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
@@ -366,7 +379,7 @@
      screen behind a shared-blur veil (only card + menu stay clear) -->
 {#if quickOps}
   <div class="qp-backdrop" onclick={() => (quickOps = null)} aria-hidden="true"></div>
-  <div class="quickops pop" style="top:{quickOps.top}px">
+  <div class="quickops" style="top:{quickOps.top}px; left:{quickOps.left}px">
     <div class="qo-row">
       <button class="qo-btn" onclick={qoDetails}><Icon name="list" size={15} /> تفصيل</button>
       <button class="qo-btn gold" onclick={qoRestock}><Icon name="upload" size={15} /> استلام</button>
@@ -379,20 +392,6 @@
 {/if}
 
 <SpeedDial actions={dialActions} onselect={onDial} label="إجراءات المخزون" />
-
-<!-- Photo-first gate: snap the shoe, the photo rides the whole form -->
-<Sheet open={photoGate} title="صوّري الموديل أولاً" onclose={gateSkip}>
-  <div class="stack" style="gap:14px; text-align:center">
-    <div class="muted small">صورة الحذاء تعرفين بيها الموديل بعدين — تنتقل معك عبر كل خطوات الإضافة</div>
-    <label class="gate-cam">
-      <Icon name="image" size={34} color="var(--burgundy)" />
-      <span class="bold">افتحي الكاميرا</span>
-      <span class="muted tiny">أو المعرض على الهاتف</span>
-      <input type="file" accept="image/*" capture="environment" style="display:none" onchange={gatePhoto} />
-    </label>
-    <button class="btn block" onclick={gateSkip}>بدون صورة</button>
-  </div>
-</Sheet>
 
 <Sheet open={showForm} title={editing ? 'تعديل موديل' : 'إضافة موديل جديد'} onclose={() => { showForm = false; editing = null; }}>
   <ProductForm product={editing} photo={formPhoto} ondone={() => { showForm = false; editing = null; formPhoto = null; }} />
@@ -513,11 +512,12 @@
     border-radius: 999px;
     padding: 3px 10px;
   }
-  .card-body { padding: 10px 12px 6px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
-  .card-colors { display: flex; flex-wrap: wrap; gap: 6px; }
-  .cc-item { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; }
-  .cc-dot { width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; }
-  .cc-item b { color: var(--ink-2); font-weight: 800; font-size: 10.5px; }
+  .card-body { padding: 10px 12px 6px; display: flex; flex-direction: column; gap: 6px; flex: 1; align-items: center; text-align: center; }
+  .card-colors { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  /* الدائرة فوق والكمية تحتها — أوضح وأجمل من سطر واحد */
+  .cc-item { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+  .cc-dot { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
+  .cc-qty { color: var(--ink-2); font-weight: 800; font-size: 10.5px; line-height: 1; font-variant-numeric: tabular-nums; }
   .card-type { font-weight: 800; font-size: 13.5px; color: var(--ink); }
   .card-sizes { font-size: 10.5px; line-height: 1.6; }
   .sz-label { font-weight: 800; color: var(--taupe); }
@@ -527,8 +527,9 @@
     padding-top: 9px;
     text-align: center;
     font-weight: 800;
-    font-size: 14.5px;
+    font-size: 15.5px;
     color: var(--burgundy);
+    letter-spacing: 0.2px;
   }
 
   /* model sheet */
@@ -585,10 +586,11 @@
     animation: veil-in 0.2s ease-out;
   }
   @keyframes veil-in { from { opacity: 0; } to { opacity: 1; } }
+  /* نفس روح pop لكن مع تثبيت التوسيط — الأنيميشن العام كان يلغي translateX */
   .quickops {
     position: fixed;
-    left: 50%;
     transform: translateX(-50%);
+    animation: qo-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
     z-index: 71;
     background: var(--glass-strong);
     backdrop-filter: blur(26px) saturate(1.5);
@@ -601,6 +603,11 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
+  }
+  @keyframes qo-pop {
+    0% { transform: translateX(-50%) scale(0.7); opacity: 0; }
+    60% { transform: translateX(-50%) scale(1.06); }
+    100% { transform: translateX(-50%) scale(1); opacity: 1; }
   }
   .qo-row { display: flex; gap: 6px; }
   .qo-btn {
@@ -631,15 +638,4 @@
     border: none;
   }
 
-  .gate-cam {
-    display: flex; flex-direction: column; align-items: center; gap: 6px;
-    width: 100%;
-    padding: 26px 16px;
-    border-radius: var(--r-md);
-    border: 2px dashed rgba(181, 73, 91, 0.4);
-    background: linear-gradient(150deg, rgba(255, 255, 255, 0.55), rgba(181, 73, 91, 0.05));
-    cursor: pointer;
-    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-  .gate-cam:active { transform: scale(0.97); }
 </style>

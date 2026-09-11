@@ -10,7 +10,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey } from '../db.js';
+  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3 } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters, filtersOpen } from '../store.js';
@@ -50,9 +50,32 @@
       ...set.map((c) => ({ value: c, label: c, icon: 'tag', count: products.filter((p) => p.category === c && p.qty > 0).length }))
     ];
   });
+  /* نوع ذو شجرة — نفس صفوف المخزون بالضبط (المستويان الفرعيان بمسافة بادئة) */
+  const TYPE_SEP = '\u200b', TYPE_SEP2 = '\u200b\u200b', TYPE_SEP3 = '\u200b\u200b\u200b';
+  const typeRows = $derived.by(() => {
+    const rows = [];
+    for (const t of opts.types) {
+      rows.push({ value: t, label: t, icon: 'list', count: products.filter((p) => p.type === t && p.qty > 0).length });
+      for (const st of subsOfType(opts.typeSubs, t)) {
+        rows.push({ value: TYPE_SEP + st, label: '↳ ' + st, icon: 'list', count: products.filter((p) => p.typeSub === st && p.qty > 0).length });
+        for (const st2 of subsOfType2(opts.typeSubs2, t, st)) {
+          rows.push({ value: TYPE_SEP2 + st2, label: '↳ ' + st2, icon: 'list', count: products.filter((p) => p.typeSub2 === st2 && p.qty > 0).length });
+          for (const st3 of subsOfType3(opts.typeSubs3, t, st, st2))
+            rows.push({ value: TYPE_SEP3 + st3, label: '↳ ' + st3, icon: 'list', count: products.filter((p) => p.typeSub3 === st3 && p.qty > 0).length });
+        }
+      }
+    }
+    return rows;
+  });
+  const matchType = (p, tv) => {
+    if (String(tv).startsWith(TYPE_SEP3)) return p.typeSub3 === tv.slice(3);
+    if (String(tv).startsWith(TYPE_SEP2)) return p.typeSub2 === tv.slice(2);
+    if (String(tv).startsWith(TYPE_SEP)) return p.typeSub === tv.slice(1);
+    return p.type === tv;
+  };
   const types = $derived.by(() => [
     { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => p.type).length, clear: true },
-    ...opts.types.map((t) => ({ value: t, label: t, icon: 'list', count: products.filter((p) => p.type === t).length }))
+    ...typeRows
   ]);
   const seasons = $derived.by(() => [
     { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => p.season).length, clear: true },
@@ -73,13 +96,14 @@
   ];
 
   /* One card per MODEL: same internal number (كل ألوانه ومقاساته معاً) —
-     القيمة المخزنة هي الأقل كمية، والمعروض هو العدد الفعلي للقطع على الرف */
+     القيمة المخزنة هي الأقل كمية، والمعروض هو العدد الفعلي للقطع على الرف.
+     كل بطاقة تحمل سطر معلومات يجمع كل مقاسات الموديل المتوفرة (مثل الـpicker). */
   const filtered = $derived.by(() => {
     let list = products;
     if (f.availSell === 'in') list = list.filter((p) => p.qty > 0);
     else if (f.availSell === 'out') list = list.filter((p) => p.qty === 0);
     if (f.cat !== 'الكل') list = list.filter((p) => p.category === f.cat);
-    if (f.typ !== 'الكل') list = list.filter((p) => p.type === f.typ);
+    if (f.typ !== 'الكل') list = list.filter((p) => matchType(p, f.typ));
     if (f.season !== 'الكل') list = list.filter((p) => p.season === f.season);
     if (f.q.trim()) {
       const s = f.q.trim().toLowerCase();
@@ -101,6 +125,27 @@
     if (f.sort === 'price') sorted.sort((a, b) => (b.price || 0) - (a.price || 0));
     if (f.sort === 'qty') sorted.sort((a, b) => a.qty - b.qty);
     return sorted;
+  });
+
+  /* المقاسات المتوفرة للموديل كله — نفس مصدر الـpicker بالضبط */
+  const modelSizes = $derived.by(() => {
+    const m = new Map();
+    for (const p of products) {
+      const k = modelGroupKey(p);
+      if (!m.has(k)) m.set(k, new Set());
+      if (p.qty > 0 && p.size) m.get(k).add(String(p.size).trim());
+    }
+    return m;
+  });
+  const sizesLabel = (p) => {
+    const set = modelSizes.get(modelGroupKey(p));
+    return set && set.size ? [...set].sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0)).join('، ') : '—';
+  };
+  /* عدد القطع الكلي للموديل على الرف */
+  const modelQty = $derived.by(() => {
+    const m = new Map();
+    for (const p of products) m.set(modelGroupKey(p), (m.get(modelGroupKey(p)) || 0) + (p.qty || 0));
+    return m;
   });
 
   /* ---- Premium filter bar state ---- */
@@ -476,9 +521,10 @@
   {:else}
     <div class="grid">
       {#each filtered as p, i (p.sku)}
+        {@const gqty = modelQty.get(modelGroupKey(p)) || 0}
         <Glass
           as="button"
-          class="pcard rise {p.qty === 0 ? 'oos' : ''}"
+          class="pcard rise {gqty === 0 ? 'oos' : ''}"
           style="animation-delay:{Math.min(i * 0.04, 0.4)}s"
           onclick={() => addToCart(p)}
         >
@@ -487,10 +533,11 @@
           </div>
           <div class="pinfo">
             <div class="pname">{p.name}</div>
-            <div class="pmeta muted small">{p.color || p.category}{p.size ? ' • ' + p.size : ''}</div>
+            <div class="pmeta muted small">{[p.type, p.typeSub, p.typeSub2, p.typeSub3, p.color || p.category].filter(Boolean).join(' • ')}</div>
+            <div class="psizes muted tiny">مقاسات: {sizesLabel(p)}</div>
             <div class="prow">
               <span class="pprice">{fmtIQD(p.price)}</span>
-              <span class="pqty" class:zero={p.qty === 0}>{p.qty === 0 ? 'نفد' : `× ${fmtNum(p.qty)}`}</span>
+              <span class="pqty" class:zero={gqty === 0}>{gqty === 0 ? 'نفد' : `× ${fmtNum(gqty)}`}</span>
             </div>
           </div>
           <span class="add-ic"><Icon name="plus" size={16} color="#fff" /></span>
@@ -757,6 +804,7 @@
   .pthumb img { width: 100%; height: 100%; object-fit: cover; }
   .pinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .pname { font-weight: 800; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .psizes { margin-top: 1px; }
   .prow { display: flex; justify-content: space-between; align-items: baseline; }
   .pprice { font-weight: 800; font-size: 13.5px; color: var(--burgundy); }
   .pqty { font-size: 12px; color: var(--taupe); font-weight: 700; }

@@ -168,7 +168,7 @@
     invoicePreset.set({
       supplier: p.supplier || '',
       lines: [{
-        name: p.name, category: p.category, type: p.type || '',
+        name: p.name, category: p.category, type: p.type || '', typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '',
         color: p.color || '', cost: p.cost, price: p.price,
         sizes: { [String(p.size || '').trim() || '38']: 3 },
         photo: p.photo || null,
@@ -307,7 +307,7 @@
     invoicePreset.set({
       supplier: p.supplier || '',
       lines: [{
-        name: p.name, category: p.category, type: p.type || '',
+        name: p.name, category: p.category, type: p.type || '', typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '',
         color: p.color || '', cost: p.cost, price: p.price,
         sizes: { [String(p.size || '').trim() || '38']: 3 },
         photo: p.photo || null,
@@ -462,8 +462,8 @@
         {#each restock as item (item.p.sku)}
           <div class="sm-row">
             <div class="a-body">
-              <div class="bold small">«{item.p.name}{item.p.color ? ` ${item.p.color}` : ''}» {item.p.size ? `مقاس ${item.p.size} • ` : ''}نفد</div>
-              <div class="muted tiny">بيع منه {fmtNum(item.sold)} قطعة هالأسبوع — فاضل تستلمين أكثر؟</div>
+              <div class="bold small">{item.p.name}{item.p.size ? ` — مقاس ${item.p.size}` : ''}</div>
+              <div class="muted tiny">نفد • بيع منه {fmtNum(item.sold)} قطعة هالأسبوع — فاضل تستلمين أكثر؟</div>
             </div>
             <button class="btn gold" style="min-height:38px; padding:0 12px; font-size:12.5px; flex:none" onclick={() => goRestock(item)}>
               <Icon name="upload" size={14} /> استلام
@@ -473,8 +473,8 @@
         {#each deadInfo.slice(0, 2) as d (d.p.sku)}
           <div class="sm-row">
             <div class="a-body">
-              <div class="bold small">«{d.p.name}» راكد {fmtNum(d.days)} يوم ({fmtNum(d.p.qty)} قطعة)</div>
-              <div class="muted tiny">اعرضيها بخصم — أفضل من رف ساكن</div>
+              <div class="bold small">{d.p.name} — راكد {fmtNum(d.days)} يوم</div>
+              <div class="muted tiny">{fmtNum(d.p.qty)} قطعة على الرف • اعرضيها بخصم، أفضل من رف ساكن</div>
             </div>
             <button class="btn" style="min-height:38px; padding:0 12px; font-size:12.5px; flex:none" onclick={() => goShowOff(d.p)}>
               <Icon name="cart" size={14} /> اعرضيها

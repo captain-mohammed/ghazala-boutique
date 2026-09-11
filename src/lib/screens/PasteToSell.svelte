@@ -43,7 +43,7 @@
       .filter((p) => p.qty > 0 && !cart.some((c) => c.sku === p.sku))
       .map((p) => {
         let score = 0;
-        const hay = [p.name, p.color, p.type, p.category, p.brand].filter(Boolean).join(' ').toLowerCase();
+        const hay = [p.name, p.color, p.type, p.typeSub, p.typeSub2, p.typeSub3, p.category, p.brand].filter(Boolean).join(' ').toLowerCase();
         for (const k of kw) if (hay.includes(k)) score += 3;
         if (parsed.sizes.includes(String(p.size).trim())) score += 5;
         return { p, score };

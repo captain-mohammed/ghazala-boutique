@@ -86,7 +86,10 @@ export const DEFAULT_SETTINGS = {
   dailyTarget: 0,      // قطع — daily goal ring on the dashboard (0 = off)
   vaultGoal: 500000,   // د.ع — the vault celebration threshold (0 = off)
   seasonMoods: null,   // { '2026-09': 'أعراس' } — مزاج الموسم per month
-  archiveDays: 30      // sold-out this long → المدينة القديمة (archive shelf)
+  archiveDays: 30,     // sold-out this long → المدينة القديمة (archive shelf)
+  typeSubs: null,      // { 'بوت': ['كعب عالي','كعب قصير'] } — القائمة الثانية تحت النوع
+  typeSubs2: null,     // { 'بوت': { 'كعب عالي': ['جيب جانبي',…] } } — القائمة الثالثة تحت التفصيل
+  typeSubs3: null      // { 'بوت': { 'كعب عالي': { 'جيب جانبي': ['سحاب',…] } } } — القائمة الرابعة
 };
 
 export async function getSetting(key, fallback) {
@@ -114,9 +117,24 @@ export async function modelOptions() {
     types: s.types?.length ? s.types : DEFAULT_TYPES,
     seasons: s.seasons?.length ? s.seasons : DEFAULT_SEASONS,
     materials: s.materials?.length ? s.materials : DEFAULT_MATERIALS,
-    colors: Array.isArray(s.modelColors) && s.modelColors.length ? s.modelColors : COLOR_SWATCHES
+    colors: Array.isArray(s.modelColors) && s.modelColors.length ? s.modelColors : COLOR_SWATCHES,
+    typeSubs: s.typeSubs && typeof s.typeSubs === 'object' ? s.typeSubs : {},
+    typeSubs2: s.typeSubs2 && typeof s.typeSubs2 === 'object' ? s.typeSubs2 : {},
+    typeSubs3: s.typeSubs3 && typeof s.typeSubs3 === 'object' ? s.typeSubs3 : {}
   };
 }
+
+/* القائمة الثانية تحت النوع: ['كعب عالي','كعب قصير'] لـ «بوت» */
+export const subsOfType = (typeSubs, type) =>
+  (type && typeSubs?.[type]) || [];
+
+/* القائمة الثالثة تحت التفصيل: ['جيب جانبي',…] لـ «بوت ← كعب عالي» */
+export const subsOfType2 = (typeSubs2, type, sub) =>
+  (type && sub && typeSubs2?.[type]?.[sub]) || [];
+
+/* القائمة الرابعة تحت تفصيل أدق */
+export const subsOfType3 = (typeSubs3, type, sub, sub2) =>
+  (type && sub && sub2 && typeSubs3?.[type]?.[sub]?.[sub2]) || [];
 /* resolve a color label to its hex dot (for cards and size-runs) */
 export const hexForColor = (label, colors) =>
   (colors || COLOR_SWATCHES).find((c) => (c.label || '').trim().toLowerCase() === String(label || '').trim().toLowerCase())?.hex || 'var(--taupe)';
@@ -272,6 +290,9 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
           cost: Number(ln.cost) || twin.cost,
           price: Number(ln.price) || twin.price,
           type: ln.type || twin.type || '',
+          typeSub: ln.typeSub || twin.typeSub || '',
+          typeSub2: ln.typeSub2 || twin.typeSub2 || '',
+          typeSub3: ln.typeSub3 || twin.typeSub3 || '',
           season: ln.season || twin.season || '',
           material: ln.material || twin.material || '',
           supplier: sup || twin.supplier || '',
@@ -286,6 +307,7 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
       } else {
         const p = await addProduct({
           name, category: ln.category || 'نسائية', type: ln.type || '',
+          typeSub: ln.typeSub || '', typeSub2: ln.typeSub2 || '', typeSub3: ln.typeSub3 || '',
           season: ln.season || '', material: ln.material || '',
           color: (ln.color || '').trim(), size: sz,
           cost: Number(ln.cost) || 0, price: Number(ln.price) || 0, qty,
