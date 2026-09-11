@@ -257,7 +257,7 @@
     </Glass>
 
     <Glass class="rise" style="padding:16px; animation-delay:0.2s; border-color:rgba(181,73,91,0.3)">
-      <h2 class="h2" style="margin-bottom:12px"><Icon name="alert" size={17} color="var(--burgundy)" /> منطقة التجارب</h2>
+      <h2 class="h2" style="margin-bottom:12px"><Icon name="alert" size={17} color="var(--burgundy)" /> منطقة الخطر</h2>
       <div class="row" style="gap:8px">
         <button class="btn" style="flex:1" onclick={demo}>بيانات تجريبية</button>
         <button class="btn danger" style="flex:1" onclick={wipe}>مسح كل البيانات</button>
