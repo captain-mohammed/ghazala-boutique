@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  
   import Icon from '../components/Icon.svelte';
   import Ticker from '../components/Ticker.svelte';
   import Logo from '../components/Logo.svelte';
@@ -26,17 +26,23 @@
   let occasions = $state([]);
   let reservations = $state([]);
   let vault = $state(null);
-  let moods = $state(null); // seasonMoods map — editable copy once settings arrive
+  let moods = $state(null); // seasonMoods map — refreshed with the grab loop
+  let customMoods = $state([]); // كلمات المزاج من عند المستونة فقط
 
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, s, r, v] = await Promise.all([db.products.toArray(), db.sales.toArray(), db.reservations.toArray(), vaultState()]);
+      const [p, s, r, v, sm, mc] = await Promise.all([
+        db.products.toArray(), db.sales.toArray(), db.reservations.toArray(), vaultState(),
+        getSetting('seasonMoods', null), getSetting('moodCustom', [])
+      ]);
       if (!alive) return;
       products = p;
       sales = s;
       reservations = r.filter((x) => x.status === 'active');
       vault = v;
+      moods = sm && typeof sm === 'object' ? sm : {};
+      customMoods = Array.isArray(mc) ? mc : [];
       loaded = true;
     };
     grab();
@@ -51,12 +57,7 @@
     return () => { alive = false; clearInterval(t); };
   });
 
-  onMount(async () => {
-    settings = await allSettings();
-    moods = { ...(settings.seasonMoods || {}) };
-  });
-
-  /* ---- مزاج الموسم: one mood word per month, with a real sales insight ---- */
+  /* ---- مزاج الموسم: كلمات المستونة فقط — الألوان القديمة تبقى مفهومة ---- */
   const MOODS = [
     { label: 'هادي', hex: '#9c7b6b' },
     { label: 'أعراس', hex: '#b5495b' },
@@ -348,13 +349,13 @@
         {/if}
       </div>
       <div class="mood-chips">
-        {#each MOODS as m (m.label)}
+        {#each customMoods as w (w)}
           <button
             class="mood-chip"
-            class:active={moodNow === m.label}
-            style={moodNow === m.label ? `background:${m.hex}; border-color:${m.hex}; color:#fff` : ''}
-            onclick={() => setMood(m.label)}
-          >{m.label}</button>
+            class:active={moodNow === w}
+            style={moodNow === w ? `background:${moodHex}; border-color:${moodHex}; color:#fff` : ''}
+            onclick={() => setMood(w)}
+          >{w}</button>
         {/each}
       </div>
     </Glass>

@@ -16,7 +16,6 @@
   let currentMood = $state('');
   let customMood = $state('');
   let customList = $state([]);
-  const MOOD_LIST = ['هادي', 'أعراس', 'رمضان', 'عيد', 'صيف', 'شتاء', 'تخرج'];
   const moodMonthKey = baghdadMonthKey(0);
   let loaded = $state(false);
 
@@ -190,17 +189,18 @@
       <p class="muted small" style="margin:0 0 10px">كلمة تختصرين فيها شهرك الحالي — تظهر فوق الرئيسية وتتلون بها. الشهور بلا اختيار تظهر «هادي».</p>
       <div class="stack" style="gap:10px">
         <div class="muted tiny bold">الشهر الحالي: {monthLabelAr(moodMonthKey)}</div>
-        <div class="row wrap" style="gap:6px">
-          {#each MOOD_LIST as m (m)}
-            <button type="button" class="chip" class:on={currentMood === m} onclick={() => setMood(m)}>{m}</button>
-          {/each}
-          {#each customList as w (w)}
-            <button type="button" class="chip" class:on={currentMood === w} onclick={() => setMood(w)}>
-              {w}
-              <span class="chip-x" role="button" tabindex="0" aria-label="حذف {w} من القائمة" onclick={(e) => { e.stopPropagation(); rmCustomMood(w); }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); rmCustomMood(w); } }}>×</span>
-            </button>
-          {/each}
-        </div>
+        {#if customList.length}
+          <div class="row wrap" style="gap:6px">
+            {#each customList as w (w)}
+              <button type="button" class="chip" class:on={currentMood === w} onclick={() => setMood(w)}>
+                {w}
+                <span class="chip-x" role="button" tabindex="0" aria-label="حذف {w} من القائمة" onclick={(e) => { e.stopPropagation(); rmCustomMood(w); }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); rmCustomMood(w); } }}>×</span>
+              </button>
+            {/each}
+          </div>
+        {:else}
+          <div class="muted tiny">اكتبي أول كلمة مزاج وأصبحت زر — تظهر على الرئيسية فوراً</div>
+        {/if}
         <div class="row" style="gap:8px">
           <input class="input" style="flex:1" bind:value={customMood} placeholder="اكتبي مزاجك الخاص…" onkeydown={(e) => e.key === 'Enter' && addCustomMood()} />
           <button class="btn" onclick={addCustomMood}>تطبيق</button>
