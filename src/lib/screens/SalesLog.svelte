@@ -51,7 +51,7 @@
   $effect(() => {
     let alive = true;
     db.products.toArray().then((ps) => {
-      if (alive) photos = Object.fromEntries(ps.map((p) => [p.sku, { photo: p.photo }]));
+      if (alive) photos = Object.fromEntries(ps.map((p) => [p.sku, { photo: p.photo, type: p.type || '', typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '' }]));
     });
     return () => { alive = false; };
   });
@@ -183,7 +183,7 @@
               <span class="bold">#{s.id} {s.customerName || 'زبون'}</span>
               <span class="st {STATUS[s.status]?.cls}">{STATUS[s.status]?.label}</span>
             </div>
-            <div class="muted small">{fmtDate(s.date)} • {fmtNum(salePieces(s))} قطعة {s.barcode ? '• ' + s.barcode : ''}</div>
+            <div class="muted small">{fmtDate(s.date)} - {fmtNum(salePieces(s))} قطعة {s.barcode ? '- ' + s.barcode : ''}</div>
             {#if s.items?.length}
               <VariantBits dense variants={s.items} />
             {/if}
@@ -233,10 +233,14 @@
       <div class="stack" style="gap:8px">
         {#each detail.items as it (it.sku)}
           {@const ph = photos[it.sku]?.photo}
+          {@const ip = photos[it.sku]}
           <Glass class="row" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
             <div style="display:flex; gap:10px; align-items:center; min-width:0">
               <span class="it-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={15} color="var(--taupe)" />{/if}</span>
               <div>
+                {#if ip && (ip.type || ip.typeSub || ip.typeSub2 || ip.typeSub3)}
+                  <div class="bold small">{[ip.type, ip.typeSub, ip.typeSub2, ip.typeSub3].filter(Boolean).join(' - ')}</div>
+                {/if}
                 <VariantBits variants={[it]} />
                 <div class="muted small">{fmtIQD(it.price)} × {it.qty}</div>
               </div>

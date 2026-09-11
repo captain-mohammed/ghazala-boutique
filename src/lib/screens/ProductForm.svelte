@@ -230,7 +230,7 @@
       const parts = [];
       if (updated) parts.push(`${updated} بطاقة ${editing ? 'محفوظة' : 'اندماجت'}`);
       if (created) parts.push(`${created} جديدة`);
-      toastOk(`${editing ? 'تم الحفظ' : 'تمت الإضافة'} — ${totalPieces} قطعة (${parts.join(' • ')})`);
+      toastOk(`${editing ? 'تم الحفظ' : 'تمت الإضافة'} — ${totalPieces} قطعة (${parts.join(' - ')})`);
       ondone();
     } catch (e) {
       toastErr('حدث خطأ أثناء الحفظ');
@@ -391,7 +391,7 @@
   </div>
 
   {#if tried && missing.length}
-    <div class="miss pop">مطلوب قبل الحفظ: {missing.join(' • ')}</div>
+    <div class="miss pop">مطلوب قبل الحفظ: {missing.join(' - ')}</div>
   {/if}
 
   {#if editing}
@@ -403,7 +403,7 @@
 
   <button class="btn primary lg block" onclick={save}>
     <Icon name="check" size={20} />
-    {editing ? 'حفظ التعديلات' : totalPieces > 0 ? `حفظ ${totalPieces} قطعة (${selColors.length} لون • ${totalSizes} مقاس)` : 'إضافة الموديل'}
+    {editing ? 'حفظ التعديلات' : totalPieces > 0 ? `حفظ ${totalPieces} قطعة (${selColors.length} لون - ${totalSizes} مقاس)` : 'إضافة الموديل'}
   </button>
 </div>
 

@@ -123,8 +123,6 @@
     </div>
     {#if cool > 0}
       <p class="muted small">انتظر {cool} ثانية…</p>
-    {:else}
-      <p class="hint-key muted tiny">لوحة الأرقام أو Backspace من لوحة المفاتيح تعمل أيضاً</p>
     {/if}
 
     {#if cool <= 0}
@@ -213,7 +211,7 @@
     50% { transform: scale(1.45); }
     100% { transform: scale(1.2); }
   }
-  .hint-key { margin: -6px 0 10px; opacity: 0.75; user-select: none; }
+  
   .pad {
     display: grid;
     grid-template-columns: repeat(3, 72px);

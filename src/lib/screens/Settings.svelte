@@ -3,7 +3,7 @@
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import { db, allSettings, setSetting, seedDemo, wipeAll } from '../db.js';
-  import { buzz, hashPin, DEFAULT_WA_TEMPLATE } from '../utils.js';
+  import { buzz, hashPin, DEFAULT_WA_TEMPLATE, baghdadMonthKey } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   let { goto = () => {} } = $props();
@@ -12,6 +12,12 @@
   let dailyTarget = $state(0);
   let vaultGoal = $state(500000);
   let archiveDays = $state(30);
+  let moods = $state({});
+  let currentMood = $state('');
+  let customMood = $state('');
+  let customList = $state([]);
+  const MOOD_LIST = ['هادي', 'أعراس', 'رمضان', 'عيد', 'صيف', 'شتاء', 'تخرج'];
+  const moodMonthKey = baghdadMonthKey(0);
   let loaded = $state(false);
 
   /* WhatsApp message template */
@@ -25,6 +31,9 @@
     dailyTarget = s.dailyTarget ?? 0;
     vaultGoal = s.vaultGoal ?? 500000;
     archiveDays = s.archiveDays ?? 30;
+    moods = { ...(s.seasonMoods || {}) };
+    currentMood = moods[moodMonthKey] || '';
+    customList = Array.isArray(s.moodCustom) ? s.moodCustom : [];
     if (typeof s.waTemplate === 'string' && s.waTemplate.trim()) {
       waText = s.waTemplate;
       waTouched = true;
@@ -43,6 +52,40 @@
     await setSetting('archiveDays', Math.max(1, Math.round(Number(archiveDays) || 30)));
     toastOk('تم حفظ الأهداف');
     buzz([12, 30, 12]);
+  }
+  function monthLabelAr(key) {
+    const m = Number(key.split('-')[1]);
+    return ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'][m - 1] || '';
+  }
+  async function setMood(m) {
+    currentMood = m;
+    moods = { ...moods, [moodMonthKey]: m };
+    await setSetting('seasonMoods', moods);
+    toastOk(`مزاج ${monthLabelAr(moodMonthKey)}: ${m} 🌷`);
+    buzz(10);
+  }
+  /* كلمة مزاج من عندها — تنضاف لقائمتها وتُطبق على الشهر الحالي */
+  async function addCustomMood() {
+    const w = String(customMood || '').trim();
+    if (!w) return;
+    if (!customList.includes(w)) {
+      customList = [...customList, w];
+      await setSetting('moodCustom', customList);
+    }
+    customMood = '';
+    await setMood(w);
+  }
+  async function rmCustomMood(w) {
+    customList = customList.filter((x) => x !== w);
+    await setSetting('moodCustom', customList);
+    if (currentMood === w) await clearMood();
+  }
+  async function clearMood() {
+    currentMood = '';
+    moods = { ...moods, [moodMonthKey]: null };
+    await setSetting('seasonMoods', moods);
+    toastOk('مُسح مزاج الشهر');
+    buzz(8);
   }
 
   /* WhatsApp template save / reset */
@@ -109,14 +152,6 @@
 
 <div class="stack" style="gap:12px">
   {#if loaded}
-    <Glass class="rise" style="padding:16px">
-      <h2 class="h2" style="margin-bottom:4px"><Icon name="truck" size={17} color="var(--burgundy)" /> حساب شركات التوصيل</h2>
-      <p class="muted small" style="margin:0 0 12px">كل ما يخص التوصيل بمكان واحد: <b>أسماء الشركات</b> (تظهر قائمة جاهزة عند إتمام البيع)، <b>أجور التوصيل</b>، والأموال المعلّقة عندهم وتسويتها.</p>
-      <button class="btn block" onclick={() => { buzz(8); goto('ledger'); }}>
-        <Icon name="truck" size={16} /> فتح حساب شركات التوصيل
-      </button>
-    </Glass>
-
     <Glass class="rise" style="padding:16px; animation-delay:0.05s">
       <h2 class="h2" style="margin-bottom:12px"><Icon name="alert" size={17} color="var(--warn)" /> التنبيهات</h2>
       <div class="stack" style="gap:12px">
@@ -150,18 +185,28 @@
       </div>
     </Glass>
 
-    <Glass
-      as="button"
-      class="rise opt-link"
-      style="animation-delay:0.1s"
-      onclick={() => { buzz(8); goto('modelopts'); }}
-    >
-      <span class="ol-ic"><Icon name="sliders" size={18} color="#fff" /></span>
-      <div style="flex:1; min-width:0; text-align:right">
-        <div class="bold">خيارات الموديلات</div>
-        <div class="muted small">التصنيفات، الأنواع، المواسم (شتائي/صيفي)، المواد، والألوان بدوائرها — كلها تُعدّل هنا</div>
+    <Glass class="rise" style="padding:16px; animation-delay:0.09s">
+      <h2 class="h2" style="margin-bottom:4px"><Icon name="flag" size={17} color="var(--gold)" /> مزاج الموسم</h2>
+      <p class="muted small" style="margin:0 0 10px">كلمة تختصرين فيها شهرك الحالي — تظهر فوق الرئيسية وتتلون بها. الشهور بلا اختيار تظهر «هادي».</p>
+      <div class="stack" style="gap:10px">
+        <div class="muted tiny bold">الشهر الحالي: {monthLabelAr(moodMonthKey)}</div>
+        <div class="row wrap" style="gap:6px">
+          {#each MOOD_LIST as m (m)}
+            <button type="button" class="chip" class:on={currentMood === m} onclick={() => setMood(m)}>{m}</button>
+          {/each}
+          {#each customList as w (w)}
+            <button type="button" class="chip" class:on={currentMood === w} onclick={() => setMood(w)}>
+              {w}
+              <span class="chip-x" role="button" tabindex="0" aria-label="حذف {w} من القائمة" onclick={(e) => { e.stopPropagation(); rmCustomMood(w); }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); rmCustomMood(w); } }}>×</span>
+            </button>
+          {/each}
+        </div>
+        <div class="row" style="gap:8px">
+          <input class="input" style="flex:1" bind:value={customMood} placeholder="اكتبي مزاجك الخاص…" onkeydown={(e) => e.key === 'Enter' && addCustomMood()} />
+          <button class="btn" onclick={addCustomMood}>تطبيق</button>
+        </div>
+        <button class="btn block" style="min-height:36px" onclick={clearMood}>مسح مزاج الشهر</button>
       </div>
-      <Icon name="back" size={17} color="var(--taupe)" />
     </Glass>
 
     <Glass class="rise" style="padding:16px; animation-delay:0.12s">
@@ -222,19 +267,6 @@
 </div>
 
 <style>
-  :global(.opt-link) {
-    display: flex; align-items: center; gap: 12px;
-    padding: 14px 16px; text-align: right; width: 100%; cursor: pointer;
-    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-  :global(.opt-link:active) { transform: scale(0.98); }
-  :global(.opt-link .ol-ic) {
-    flex: none; width: 42px; height: 42px; border-radius: 13px;
-    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 12px rgba(122, 46, 58, 0.25);
-  }
-
   .wa-ta {
     width: 100%;
     min-height: 170px;

@@ -232,7 +232,7 @@
     buzz(10);
     const ok = await askConfirm({
       title: `حذف «${g.name}»؟`,
-      body: `يُحذف الموديل بكل ألوانه ومقاساته (${fmtNum(g.items.length)} بطاقة • ${fmtNum(g.qty)} قطعة) نهائياً.`,
+      body: `يُحذف الموديل بكل ألوانه ومقاساته (${fmtNum(g.items.length)} بطاقة - ${fmtNum(g.qty)} قطعة) نهائياً.`,
       okLabel: 'حذف',
       danger: true
     });
@@ -361,7 +361,7 @@
                   {/each}
                 </div>
               {/if}
-              {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, g.typeSub, g.typeSub2, g.typeSub3].filter(Boolean).join(' • ')}</div>{/if}
+              {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, g.typeSub, g.typeSub2, g.typeSub3].filter(Boolean).join(' - ')}</div>{/if}
               <div class="card-sizes muted">
                 <span class="sz-label">القياسات المتوفر:</span>
                 {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
@@ -411,7 +411,7 @@
         </div>
         <div class="mv-info">
           {#if g.type}<div class="mv-type">{g.type}</div>{/if}
-          <div class="muted small">{[g.category, g.season, g.material].filter(Boolean).join(' • ')}</div>
+          <div class="muted small">{[g.category, g.season, g.material].filter(Boolean).join(' - ')}</div>
           <div class="mv-stats">
             <span class="money" style="color:var(--burgundy)">{fmtIQD(g.price)}</span>
             <span class="mv-qty" class:zero={g.qty === 0}>{fmtNum(g.qty)} قطعة</span>

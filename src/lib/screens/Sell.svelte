@@ -533,7 +533,7 @@
           </div>
           <div class="pinfo">
             <!-- سلسلة النوع هي العنوان بجانب الصورة — واللون تحتها بدائرته -->
-            <div class="pname">{[p.type, p.typeSub, p.typeSub2, p.typeSub3].filter(Boolean).join(' • ') || p.name}</div>
+            <div class="pname">{[p.type, p.typeSub, p.typeSub2, p.typeSub3].filter(Boolean).join(' - ') || p.name}</div>
             <div class="pmeta muted small">
               {#if p.color}<i class="pdot" style="background:{hexForColor(p.color, opts.colors)}"></i>{/if}
               {p.color || p.category}
@@ -574,7 +574,7 @@
         <span class="cart-badge pop undo"><Icon name="undo" size={18} color="#fff" /></span>
         <div class="cart-txt">
           <div class="bold">استرجاع آخر سلة</div>
-          <div class="muted small">{fmtNum(lastCount)} عناصر • {fmtIQD(lastSum)}</div>
+          <div class="muted small">{fmtNum(lastCount)} عناصر - {fmtIQD(lastSum)}</div>
         </div>
       </button>
       <button class="cart-x" onclick={dismissLast} aria-label="تجاهل">
@@ -613,7 +613,7 @@
         {@const k = vsKey(v)}
         <Glass class="vrow" radius="var(--r-md)">
           <div class="v-info">
-            <div class="bold small">{v.color}{v.size !== '—' ? ` • مقاس ${v.size}` : ''}</div>
+            <div class="bold small">{v.color}{v.size !== '—' ? ` - مقاس ${v.size}` : ''}</div>
             <div class="muted tiny">متوفر {fmtNum(freeOf(v))} قطعة</div>
           </div>
           <div class="stepper">

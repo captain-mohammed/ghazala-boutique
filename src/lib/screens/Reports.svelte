@@ -208,9 +208,14 @@
       <div class="stack" style="gap:8px">
         {#each best as b, i (b.sku)}
           {@const ph = products.find((p) => p.sku === b.sku)?.photo}
+          {@const bp = products.find((p) => p.sku === b.sku)}
           <div class="brow pop" style="animation-delay:{0.2 + i * 0.05}s">
             <span class="rank">{i + 1}</span>
+            <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <div class="a-body">
+              {#if bp && (bp.type || bp.typeSub || bp.typeSub2 || bp.typeSub3)}
+                <div class="bold small">{[bp.type, bp.typeSub, bp.typeSub2, bp.typeSub3].filter(Boolean).join(' - ')}</div>
+              {/if}
               <VariantBits dense variants={[{ color: b.color, size: b.size }]} />
               <div class="muted small">{fmtNum(b.qty)} قطعة</div>
             </div>
@@ -231,7 +236,7 @@
         {#each byType as t (t.type)}
           <div class="tp-row">
             <div class="row" style="justify-content:space-between; margin-bottom:5px">
-              <span class="bold small">{t.type} <span class="muted" style="font-weight:600">• {fmtNum(t.qty)} قطعة</span></span>
+              <span class="bold small">{t.type} <span class="muted" style="font-weight:600">- {fmtNum(t.qty)} قطعة</span></span>
               <span class="money small" style="color:{t.profit >= 0 ? 'var(--good)' : 'var(--burgundy)'}">{fmtIQD(t.profit)}</span>
             </div>
             <div class="tp-bar"><i style="width:{Math.max(3, (t.profit / typeMax) * 100)}%"></i></div>
@@ -250,9 +255,13 @@
         <div class="st-head good">يدور بسرعة — ما يلبث على الرف</div>
         {#each movingFast as x (x.key)}
           {@const ph = products.find((p) => modelGroupKey(p) === x.key && p.photo)?.photo}
+          {@const xp = products.find((p) => modelGroupKey(p) === x.key)}
           <div class="brow" style="margin-bottom:6px">
             <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <div class="a-body">
+              {#if xp && (xp.type || xp.typeSub || xp.typeSub2 || xp.typeSub3)}
+                <div class="bold small">{[xp.type, xp.typeSub, xp.typeSub2, xp.typeSub3].filter(Boolean).join(' - ')}</div>
+              {/if}
               <VariantBits dense variants={[{ color: x.color, size: x.size }]} />
               <div class="muted small">انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
             </div>
@@ -264,9 +273,13 @@
         <div class="st-head slow">يتثاقل — فكّري بعرض أو تصفية</div>
         {#each movingSlow as x (x.key)}
           {@const ph = products.find((p) => modelGroupKey(p) === x.key && p.photo)?.photo}
+          {@const xp = products.find((p) => modelGroupKey(p) === x.key)}
           <div class="brow" style="margin-bottom:6px">
             <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <div class="a-body">
+              {#if xp && (xp.type || xp.typeSub || xp.typeSub2 || xp.typeSub3)}
+                <div class="bold small">{[xp.type, xp.typeSub, xp.typeSub2, xp.typeSub3].filter(Boolean).join(' - ')}</div>
+              {/if}
               <VariantBits dense variants={[{ color: x.color, size: x.size }]} />
               <div class="muted small">انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
             </div>
@@ -285,7 +298,7 @@
           <div class="brow">
             <div class="a-body">
               <div class="bold small">{MONTHS_AR[+c.month.split('-')[1] - 1]} {c.month.split('-')[0]}</div>
-              <div class="muted tiny">{fmtNum(c.count)} عملية • {fmtNum(c.pieces)} قطعة • {fmtNum(c.modelsAdded)} موديل وصل</div>
+              <div class="muted tiny">{fmtNum(c.count)} عملية - {fmtNum(c.pieces)} قطعة - {fmtNum(c.modelsAdded)} موديل وصل</div>
             </div>
             <div style="text-align:left">
               <div class="money" style="color:var(--gold); font-size:13.5px">{fmtIQD(c.net)}</div>
@@ -306,6 +319,9 @@
           <div class="brow">
             <span class="r-thumb">{#if h.items.find((p) => p.photo)}<img src={h.items.find((p) => p.photo).photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <div class="a-body">
+              {#if h.items[0].type || h.items[0].typeSub || h.items[0].typeSub2 || h.items[0].typeSub3}
+                <div class="bold small">{[h.items[0].type, h.items[0].typeSub, h.items[0].typeSub2, h.items[0].typeSub3].filter(Boolean).join(' - ')}</div>
+              {/if}
               <VariantBits dense variants={h.items.map((p) => ({ color: p.color, size: p.size }))} />
             </div>
             <span class="qbadge low">نفد</span>
@@ -318,14 +334,19 @@
   {#if dead.length}
     <Glass class="rise" style="animation-delay:0.25s; padding:16px">
       <h2 class="h2" style="margin-bottom:10px"><Icon name="clock" size={17} color="var(--burgundy)" /> مخزون راكد ({dead.length})</h2>
-      <p class="muted small" style="margin:0 0 10px">موديلات راكدة منذ {settings?.deadStockDays ?? 30} يوم من آخر استلام أو بيع — يُحسب من لحظة وصول القطع للرف.</p>
+      <p class="muted small" style="margin:0 0 10px">كل قطعة تُحسب بأيامها منذ وصلت الرف — والعدد الذي تختارينه في الإعدادات هو المتصفّر.</p>
       <div class="stack" style="gap:8px">
         {#each dead.slice(0, 8) as d (d.key)}
           <div class="brow">
             <span class="r-thumb">{#if d.items.find((p) => p.photo)}<img src={d.items.find((p) => p.photo).photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <div class="a-body">
+              <!-- عنوان السلسلة: النوع وتفصيله بجانب الصورة -->
+              {#if d.items[0].type || d.items[0].typeSub || d.items[0].typeSub2 || d.items[0].typeSub3}
+                <div class="bold small">{[d.items[0].type, d.items[0].typeSub, d.items[0].typeSub2, d.items[0].typeSub3].filter(Boolean).join(' - ')}</div>
+              {/if}
               <VariantBits dense variants={d.items.map((p) => ({ color: p.color, size: p.size }))} />
-              <div class="muted tiny">على الرف {fmtNum(Math.min(...d.items.map((p) => shelfAgeDays(p))))} يوم أو أكثر</div>
+              <!-- كل قطعة بأيامها الخاصة -->
+              <div class="muted tiny">{d.items.map((p) => `${[p.color, p.size].filter(Boolean).join(' ')}: ${fmtNum(shelfAgeDays(p))} يوم`).join(' - ')}</div>
             </div>
             <span class="qbadge">{fmtNum(d.qty)}</span>
           </div>
@@ -347,8 +368,8 @@
             <div class="brow">
               <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
               <div class="a-body">
-                <div class="small bold">{s.customer || 'بدون اسم'}{s.phone ? ` • ${s.phone}` : ''}</div>
-                <div class="muted tiny">{fmtDate(s.date)} • {fmtNum(salePieces(s))} قطعة</div>
+                <div class="small bold">{s.customer || 'بدون اسم'}{s.phone ? ` - ${s.phone}` : ''}</div>
+                <div class="muted tiny">{fmtDate(s.date)} - {fmtNum(salePieces(s))} قطعة</div>
               </div>
               <span class="money">{fmtIQD(s.total)}</span>
             </div>

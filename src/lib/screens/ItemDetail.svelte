@@ -114,13 +114,13 @@
     <div class="info">
       <!-- الصورة هي الهوية — لا اسم -->
       <div class="id-line">
-        <span class="id-type">{[p.type, p.typeSub, p.typeSub2, p.typeSub3, p.color].filter(Boolean).join(' • ') || p.category}</span>
+        <span class="id-type">{[p.type, p.typeSub, p.typeSub2, p.typeSub3, p.color].filter(Boolean).join(' - ') || p.category}</span>
         <VariantBits dense variants={[{ color: p.color, size: p.size }]} />
       </div>
-      <div class="muted small">{[p.category, p.season, p.material].filter(Boolean).join(' • ')}{p.typeSub ? ` • تفصيل: ${p.typeSub}` : ''}{p.typeSub2 ? ` • أدق: ${p.typeSub2}` : ''}{p.typeSub3 ? ` • أخير: ${p.typeSub3}` : ''}</div>
+      <div class="muted small">{[p.category, p.season, p.material].filter(Boolean).join(' - ')}{p.typeSub ? ` - تفصيل: ${p.typeSub}` : ''}{p.typeSub2 ? ` - أدق: ${p.typeSub2}` : ''}{p.typeSub3 ? ` - أخير: ${p.typeSub3}` : ''}</div>
       <div class="sku">{p.sku}</div>
       {#if p.supplier}
-        <div class="sup"><Icon name="upload" size={12} /> من {p.supplier}{p.supplierAt ? ` • ${fmtDate(p.supplierAt)}` : ''}</div>
+        <div class="sup"><Icon name="upload" size={12} /> من {p.supplier}{p.supplierAt ? ` - ${fmtDate(p.supplierAt)}` : ''}</div>
       {/if}
     </div>
   </Glass>
@@ -195,7 +195,7 @@
             </span>
             <div class="a-body">
               <div class="bold small">{m.type === 'in' ? 'إدخال' : 'إخراج'} — {fmtNum(m.qty)} قطعة</div>
-              <div class="muted" style="font-size:11px">{m.note} • {fmtDate(m.date)}</div>
+              <div class="muted" style="font-size:11px">{m.note} - {fmtDate(m.date)}</div>
             </div>
           </div>
         {/each}

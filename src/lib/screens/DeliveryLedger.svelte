@@ -193,7 +193,7 @@
           <span class="co-ic"><Icon name="truck" size={19} color="var(--burgundy)" /></span>
           <div class="a-body">
             <div class="bold">{g.company}</div>
-            <div class="muted small">{g.count} قطعة • آخر عملية {fmtDate(g.sales[g.sales.length - 1].date)}</div>
+            <div class="muted small">{g.count} قطعة - آخر عملية {fmtDate(g.sales[g.sales.length - 1].date)}</div>
           </div>
           <div class="col" style="align-items:flex-end; gap:2px">
             <div class="money">{fmtIQD(g.amount)}</div>
@@ -245,7 +245,7 @@
           <Glass class="row" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
             <div>
               <div class="bold small">#{s.id} {s.customerName || 'زبون'}</div>
-              <div class="muted tiny">{s.status === 'delivered' ? 'تم التسليم' : 'قيد التوصيل'}{s.barcode ? ' • ' + s.barcode : ''}</div>
+              <div class="muted tiny">{s.status === 'delivered' ? 'تم التسليم' : 'قيد التوصيل'}{s.barcode ? ' - ' + s.barcode : ''}</div>
             </div>
             <div class="money small">{fmtIQD(s.total)}</div>
           </Glass>

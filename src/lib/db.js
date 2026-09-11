@@ -86,6 +86,7 @@ export const DEFAULT_SETTINGS = {
   dailyTarget: 0,      // قطع — daily goal ring on the dashboard (0 = off)
   vaultGoal: 500000,   // د.ع — the vault celebration threshold (0 = off)
   seasonMoods: null,   // { '2026-09': 'أعراس' } — مزاج الموسم per month
+  moodCustom: [],      // كلمات مزاج من عند المستونة — تظهر كأزرار مع المعتادة
   archiveDays: 30,     // sold-out this long → المدينة القديمة (archive shelf)
   typeSubs: null,      // { 'بوت': ['كعب عالي','كعب قصير'] } — القائمة الثانية تحت النوع
   typeSubs2: null,     // { 'بوت': { 'كعب عالي': ['جيب جانبي',…] } } — القائمة الثالثة تحت التفصيل

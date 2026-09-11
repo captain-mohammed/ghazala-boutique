@@ -24,7 +24,7 @@
       if (need.length) {
         const ps = await db.products.bulkGet(need);
         const m = {};
-        for (const p of ps) if (p) m[p.sku] = { color: p.color || '', size: String(p.size || '').trim(), photo: p.photo || null };
+        for (const p of ps) if (p) m[p.sku] = { color: p.color || '', size: String(p.size || '').trim(), photo: p.photo || null, type: p.type || '', typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '' };
         variantOf = m;
       }
     };
@@ -112,7 +112,11 @@
             <span class="res-thumb">{#if variantOf[r.sku]?.photo}<img src={variantOf[r.sku].photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <span class="chip-n warn-chip">{hoursLeft(r) < 6 ? '⏳' : ''} {fmtNum(Math.floor(hoursLeft(r)))} ساعة</span>
           </div>
-          <div class="muted small">{r.customerName || 'زبونة'}{r.customerPhone ? ' • ' + r.customerPhone : ''} • حُجز {fmtDate(r.createdAt)}</div>
+          <!-- النوع وتفصيله بجانب الصورة -->
+          {#if variantOf[r.sku]?.type || variantOf[r.sku]?.typeSub}
+            <div class="bold small">{[variantOf[r.sku].type, variantOf[r.sku].typeSub, variantOf[r.sku].typeSub2, variantOf[r.sku].typeSub3].filter(Boolean).join(' - ')}</div>
+          {/if}
+          <div class="muted small">{r.customerName || 'زبونة'}{r.customerPhone ? ' - ' + r.customerPhone : ''} - حُجز {fmtDate(r.createdAt)}</div>
           {#if variantOf[r.sku]}
             <VariantBits dense variants={[variantOf[r.sku]]} />
           {/if}

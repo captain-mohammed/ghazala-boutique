@@ -151,7 +151,7 @@
               </span>
               <div class="a-body">
                 <div class="bold small">{o.customerName}</div>
-                <div class="muted tiny">{o.label}{o.note ? ' • ' + o.note : ''}</div>
+                <div class="muted tiny">{o.label}{o.note ? ' - ' + o.note : ''}</div>
               </div>
             </button>
             <span class="o-when {rowTone(o)}">{whenLabel(o)}</span>

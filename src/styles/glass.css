@@ -630,3 +630,13 @@ textarea.input { min-height: 84px; resize: vertical; }
     transition-duration: 0.01ms !important;
   }
 }
+
+/* حذف كلمة مزاج مخصصة من داخل الزر */
+.chip .chip-x {
+  margin-inline-start: 4px;
+  opacity: 0.75;
+  font-weight: 900;
+  padding: 0 2px;
+  cursor: pointer;
+}
+.chip .chip-x:hover { opacity: 1; }

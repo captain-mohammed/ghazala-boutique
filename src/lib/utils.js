@@ -195,8 +195,10 @@ export function lastSaleMap(sales) {
    the card's creation, its last stock-IN, or the sold-then-restocked point.
    راكد must count from the shelf moment — never from a previous cycle. */
 export function stockArrival(p) {
-  const cands = [p.createdAt, p.updatedAt, p.restockedAt].filter(Boolean).map((x) => new Date(x).getTime());
-  return cands.length ? Math.max(...cands) : Date.now();
+  /* الاستلام فقط يعيد الساعة — تعديل سعر أو ملاحظة لا يُعيد عدّ الرکود */
+  const cands = [p.createdAt, p.restockedAt, p.supplierAt].filter(Boolean).map((x) => new Date(x).getTime());
+  if (cands.length) return Math.max(...cands);
+  return p.updatedAt ? new Date(p.updatedAt).getTime() : Date.now();
 }
 /* Days since the current stock arrived (0 = arrived today) */
 export function shelfAgeDays(p, now = Date.now()) {

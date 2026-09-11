@@ -332,7 +332,7 @@
       <span class="b-ic"><Icon name="sparkle" size={16} color="#fff" /></span>
       <div class="a-body">
         <div class="bold small">{greeting}</div>
-        <div class="muted small">{briefing.join(' • ')}</div>
+        <div class="muted small">{briefing.join(' - ')}</div>
       </div>
     </Glass>
   {/if}
@@ -463,7 +463,7 @@
           <div class="sm-row">
             <div class="a-body">
               <div class="bold small">{item.p.name}{item.p.size ? ` — مقاس ${item.p.size}` : ''}</div>
-              <div class="muted tiny">نفد • بيع منه {fmtNum(item.sold)} قطعة هالأسبوع — فاضل تستلمين أكثر؟</div>
+              <div class="muted tiny">نفد - بيع منه {fmtNum(item.sold)} قطعة هالأسبوع — فاضل تستلمين أكثر؟</div>
             </div>
             <button class="btn gold" style="min-height:38px; padding:0 12px; font-size:12.5px; flex:none" onclick={() => goRestock(item)}>
               <Icon name="upload" size={14} /> استلام
@@ -474,7 +474,7 @@
           <div class="sm-row">
             <div class="a-body">
               <div class="bold small">{d.p.name} — راكد {fmtNum(d.days)} يوم</div>
-              <div class="muted tiny">{fmtNum(d.p.qty)} قطعة على الرف • اعرضيها بخصم، أفضل من رف ساكن</div>
+              <div class="muted tiny">{fmtNum(d.p.qty)} قطعة على الرف - اعرضيها بخصم، أفضل من رف ساكن</div>
             </div>
             <button class="btn" style="min-height:38px; padding:0 12px; font-size:12.5px; flex:none" onclick={() => goShowOff(d.p)}>
               <Icon name="cart" size={14} /> اعرضيها
@@ -605,7 +605,7 @@
             <span class="v-dot" class:in={e.kind === 'in'}></span>
             <div class="a-body">
               <div class="small bold">{e.kind === 'in' ? '+' : '−'}{fmtIQD(e.amount)}</div>
-              <div class="muted tiny">{e.note} • {fmtDate(e.date)}</div>
+              <div class="muted tiny">{e.note} - {fmtDate(e.date)}</div>
             </div>
           </div>
         {/each}
@@ -632,9 +632,9 @@
     text-align: right; width: 100%; cursor: pointer;
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  /* ---- مزاج الموسم ---- */
-  .mood { padding: 11px 14px; border-radius: var(--r-md); display: flex; flex-direction: column; gap: 8px; }
-  .mood-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  /* ---- مزاج الموسم — Glass يرسم العنصر، فالقواعد عامة ---- */
+  :global(.mood) { padding: 16px; border-radius: var(--r-lg); display: flex; flex-direction: column; gap: 8px; }
+  :global(.mood-head) { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .mood-ic {
     width: 22px; height: 22px; border-radius: 7px;
     background: var(--taupe);

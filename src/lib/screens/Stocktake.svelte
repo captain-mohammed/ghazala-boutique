@@ -89,7 +89,7 @@
 
   <Glass style="padding:12px 16px; display:flex; align-items:center; gap:10px">
     <Icon name="check" size={18} color="var(--good)" />
-    <span class="small muted" style="flex:1">عدّيت {fmtNum(countedEntries.length)} موديل • فروقات: <b style="color:{diffCount ? 'var(--warn)' : 'var(--good)'}">{fmtNum(diffCount)}</b></span>
+    <span class="small muted" style="flex:1">عدّيت {fmtNum(countedEntries.length)} موديل - فروقات: <b style="color:{diffCount ? 'var(--warn)' : 'var(--good)'}">{fmtNum(diffCount)}</b></span>
     <button class="btn primary" style="min-height:42px" onclick={apply} disabled={applying || !diffCount}>تطبيق الجرد</button>
   </Glass>
 
