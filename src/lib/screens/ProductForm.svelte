@@ -3,7 +3,7 @@
   import Glass from '../components/Glass.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
-  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey } from '../db.js';
+  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId } from '../db.js';
   import { fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
   import { toastOk, toastErr, celebrateAt } from '../store.js';
 
@@ -12,7 +12,13 @@
   const editing = !!product;
   const NOCOLOR = 'بلا لون';
 
-  let name = $state(product?.name ?? '');
+  /* الصورة هي الهوية — لا اسم موديل. يُشتق اسم داخلي من النوع واللون فقط
+     لغرض تجميع بطاقات نفس الموديل (الألوان × المقاسات) ودمج الاستلامات. */
+  const autoName = $derived(
+    [type, selColors[0] && selColors[0] !== NOCOLOR ? selColors[0] : ''].filter(Boolean).join(' ') ||
+    category ||
+    'موديل'
+  );
   let category = $state(product?.category ?? '');
   let type = $state(product?.type ?? '');
   let brand = $state(product?.brand ?? '');
@@ -32,11 +38,14 @@
     opts = await modelOptions();
     if (!category) category = opts.categories[0] || 'نسائية';
     if (product) {
+      /* group by the internal model number — الصورة هي الهوية، والرقم هو الجامع */
       const all = await db.products.toArray();
-      const group = all.filter((x) =>
-        x.name.trim().toLowerCase() === product.name.trim().toLowerCase() &&
-        x.category === product.category
-      );
+      const group = product.modelId
+        ? all.filter((x) => x.modelId === product.modelId)
+        : all.filter((x) =>
+            x.name.trim().toLowerCase() === product.name.trim().toLowerCase() &&
+            x.category === product.category
+          );
       const cs = [];
       const bc = {};
       for (const x of group) {
@@ -92,10 +101,10 @@
   const profit = $derived(Math.max(0, iqd(price) - iqd(cost)));
   const margin = $derived(iqd(price) > 0 ? Math.round((profit / iqd(price)) * 100) : 0);
 
-  /* everything is required except notes (and the photo is optional) */
+  /* everything is required except notes — الصورة إجبارية: هي هوية الموديل */
   const missing = $derived.by(() => {
     const m = [];
-    if (!name.trim()) m.push('اسم الموديل');
+    if (!img) m.push('الصورة');
     if (!category) m.push('التصنيف');
     if (!type) m.push('النوع');
     if (!season) m.push('الموسم');
@@ -130,11 +139,28 @@
       return;
     }
     try {
+      /* the model number: edits and merges keep the model's existing id; a brand-new
+         registration gets the next one — for the whole form (كل ألوانه ومقاساته معاً) */
+      const all0 = await db.products.toArray();
+      let freshId = product?.modelId || null;
+      if (!freshId) {
+        for (const c of selColors) {
+          const color = c === NOCOLOR ? '' : c;
+          const probe = all0.find(
+            (x) => x.name.trim().toLowerCase() === autoName.trim().toLowerCase() &&
+              x.category === category &&
+              (x.color || '').trim() === color
+          );
+          if (probe) { freshId = probe.modelId; break; }
+        }
+      }
+      if (!freshId) freshId = await nextModelId();
       const base = {
-        name: name.trim(), category, type, brand: brand.trim(),
-        season, material, cost: iqd(cost), price: iqd(price), photo: img, notes: notes.trim()
+        name: (product?.name || '').trim() || autoName, category, type, brand: brand.trim(),
+        season, material, cost: iqd(cost), price: iqd(price), photo: img, notes: notes.trim(),
+        modelId: freshId
       };
-      const all = await db.products.toArray();
+      const all = all0;
       const idx = new Map(all.map((p) => [modelKey(p), p]));
       const touched = new Set();
       let updated = 0, created = 0;
@@ -150,12 +176,13 @@
             if (editing) {
               /* pieces kept/changed on the shelf don't reset the راكد clock —
                  only a real restock (qty increase) does, and updateProduct handles that */
-              await updateProduct(twin.sku, { ...base, color, size: sz, qty: q });
+              await updateProduct(twin.sku, { ...base, color, size: sz, qty: q, modelId: twin.modelId || freshId });
             } else if (q > 0) {
               await updateProduct(twin.sku, {
                 qty: (twin.qty || 0) + q, cost: base.cost, price: base.price,
                 type: twin.type || base.type, season: twin.season || base.season,
-                material: twin.material || base.material, photo: twin.photo || base.photo
+                material: twin.material || base.material, photo: twin.photo || base.photo,
+                modelId: twin.modelId || freshId
               });
             } else continue;
             touched.add(twin.sku);
@@ -194,16 +221,12 @@
 </script>
 
 <div class="stack" style="gap:14px">
-  <!-- photo beside the name (right side in RTL) — optional -->
+  <!-- الصورة أولاً: هي هوية الموديل في كل التطبيق -->
   <div class="row nm-row" style="gap:12px">
     <div class="field" style="flex:1">
-      <label>اسم الموديل *</label>
-      <input class="input" style={bad('اسم الموديل')} bind:value={name} placeholder="مثال: بوت جلد أسود" />
-    </div>
-    <div class="field" style="flex:none">
-      <label>الصورة <span class="muted tiny">(اختياري)</span></label>
+      <label>صورة الموديل * <span class="muted tiny">— هي هوية الموديل في كل مكان</span></label>
       <div class="photo-wrap">
-        <button type="button" class="photo-tile" class:has={!!img} onclick={() => camInput?.click()}>
+        <button type="button" class="photo-tile" class:has={!!img} class:need={isMissing('الصورة')} onclick={() => camInput?.click()}>
           {#if img}
             <img src={img} alt="preview" />
             <span class="re-take"><Icon name="image" size={12} /> تغيير</span>
@@ -215,6 +238,7 @@
         {#if img}<span class="ph-x-wrap"><button type="button" class="ph-x" aria-label="إزالة الصورة" onclick={() => { img = null; }}><Icon name="x" size={13} /></button></span>{/if}
         <input type="file" accept="image/*" capture="environment" style="display:none" bind:this={camInput} onchange={onPhoto} />
       </div>
+      {#if isMissing('الصورة')}<span class="err-line">الصورة مطلوبة — صوّري الحذاء</span>{/if}
     </div>
   </div>
 
@@ -335,7 +359,8 @@
 </div>
 
 <style>
-  :global(.nm-row) { align-items: flex-end; }
+  :global(.nm-row) { align-items: flex-start; }
+  .photo-tile.need { border-color: rgba(181, 73, 91, 0.6); box-shadow: 0 0 0 3px rgba(181, 73, 91, 0.1); }
   .photo-wrap { position: relative; display: inline-flex; }
   .photo-tile {
     width: 86px; height: 86px;

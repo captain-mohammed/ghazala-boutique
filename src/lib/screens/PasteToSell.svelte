@@ -146,8 +146,8 @@
           class="pcard rise"
           onclick={() => addToCart(m)}
         >
+          <span class="p-thumb">{#if m.p.photo}<img src={m.p.photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
           <div class="pinfo">
-            <div class="pname">{m.p.name}</div>
             <VariantBits dense variants={[{ color: m.p.color, size: m.p.size }]} />
           </div>
           <span class="pprice">{fmtIQD(m.p.price)}</span>
@@ -161,11 +161,14 @@
     <Glass class="cart rise" style="animation-delay:0.05s">
       <div class="stack" style="gap:8px">
         {#each cart as c (c.sku)}
+          {@const cph = products.find((x) => x.sku === c.sku)?.photo}
           <div class="row" style="justify-content:space-between">
-            <div>
-              <div class="bold small">{c.name}</div>
-              <VariantBits dense variants={[{ color: c.color, size: c.size }]} />
-              <div class="muted tiny">{fmtIQD(c.price)} × {c.qty}</div>
+            <div style="display:flex; gap:8px; align-items:center; min-width:0">
+              <span class="p-thumb">{#if cph}<img src={cph} alt="" />{:else}<Icon name="image" size={15} color="var(--taupe)" />{/if}</span>
+              <div>
+                <VariantBits dense variants={[{ color: c.color, size: c.size }]} />
+                <div class="muted tiny">{fmtIQD(c.price)} × {c.qty}</div>
+              </div>
             </div>
             <div class="stepper">
               <button class="stp" onclick={() => setQty(c.sku, -1)}>−</button>
@@ -228,7 +231,16 @@
   }
   :global(.pcard:active) { transform: scale(0.98); }
   .pinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-  .pname { font-weight: 800; font-size: 14px; color: var(--ink); }
+  .p-thumb {
+    flex: none;
+    width: 42px; height: 42px;
+    border-radius: 11px;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--line);
+  }
+  .p-thumb img { width: 100%; height: 100%; object-fit: cover; }
   .pprice { font-weight: 800; font-size: 13px; color: var(--burgundy); white-space: nowrap; }
   .add-ic {
     flex: none; width: 30px; height: 30px; border-radius: 50%;

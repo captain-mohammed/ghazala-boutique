@@ -2,6 +2,7 @@
   import Icon from '../components/Icon.svelte';
   import Sheet from '../components/Sheet.svelte';
   import Glass from '../components/Glass.svelte';
+  import VariantBits from '../components/VariantBits.svelte';
   import { db, adjustQty, deleteProduct, createReservation, RESERVATION_HOURS } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt, invoicePreset } from '../store.js';
@@ -16,10 +17,13 @@
   let moves = $state([]);
   let siblings = $state([]);
 
+  /* نفس الموديل = نفس الرقم الداخلي ونفس اللون (احتياط: الاسم للقديم) */
   const sameModel = (a, b) =>
-    a.name.trim().toLowerCase() === b.name.trim().toLowerCase() &&
-    a.category === b.category &&
-    (a.color || '').trim() === (b.color || '').trim();
+    a.modelId && b.modelId
+      ? a.modelId === b.modelId && (a.color || '').trim() === (b.color || '').trim()
+      : a.name.trim().toLowerCase() === b.name.trim().toLowerCase() &&
+        a.category === b.category &&
+        (a.color || '').trim() === (b.color || '').trim();
 
   $effect(() => {
     p = product;
@@ -50,7 +54,8 @@
         name: p.name, category: p.category, type: p.type || '',
         color: p.color || '', cost: p.cost, price: p.price,
         sizes: Object.fromEntries(holes.map((h) => [h.size, 2])),
-        photo: p.photo || null
+        photo: p.photo || null,
+        modelId: p.modelId
       }]
     });
     onclose();
@@ -101,16 +106,18 @@
   <Glass class="head">
     <div class="thumb">
       {#if p.photo}
-        <img src={p.photo} alt={p.name} />
+        <img src={p.photo} alt={p.type || p.category} />
       {:else}
-        <Icon name="box" size={40} color="var(--taupe)" />
+        <Icon name="image" size={40} color="var(--taupe)" />
       {/if}
     </div>
     <div class="info">
-      <h2 class="h2">{p.name}</h2>
-      <div class="muted small">
-        {[p.category, p.type, p.season, p.material].filter(Boolean).join(' • ')}{p.color ? ' • ' + p.color : ''}{p.size ? ' • مقاس ' + p.size : ''}
+      <!-- الصورة هي الهوية — لا اسم -->
+      <div class="id-line">
+        <span class="id-type">{[p.type, p.color].filter(Boolean).join(' ') || p.category}</span>
+        <VariantBits dense variants={[{ color: p.color, size: p.size }]} />
       </div>
+      <div class="muted small">{[p.category, p.season, p.material].filter(Boolean).join(' • ')}</div>
       <div class="sku">{p.sku}</div>
       {#if p.supplier}
         <div class="sup"><Icon name="upload" size={12} /> من {p.supplier}{p.supplierAt ? ` • ${fmtDate(p.supplierAt)}` : ''}</div>
@@ -199,7 +206,7 @@
 
 <Sheet open={reserving} title="حجز قطعة" onclose={() => (reserving = false)}>
   <div class="stack" style="gap:12px">
-    <div class="muted small">تُحجز قطعة واحدة من «{p.name}» لمدة {RESERVATION_HOURS} ساعة وتُخصم من المخزون الآن.</div>
+    <div class="muted small">تُحجز قطعة واحدة لمدة {RESERVATION_HOURS} ساعة وتُخصم من المخزون الآن.</div>
     <div class="field">
       <label>اسم الزبونة</label>
       <input class="input" bind:value={rName} placeholder="مثال: زينب" />
@@ -226,7 +233,9 @@
     border: 1px solid var(--line);
   }
   .thumb img { width: 100%; height: 100%; object-fit: cover; }
-  .info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .id-line { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+  .id-type { font-weight: 800; font-size: 16px; color: var(--ink); }
   .sku {
     align-self: flex-start;
     font-size: 11px;

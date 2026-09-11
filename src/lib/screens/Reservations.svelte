@@ -24,7 +24,7 @@
       if (need.length) {
         const ps = await db.products.bulkGet(need);
         const m = {};
-        for (const p of ps) if (p) m[p.sku] = { color: p.color || '', size: String(p.size || '').trim() };
+        for (const p of ps) if (p) m[p.sku] = { color: p.color || '', size: String(p.size || '').trim(), photo: p.photo || null };
         variantOf = m;
       }
     };
@@ -109,7 +109,7 @@
       {#each active as r, i (r.id)}
         <Glass class="res rise" style="animation-delay:{Math.min(i * 0.05, 0.3)}s">
           <div class="row" style="justify-content:space-between">
-            <span class="bold">{r.name}</span>
+            <span class="res-thumb">{#if variantOf[r.sku]?.photo}<img src={variantOf[r.sku].photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <span class="chip-n warn-chip">{hoursLeft(r) < 6 ? '⏳' : ''} {fmtNum(Math.floor(hoursLeft(r)))} ساعة</span>
           </div>
           <div class="muted small">{r.customerName || 'زبونة'}{r.customerPhone ? ' • ' + r.customerPhone : ''} • حُجز {fmtDate(r.createdAt)}</div>
@@ -136,8 +136,7 @@
       <div class="stack" style="gap:6px">
         {#each done as r (r.id)}
           <div class="d-row">
-            <span class="bold small">{r.name}</span>
-            <span class="muted tiny">{r.customerName || 'زبونة'}</span>
+            <span class="bold small">{r.customerName || 'زبونة'}</span>
             <span class="tag {r.status}">{r.status === 'sold' ? 'تحوّل لبيع' : r.status === 'cancelled' ? 'أُلغي' : 'انتهى'}</span>
             <span class="money small">{fmtIQD(r.price)}</span>
           </div>
@@ -151,7 +150,10 @@
   {#if converting}
     <div class="stack" style="gap:12px">
       <Glass class="sum">
-        <div class="row" style="justify-content:space-between"><span class="muted small">الموديل</span><span class="bold">{converting.name}</span></div>
+        <div class="row" style="justify-content:space-between">
+          <span class="muted small">الموديل</span>
+          <span class="res-thumb">{#if variantOf[converting.sku]?.photo}<img src={variantOf[converting.sku].photo} alt="" />{:else}<Icon name="image" size={15} color="var(--taupe)" />{/if}</span>
+        </div>
         <div class="row" style="justify-content:space-between"><span class="muted small">السعر</span><span class="money">{fmtIQD(converting.price)}</span></div>
       </Glass>
       <div class="row" style="gap:8px">
@@ -193,6 +195,16 @@
 
 <style>
   :global(.res) { padding: 13px 15px; display: flex; flex-direction: column; gap: 4px; }
+  .res-thumb {
+    flex: none;
+    width: 40px; height: 40px;
+    border-radius: 11px;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--line);
+  }
+  .res-thumb img { width: 100%; height: 100%; object-fit: cover; }
 
   .req { color: var(--burgundy); font-weight: 800; }
   .err { display: block; font-size: 11px; color: var(--burgundy); font-weight: 700; margin-top: 3px; }

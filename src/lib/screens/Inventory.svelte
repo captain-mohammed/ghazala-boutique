@@ -7,7 +7,7 @@
   import Glass from '../components/Glass.svelte';
   import ProductForm from './ProductForm.svelte';
   import ItemDetail from './ItemDetail.svelte';
-  import { db, modelOptions, hexForColor, deleteProducts } from '../db.js';
+  import { db, modelOptions, hexForColor, deleteProducts, modelGroupKey } from '../db.js';
   import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl } from '../utils.js';
   import { toastErr, toastOk, askConfirm, invoicePreset, catalogFilters, filtersOpen } from '../store.js';
   import { get } from 'svelte/store';
@@ -75,7 +75,7 @@
     }
     const map = new Map();
     for (const p of list) {
-      const k = `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+      const k = modelGroupKey(p); // الرقم الداخلي يجمع الموديل — الاسم احتياط للقديم
       if (!map.has(k)) map.set(k, []);
       map.get(k).push(p);
     }
@@ -97,7 +97,7 @@
         return { color: c, qty: ps.reduce((a, x) => a + (x.qty || 0), 0), sizes };
       });
       out.push({
-        key: lead.name.trim().toLowerCase() + '|' + lead.category,
+        key: modelGroupKey(lead),
         items, qty, price, lead,
         name: lead.name, category: lead.category,
         type: lead.type, season: lead.season, material: lead.material,
@@ -157,6 +157,7 @@
   let openSku = $state(null);
   let photoGate = $state(false);
   let formPhoto = $state(null);
+  let wraps = $state([]); // card host elements — for pinning the long-press menu below its card
 
   function closeDetail() { detailGroup = null; openSku = null; }
   function openAdd() {
@@ -203,12 +204,15 @@
     if (a.id === 'invoice') goto('receive');
   }
 
-  /* ---- Long-press power moves on a model card ---- */
-  let quickOps = $state(null); // { g, x, y }
+  /* ---- Long-press power moves: menu fixed below the selected card,
+          everything else behind a soft blur veil ---- */
+  let quickOps = $state(null); // { g, top }
 
-  function onLongPress(e, g) {
+  function onLongPress(e, g, node) {
+    const r = node?.getBoundingClientRect?.();
+    const below = r ? Math.min(r.bottom + 8, window.innerHeight - 190) : window.innerHeight / 3;
     buzz([18, 40, 18]);
-    quickOps = { g, x: e.detail?.x ?? window.innerWidth / 2, y: e.detail?.y ?? window.innerHeight / 3 };
+    quickOps = { g, top: Math.max(below, 70) };
   }
   /* delete a whole model (all its colors & sizes) — from the card, long-press menu, or detail sheet */
   async function askDelete(g) {
@@ -248,7 +252,8 @@
         return {
           name: g.name, category: g.category, type: g.type || '', season: g.season || '',
           material: g.material || '', color: cr.color,
-          cost: g.lead.cost, price: g.price, sizes, photo: cr.sizes.find((s) => s.p?.photo)?.p?.photo || g.photo
+          cost: g.lead.cost, price: g.price, sizes, photo: cr.sizes.find((s) => s.p?.photo)?.p?.photo || g.photo,
+          modelId: g.lead.modelId
         };
       })
     });
@@ -315,59 +320,53 @@
   {:else}
     <div class="grid">
       {#each sorted as g, i (g.key + g.items.length)}
-        <div class="cardwrap">
+        <div class="cardwrap" class:lit={quickOps && quickOps.g.key === g.key} bind:this={wraps[i]}>
           <Glass
             as="button"
             class="card rise"
             style="animation-delay:{Math.min(i * 0.04, 0.4)}s"
-            onlongpress={(e) => onLongPress(e, g)}
+            onlongpress={(e) => onLongPress(e, g, wraps[i])}
             onclick={() => { buzz(6); closeDetail(); detailGroup = g; }}
           >
+            <!-- الصورة هي الهوية: إطار مربع بعرض البطاقة، بدون اسم -->
             <div class="thumb" class:oos={g.qty === 0}>
               {#if g.photo}
-                <img src={g.photo} alt={g.name} loading="lazy" />
+                <img src={g.photo} alt={g.type || g.category} loading="lazy" />
               {:else}
-                <Icon name="box" size={30} color="var(--taupe)" />
+                <Icon name="image" size={34} color="var(--taupe)" />
               {/if}
-              <span class="qty-badge" class:zero={g.qty === 0}>{fmtNum(g.qty)}</span>
+              {#if g.qty === 0}<span class="oos-flag">نفد</span>{/if}
             </div>
             <div class="card-body">
-              <div class="card-name">{g.name}</div>
-              {#if g.colorRows.length > 1 || g.colorRows[0].color}
+              {#if g.colorRows.some((cr) => cr.color)}
                 <div class="card-colors">
                   {#each g.colorRows as cr (cr.color)}
-                    <span class="cc-item">
+                    <span class="cc-item" title="{cr.color} — {fmtNum(cr.qty)} قطعة">
                       <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
-                      <span>{cr.color || '—'}<b>{fmtNum(cr.qty)}</b></span>
+                      <b>{fmtNum(cr.qty)}</b>
                     </span>
                   {/each}
                 </div>
               {/if}
+              {#if g.type}<div class="card-type">{g.type}</div>{/if}
               <div class="card-sizes muted">
-                مقاسات: {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
-              </div>
-              <div class="card-meta">
-                <span>{[g.category, g.type, g.season].filter(Boolean).join(' • ')}</span>
-                <span class="card-price">{fmtIQD(g.price)}</span>
+                <span class="sz-label">القياسات المتوفر:</span>
+                {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
               </div>
             </div>
+            <div class="card-price">{fmtIQD(g.price)}</div>
           </Glass>
-          <!-- quick delete — one tap, whole model gone (with a confirm) -->
-          <button class="card-del" aria-label="حذف الموديل" onclick={() => askDelete(g)}>
-            <Icon name="trash" size={14} />
-          </button>
         </div>
       {/each}
     </div>
   {/if}
 </div>
 
-<SpeedDial actions={dialActions} onselect={onDial} label="إجراءات المخزون" />
-
+<!-- Long-press quick menu: fixed below the selected card, the rest of the
+     screen behind a shared-blur veil (only card + menu stay clear) -->
 {#if quickOps}
   <div class="qp-backdrop" onclick={() => (quickOps = null)} aria-hidden="true"></div>
-  <div class="quickops pop" style="left:{Math.min(Math.max(quickOps.x, 90), window.innerWidth - 90)}px; top:{Math.max(quickOps.y - 8, 60)}px">
-    <div class="qo-name">{quickOps.g.name}</div>
+  <div class="quickops pop" style="top:{quickOps.top}px">
     <div class="qo-row">
       <button class="qo-btn" onclick={qoDetails}><Icon name="list" size={15} /> تفصيل</button>
       <button class="qo-btn gold" onclick={qoRestock}><Icon name="upload" size={15} /> استلام</button>
@@ -378,6 +377,8 @@
     </div>
   </div>
 {/if}
+
+<SpeedDial actions={dialActions} onselect={onDial} label="إجراءات المخزون" />
 
 <!-- Photo-first gate: snap the shoe, the photo rides the whole form -->
 <Sheet open={photoGate} title="صوّري الموديل أولاً" onclose={gateSkip}>
@@ -404,13 +405,14 @@
   {:else if detailGroup}
     {@const g = detailGroup}
     <div class="stack" style="gap:12px">
+      <!-- الصورة هي الهوية: بلا اسم، النوع والتصنيف فقط -->
       <Glass class="mv-head">
         <div class="mv-thumb" class:oos={g.qty === 0}>
-          {#if g.photo}<img src={g.photo} alt={g.name} />{:else}<Icon name="box" size={30} color="var(--taupe)" />{/if}
+          {#if g.photo}<img src={g.photo} alt={g.type || g.category} />{:else}<Icon name="image" size={30} color="var(--taupe)" />{/if}
         </div>
         <div class="mv-info">
-          <div class="h2 mv-name">{g.name}</div>
-          <div class="muted small">{[g.category, g.type, g.season, g.material].filter(Boolean).join(' • ')}</div>
+          {#if g.type}<div class="mv-type">{g.type}</div>{/if}
+          <div class="muted small">{[g.category, g.season, g.material].filter(Boolean).join(' • ')}</div>
           <div class="mv-stats">
             <span class="money" style="color:var(--burgundy)">{fmtIQD(g.price)}</span>
             <span class="mv-qty" class:zero={g.qty === 0}>{fmtNum(g.qty)} قطعة</span>
@@ -471,77 +473,67 @@
   .sort-note { margin-top: -4px; }
   .grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(2, 1fr); /* بطاقتان جنباً إلى جنب دائماً */
+    gap: 14px;
   }
-  .cardwrap { position: relative; }
-  .card-del {
-    position: absolute;
-    top: 8px;
-    inset-inline-start: 8px; /* physical right in RTL — opposite corner from the qty badge */
-    z-index: 3;
-    width: 30px;
-    height: 30px;
-    border-radius: 50%;
-    border: 1px solid var(--glass-border);
-    background: rgba(255, 255, 255, 0.88);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    color: var(--burgundy);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    box-shadow: 0 3px 10px rgba(58, 26, 32, 0.14);
-    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-  .card-del:active { transform: scale(0.86); }
+  .cardwrap { position: relative; min-width: 0; }
+  /* البطاقة المحددة تبقى واضحة فوق الحجاب الضبابي */
+  .cardwrap.lit { z-index: 71; }
   :global(.card) {
     position: relative;
+    display: flex;
+    flex-direction: column;
     padding: 0;
     overflow: hidden;
     cursor: pointer;
     text-align: right;
+    width: 100%;
     transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   :global(.card:active) { transform: scale(0.97); }
   .thumb {
-    height: 110px;
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1 / 1; /* الإطار المربع للصورة */
     display: flex; align-items: center; justify-content: center;
     background: linear-gradient(150deg, rgba(255, 255, 255, 0.6), rgba(181, 73, 91, 0.06));
     border-bottom: 1px solid var(--line);
-    position: relative;
+    overflow: hidden;
   }
-  .thumb.oos { background: linear-gradient(150deg, rgba(255, 255, 255, 0.4), rgba(156, 123, 107, 0.12)); opacity: 0.8; }
-  .thumb img { width: 100%; height: 100%; object-fit: cover; }
-  .qty-badge {
+  .thumb.oos { opacity: 0.75; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .oos-flag {
     position: absolute;
-    top: 8px;
+    bottom: 8px;
     left: 8px;
-    min-width: 26px;
-    height: 26px;
-    padding: 0 8px;
-    border-radius: 999px;
-    display: flex; align-items: center; justify-content: center;
-    background: rgba(78, 138, 95, 0.9);
-    color: #fff;
-    font-size: 12.5px;
+    font-size: 10.5px;
     font-weight: 800;
-    box-shadow: 0 3px 10px rgba(58, 26, 32, 0.18);
+    color: #fff;
+    background: rgba(122, 46, 58, 0.92);
+    border-radius: 999px;
+    padding: 3px 10px;
   }
-  .qty-badge.zero { background: rgba(122, 46, 58, 0.9); }
-  .card-body { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 3px; }
-  .card-name { font-weight: 800; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .card-colors { display: flex; flex-wrap: wrap; gap: 4px 10px; }
-  .cc-item { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--ink-2); }
-  .cc-dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid var(--line-2); flex: none; }
-  .cc-item b { color: var(--burgundy); margin-inline-start: 3px; font-weight: 800; }
-  .card-sizes { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .card-meta { font-size: 12px; color: var(--taupe); display: flex; justify-content: space-between; gap: 6px; }
-  .card-price { font-weight: 800; color: var(--burgundy); font-size: 13px; white-space: nowrap; }
+  .card-body { padding: 10px 12px 6px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .card-colors { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cc-item { display: inline-flex; align-items: center; gap: 3px; font-size: 10.5px; }
+  .cc-dot { width: 13px; height: 13px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; }
+  .cc-item b { color: var(--ink-2); font-weight: 800; font-size: 10.5px; }
+  .card-type { font-weight: 800; font-size: 13.5px; color: var(--ink); }
+  .card-sizes { font-size: 10.5px; line-height: 1.6; }
+  .sz-label { font-weight: 800; color: var(--taupe); }
+  .card-price {
+    margin: 6px 12px 12px;
+    border-top: 1px solid var(--line);
+    padding-top: 9px;
+    text-align: center;
+    font-weight: 800;
+    font-size: 14.5px;
+    color: var(--burgundy);
+  }
 
   /* model sheet */
   :global(.mv-head) { display: flex; gap: 12px; padding: 12px; align-items: center; }
+  .mv-type { font-weight: 800; font-size: 16px; color: var(--ink); }
   .mv-thumb {
     width: 76px; height: 76px; border-radius: var(--r-md); flex: none;
     overflow: hidden; position: relative;
@@ -552,7 +544,6 @@
   .mv-thumb.oos { opacity: 0.75; }
   .mv-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .mv-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .mv-name { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin: 0; }
   .mv-stats { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
   .mv-qty { font-size: 12px; font-weight: 800; color: var(--good); }
   .mv-qty.zero { color: var(--burgundy-deep); }
@@ -588,12 +579,17 @@
     position: fixed;
     inset: 0;
     z-index: 70;
-    background: rgba(58, 26, 32, 0.12);
+    background: rgba(252, 243, 238, 0.45);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    animation: veil-in 0.2s ease-out;
   }
+  @keyframes veil-in { from { opacity: 0; } to { opacity: 1; } }
   .quickops {
     position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
     z-index: 71;
-    transform: translate(-50%, -100%);
     background: var(--glass-strong);
     backdrop-filter: blur(26px) saturate(1.5);
     -webkit-backdrop-filter: blur(26px) saturate(1.5);
@@ -601,20 +597,12 @@
     border-radius: 16px;
     box-shadow: 0 18px 44px rgba(58, 26, 32, 0.28);
     padding: 10px;
-    min-width: 170px;
+    min-width: 220px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
   }
-  .qo-name {
-    font-size: 12px;
-    font-weight: 800;
-    color: var(--ink);
-    margin-bottom: 8px;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 170px;
-  }
-  .qo-row { display: flex; gap: 6px; margin-bottom: 6px; }
-  .qo-row:last-child { margin-bottom: 0; }
+  .qo-row { display: flex; gap: 6px; }
   .qo-btn {
     flex: 1;
     display: inline-flex;

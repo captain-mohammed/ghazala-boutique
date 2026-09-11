@@ -22,7 +22,7 @@
   import ReceiveInvoice from './lib/screens/ReceiveInvoice.svelte';
   import ModelOptions from './lib/screens/ModelOptions.svelte';
   import Occasions from './lib/screens/Occasions.svelte';
-  import { sweepMonthClosing } from './lib/db.js';
+  import { sweepMonthClosing, backfillModelIds } from './lib/db.js';
 
   let locked = $state(true);
   let screen = $state('home');
@@ -76,6 +76,7 @@
 
   onMount(async () => {
     sweepMonthClosing();
+    backfillModelIds();
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredInstall = e;
@@ -100,9 +101,10 @@
     {#key screen}
       <div class="screen" in:screenIn={{ x: slideX, y: 14, duration: 430 }}>
         {#if screen !== 'home'}
+          <!-- رأس متمركز: العنوان بالمنتصف، وزر الرجوع عائم على الحافة -->
           <header class="head">
             {#if isSub(screen)}
-              <BackBtn onback={() => goto('more')} />
+              <div class="head-back"><BackBtn onback={() => goto('more')} /></div>
             {/if}
             <h1 class="h1">{SUBTITLES[screen] || ''}</h1>
           </header>
@@ -155,7 +157,21 @@
     padding: calc(14px + var(--sat)) 14px calc(var(--nav-h) + 40px + var(--sab));
   }
   .screen { min-height: 60dvh; }
-  .head { margin-bottom: 14px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .head {
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center; /* العنوان دائماً بمنتصف الصفحة */
+    position: relative;
+    min-height: 42px;
+  }
+  .head-back {
+    position: absolute;
+    inset-inline-start: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 2;
+  }
   .update {
     position: fixed;
     top: calc(12px + var(--sat));

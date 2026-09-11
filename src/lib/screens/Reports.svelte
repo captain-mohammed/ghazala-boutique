@@ -3,12 +3,13 @@
   import Icon from '../components/Icon.svelte';
   import Ticker from '../components/Ticker.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, allSettings, getSetting, WOMENS_TYPES } from '../db.js';
+  import { db, allSettings, getSetting, WOMENS_TYPES, modelGroupKey } from '../db.js';
   import Glass from '../components/Glass.svelte';
-  import { fmtIQD, fmtNum, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR, shelfAgeDays, stockArrival } from '../utils.js';
+  import { fmtIQD, fmtNum, fmtDate, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR, shelfAgeDays, stockArrival } from '../utils.js';
 
   let products = $state([]);
   let sales = $state([]);
+  let showReturned = $state(false);
   let expenses = $state([]);
   let closings = $state([]);
   let settings = $state(null);
@@ -40,6 +41,7 @@
 
   const from = $derived(period === 'today' ? startOfToday() : period === 'week' ? daysAgoStart(6) : period === 'month' ? daysAgoStart(29) : new Date(0));
   const inPeriod = $derived(sales.filter((s) => s.status !== 'returned' && new Date(s.date) >= from));
+  const returnedSales = $derived(sales.filter((s) => s.status === 'returned').sort((a, b) => new Date(b.date) - new Date(a.date)));
 
   const totals = $derived({
     count: inPeriod.length,
@@ -95,7 +97,7 @@
       const lastSold = lm.get(p.sku) ? new Date(lm.get(p.sku)).getTime() : 0;
       if (lastSold > since) continue; // sold more recently than it arrived — it moves
       if (since > cutoff) continue;   // hasn't sat long enough yet
-      const k = `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+      const k = modelGroupKey(p);
       const cur = map.get(k) || { key: k, name: p.name, color: p.color || '', size: p.size || '', items: [], qty: 0 };
       cur.items.push(p);
       cur.qty += p.qty || 0;
@@ -111,7 +113,7 @@
     const map = new Map();
     for (const p of products) {
       if ((p.qty || 0) > 0) continue;
-      const k = `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+      const k = modelGroupKey(p);
       const cur = map.get(k) || { key: k, name: p.name, items: [] };
       cur.items.push(p);
       map.set(k, cur);
@@ -159,7 +161,7 @@
     }
     const map = new Map();
     for (const p of products) {
-      const k = `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+      const k = modelGroupKey(p);
       const cur = map.get(k) || { key: k, name: p.name, color: p.color || '', size: p.size || '', sold: 0, arrived: 0 };
       cur.sold += soldQty.get(p.sku) || 0;
       cur.arrived += (soldQty.get(p.sku) || 0) + (p.qty || 0);
@@ -205,10 +207,10 @@
       <h2 class="h2" style="margin-bottom:10px"><Icon name="flame" size={17} color="var(--burgundy)" /> الأكثر مبيعاً</h2>
       <div class="stack" style="gap:8px">
         {#each best as b, i (b.sku)}
+          {@const ph = products.find((p) => p.sku === b.sku)?.photo}
           <div class="brow pop" style="animation-delay:{0.2 + i * 0.05}s">
             <span class="rank">{i + 1}</span>
             <div class="a-body">
-              <div class="bold small">{b.name}</div>
               <VariantBits dense variants={[{ color: b.color, size: b.size }]} />
               <div class="muted small">{fmtNum(b.qty)} قطعة</div>
             </div>
@@ -247,9 +249,10 @@
       {#if movingFast.length}
         <div class="st-head good">يدور بسرعة — ما يلبث على الرف</div>
         {#each movingFast as x (x.key)}
+          {@const ph = products.find((p) => modelGroupKey(p) === x.key && p.photo)?.photo}
           <div class="brow" style="margin-bottom:6px">
+            <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <div class="a-body">
-              <div class="bold small">{x.name}</div>
               <VariantBits dense variants={[{ color: x.color, size: x.size }]} />
               <div class="muted small">انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
             </div>
@@ -260,9 +263,10 @@
       {#if movingSlow.length}
         <div class="st-head slow">يتثاقل — فكّري بعرض أو تصفية</div>
         {#each movingSlow as x (x.key)}
+          {@const ph = products.find((p) => modelGroupKey(p) === x.key && p.photo)?.photo}
           <div class="brow" style="margin-bottom:6px">
+            <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <div class="a-body">
-              <div class="bold small">{x.name}</div>
               <VariantBits dense variants={[{ color: x.color, size: x.size }]} />
               <div class="muted small">انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
             </div>
@@ -300,8 +304,8 @@
       <div class="stack" style="gap:8px">
         {#each holes as h (h.key)}
           <div class="brow">
+            <span class="r-thumb">{#if h.items.find((p) => p.photo)}<img src={h.items.find((p) => p.photo).photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <div class="a-body">
-              <div class="bold small">{h.name}</div>
               <VariantBits dense variants={h.items.map((p) => ({ color: p.color, size: p.size }))} />
             </div>
             <span class="qbadge low">نفد</span>
@@ -318,8 +322,8 @@
       <div class="stack" style="gap:8px">
         {#each dead.slice(0, 8) as d (d.key)}
           <div class="brow">
+            <span class="r-thumb">{#if d.items.find((p) => p.photo)}<img src={d.items.find((p) => p.photo).photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <div class="a-body">
-              <div class="bold small">{d.name}</div>
               <VariantBits dense variants={d.items.map((p) => ({ color: p.color, size: p.size }))} />
               <div class="muted tiny">على الرف {fmtNum(Math.min(...d.items.map((p) => shelfAgeDays(p))))} يوم أو أكثر</div>
             </div>
@@ -331,11 +335,26 @@
   {/if}
 
   {#if totals.returned > 0}
-    <Glass class="rise muted-card" style="animation-delay:0.3s; padding:14px 16px">
-      <div class="row" style="justify-content:space-between">
+    <Glass class="rise" style="animation-delay:0.3s; padding:14px 16px">
+      <button class="ret-toggle" onclick={() => (showReturned = !showReturned)}>
         <span class="muted"><Icon name="undo" size={15} /> مبيعات راجع (كل الفترات)</span>
-        <span class="money">{totals.returned}</span>
-      </div>
+        <span class="ret-side"><span class="money">{totals.returned}</span><i class="chev" class:open={showReturned}></i></span>
+      </button>
+      {#if showReturned}
+        <div class="stack" style="gap:8px; margin-top:10px">
+          {#each returnedSales as s (s.id)}
+            {@const ph = products.find((p) => p.sku === s.items?.[0]?.sku)?.photo}
+            <div class="brow">
+              <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
+              <div class="a-body">
+                <div class="small bold">{s.customer || 'بدون اسم'}{s.phone ? ` • ${s.phone}` : ''}</div>
+                <div class="muted tiny">{fmtDate(s.date)} • {fmtNum(salePieces(s))} قطعة</div>
+              </div>
+              <span class="money">{fmtIQD(s.total)}</span>
+            </div>
+          {/each}
+        </div>
+      {/if}
     </Glass>
   {/if}
 </div>
@@ -360,6 +379,18 @@
   @keyframes grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
   .bar-label { font-size: 9px; }
 
+  .ret-toggle {
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
+    background: none; border: none; padding: 0; font-family: inherit; cursor: pointer;
+  }
+  .ret-side { display: flex; align-items: center; gap: 8px; }
+  .chev {
+    width: 8px; height: 8px;
+    border-inline-end: 2px solid var(--taupe); border-bottom: 2px solid var(--taupe);
+    transform: rotate(-45deg); transition: transform 0.2s ease;
+  }
+  .chev.open { transform: rotate(45deg); }
+
   .brow {
     display: flex;
     align-items: center;
@@ -379,6 +410,16 @@
     font-weight: 800;
     display: flex; align-items: center; justify-content: center;
   }
+  .r-thumb {
+    flex: none;
+    width: 44px; height: 44px;
+    border-radius: 11px;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--line);
+  }
+  .r-thumb img { width: 100%; height: 100%; object-fit: cover; }
   .a-body { flex: 1; min-width: 0; }
   .qbadge {
     min-width: 30px;

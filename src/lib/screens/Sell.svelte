@@ -10,7 +10,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, recordSale, getSetting, piecesSoldToday, modelOptions } from '../db.js';
+  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters, filtersOpen } from '../store.js';
@@ -72,6 +72,8 @@
     { value: 'qty', label: 'الأقل كمية', icon: 'chart' }
   ];
 
+  /* One card per MODEL: same internal number (كل ألوانه ومقاساته معاً) —
+     القيمة المخزنة هي الأقل كمية، والمعروض هو العدد الفعلي للقطع على الرف */
   const filtered = $derived.by(() => {
     let list = products;
     if (f.availSell === 'in') list = list.filter((p) => p.qty > 0);
@@ -85,7 +87,16 @@
         [p.name, p.brand, p.color, p.sku, p.size, p.barcode, p.type, p.season, p.material].filter(Boolean).join(' ').toLowerCase().includes(s)
       );
     }
-    const sorted = [...list];
+    const map = new Map();
+    for (const p of list) {
+      const k = modelGroupKey(p);
+      if (!map.has(k)) map.set(k, p);
+      else {
+        const cur = map.get(k);
+        if (new Date(p.createdAt) > new Date(cur.createdAt)) map.set(k, p); // أحدث بطاقة تمثل الموديل
+      }
+    }
+    const sorted = [...map.values()];
     if (f.sort === 'new') sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     if (f.sort === 'price') sorted.sort((a, b) => (b.price || 0) - (a.price || 0));
     if (f.sort === 'qty') sorted.sort((a, b) => a.qty - b.qty);
@@ -208,8 +219,9 @@
   /* ---- Variant picker: colors × sizes chosen at checkout, only what's available ---- */
   const NOCOLOR = 'بلا لون';
   function variantsOf(p) {
+    /* same model = same internal number (fallback to name for legacy cards) */
     return products
-      .filter((x) => (x.name || '').trim().toLowerCase() === (p.name || '').trim().toLowerCase() && x.category === p.category)
+      .filter((x) => modelGroupKey(x) === modelGroupKey(p))
       .map((x) => ({ sku: x.sku, color: (x.color || '').trim() || NOCOLOR, size: String(x.size || '').trim() || '—', qty: x.qty || 0 }))
       .filter((v) => v.qty > 0)
       .sort((a, b) => a.color.localeCompare(b.color, 'ar') || (parseFloat(a.size) || 0) - (parseFloat(b.size) || 0));
@@ -572,10 +584,13 @@
 <Sheet open={checkout} title="إتمام البيع" onclose={() => (checkout = false)}>
   <div class="stack" style="gap:14px">
     {#each cart as c (c.vsKey)}
+      {@const cph = products.find((x) => x.sku === c.sku)?.photo}
       <Glass class="citem" radius="var(--r-md)">
         <div class="ci-info">
-          <div class="bold">{c.name}</div>
-          <VariantBits variants={[c]} />
+          <div style="display:flex; gap:8px; align-items:center">
+            <span class="ci-thumb">{#if cph}<img src={cph} alt="" />{:else}<Icon name="image" size={14} color="var(--taupe)" />{/if}</span>
+            <VariantBits variants={[c]} />
+          </div>
           <!-- لكل سطر اختيار اللون والمقاس من المتاح فقط -->
           <div class="ci-variants">
             <select
@@ -816,6 +831,16 @@
     border-radius: var(--r-md);
   }
   .ci-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .ci-thumb {
+    flex: none;
+    width: 34px; height: 34px;
+    border-radius: 9px;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--line);
+  }
+  .ci-thumb img { width: 100%; height: 100%; object-fit: cover; }
   .ci-variants { display: flex; gap: 6px; }
   .ci-sel {
     flex: 1;

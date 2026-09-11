@@ -2,6 +2,7 @@
   import Icon from '../components/Icon.svelte';
   import Scanner from '../components/Scanner.svelte';
   import Glass from '../components/Glass.svelte';
+  import VariantBits from '../components/VariantBits.svelte';
   import { db, stocktakeApply } from '../db.js';
   import { fmtNum, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
@@ -46,9 +47,9 @@
     const p = products.find((x) => x.barcode === code || x.sku === code);
     if (!p) { toastErr('لا يوجد موديل بهذا الكود'); return; }
     counts = { ...counts, [p.sku]: counts[p.sku] ?? '' };
-    q = p.name;
+    q = p.sku;
     buzz(10);
-    toastOk(`حدّد الكمية الفعلية لـ: ${p.name}`);
+    toastOk('حدّدي الكمية الفعلية للقطعة الممسوحة');
   }
 
   async function apply() {
@@ -97,10 +98,13 @@
       {@const counted = counts[p.sku]}
       {@const diff = counted !== undefined && counted !== '' ? (Number(counted) || 0) - p.qty : null}
       <Glass class="row {counted !== undefined ? 'mark' : ''}" style="padding:10px 12px; border-radius:var(--r-md); gap:10px">
+        <span class="st-thumb">{#if p.photo}<img src={p.photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
         <div style="flex:1; min-width:0">
-          <div class="bold small">{p.name}</div>
           <div class="muted small">
-            {p.sku} • المتوقع: {fmtNum(p.qty)}
+            <VariantBits dense variants={[{ color: p.color, size: p.size }]} />
+          </div>
+          <div class="muted small">
+            المتوقع: {fmtNum(p.qty)}
             {#if diff !== null && diff !== 0}
               <span class="diff" class:neg={diff < 0} class:pos={diff > 0}>
                 ({diff > 0 ? '+' : ''}{fmtNum(diff)})
@@ -145,6 +149,16 @@
     color: var(--ink);
   }
   :global(.row.mark) { border-color: rgba(181, 73, 91, 0.35); background: rgba(181, 73, 91, 0.05); }
+  .st-thumb {
+    flex: none;
+    width: 42px; height: 42px;
+    border-radius: 11px;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--line);
+  }
+  .st-thumb img { width: 100%; height: 100%; object-fit: cover; }
   .cinput { width: 90px; min-height: 44px; text-align: center; flex: none; }
   .diff { font-weight: 800; }
   .diff.pos { color: var(--good); }

@@ -117,6 +117,16 @@ export async function nextSku() {
   return sku;
 }
 
+/* Internal model number — M-0001, M-0002 … exactly like the SKU but for the
+   MODEL (all its colors × sizes). It is the stable grouping key: the photo is
+   the identity the user sees, this number is the identity the app knows.
+   Never shown anywhere — it lives only inside the records. */
+export async function nextModelId() {
+  const n = (await getSetting('modelIdSeq', 0)) + 1;
+  await setSetting('modelIdSeq', n);
+  return 'M-' + String(n).padStart(4, '0');
+}
+
 export async function addProduct(data, { moveNote } = {}) {
   const sku = data.sku || (await nextSku());
   const now = new Date().toISOString();
@@ -126,6 +136,7 @@ export async function addProduct(data, { moveNote } = {}) {
     supplier: '', supplierAt: null,
     ...data, sku, createdAt: now, updatedAt: now
   };
+  if (!p.modelId) p.modelId = await nextModelId();
   delete p.id;
   await db.products.put(p);
   if (p.qty > 0) await logMovement({ sku, type: 'in', qty: p.qty, note: moveNote || 'إضافة أولية' });
@@ -170,6 +181,26 @@ export async function deleteProduct(sku) {
   await db.products.delete(sku);
 }
 
+/* One-time convergence: every visual model (same name+category) shares ONE
+   internal modelId — legacy cards adopt the first id found in their group,
+   and groups without any id get a fresh one. Idempotent; cheap at boot. */
+export async function backfillModelIds() {
+  const all = await db.products.toArray();
+  const groups = new Map();
+  for (const p of all) {
+    const k = `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(p);
+  }
+  for (const members of groups.values()) {
+    const existing = members.find((m) => m.modelId)?.modelId;
+    const mid = existing || (await nextModelId());
+    for (const m of members) {
+      if (m.modelId !== mid) await db.products.update(m.sku, { modelId: mid });
+    }
+  }
+}
+
 /* delete a whole model (every color × size card of it) in one go */
 export async function deleteProducts(skus) {
   await db.products.bulkDelete(skus);
@@ -185,8 +216,16 @@ export async function logMovement({ sku, type, qty, note }) {
    merged into — never duplicated. The supplier name rides on the product
    and into every movement note, so «منين شريت هذا؟» is answerable forever. */
 
+/* Twin-detection for merging a received size into an existing card.
+   Prefer the internal modelId (stable across renames/restocks); fall back to
+   the name-based key for legacy cards — and when a legacy twin is found the
+   caller backfills the modelId so the model converges onto its number. */
 export const modelKey = (p) =>
   `${(p.name || '').trim().toLowerCase()}|${p.category || ''}|${String(p.size || '').trim()}|${(p.color || '').trim()}`;
+export const sameModel = (a, b) =>
+  (a.modelId && b.modelId) ? a.modelId === b.modelId : modelKey(a) === modelKey(b);
+/* The grouping key for one MODEL (all colors × sizes = one card) */
+export const modelGroupKey = (p) => p.modelId || `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
 
 export async function receiveBatch({ supplier = '', invoice = '', note = '', lines = [] }) {
   const sup = supplier.trim();
@@ -198,6 +237,8 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
   for (const ln of lines) {
     const name = (ln.name || '').trim();
     if (!name) continue;
+    /* one modelId per invoice line — every size of the line is the same model */
+    const lineModelId = ln.modelId || (await nextModelId());
     for (const [size, rawQty] of Object.entries(ln.sizes || {})) {
       const qty = Math.max(0, Math.round(Number(rawQty) || 0));
       const sz = String(size).trim();
@@ -213,9 +254,12 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
           material: ln.material || twin.material || '',
           supplier: sup || twin.supplier || '',
           supplierAt: new Date().toISOString(),
-          photo: twin.photo || ln.photo || null
+          photo: twin.photo || ln.photo || null,
+          /* legacy card → adopt the line's model number so the model converges */
+          modelId: twin.modelId || lineModelId
         }, invNote + (note ? ` — ${note}` : ''));
         twin.qty += qty;
+        if (!twin.modelId) { twin.modelId = lineModelId; idx.set(modelKey({ ...twin }), twin); }
         merged++; pieces += qty; touchedSkus.push(twin.sku);
       } else {
         const p = await addProduct({
@@ -224,7 +268,7 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
           color: (ln.color || '').trim(), size: sz,
           cost: Number(ln.cost) || 0, price: Number(ln.price) || 0, qty,
           photo: ln.photo || null, supplier: sup, supplierAt: new Date().toISOString(),
-          notes: note || ''
+          notes: note || '', modelId: lineModelId
         }, { moveNote: invNote + (note ? ` — ${note}` : '') });
         idx.set(modelKey(p), p);
         added++; pieces += qty; touchedSkus.push(p.sku);

@@ -19,6 +19,8 @@
     cost: '', price: '', sizes: {}, photo: null,
     ...over
   });
+  /* الاسم صار داخلياً فقط (يُشتق من النوع واللون) — الهوية هي الصورة */
+  const lineAutoName = (l) => [l.type, l.color].filter(Boolean).join(' ') || l.category || 'موديل';
 
   let supplier = $state('');
   let invoice = $state('');
@@ -37,11 +39,21 @@
 
   const totalPieces = $derived(lines.reduce((a, l) => a + Object.values(l.sizes).reduce((x, n) => x + (Number(n) || 0), 0), 0));
   const linePieces = (l) => Object.values(l.sizes).reduce((x, n) => x + (Number(n) || 0), 0);
-  const canSave = $derived(supplier.trim().length >= 2 && lines.some((l) => l.name.trim() && linePieces(l) > 0));
+  const canSave = $derived(supplier.trim().length >= 2 && lines.some((l) => linePieces(l) > 0));
 
   function addLine() {
     const last = lines[lines.length - 1];
     lines = [...lines, blank(last ? { category: last.category, type: last.type, season: last.season, material: last.material, color: last.color, cost: last.cost, price: last.price } : {})];
+    buzz(8);
+  }
+  /* لون آخر لنفس الموديل — يشارك نفس الرقم الداخلي والصورة والأسعار */
+  function addSameModelLine() {
+    const last = lines[lines.length - 1];
+    if (!last) { addLine(); return; }
+    lines = [...lines, blank({
+      category: last.category, type: last.type, season: last.season, material: last.material,
+      color: '', cost: last.cost, price: last.price, photo: last.photo, modelId: last.modelId || ++uid /* placeholder؛ يُثبَّت عند الحفظ */
+    })];
     buzz(8);
   }
   function removeLine(id) {
@@ -60,16 +72,25 @@
   async function save() {
     if (saving) return;
     if (!supplier.trim()) { toastErr('اكتب اسم المورد — «منين شريت؟» يجي يوم وتسألينه'); return; }
-    const good = lines.filter((l) => l.name.trim() && linePieces(l) > 0);
-    if (!good.length) { toastErr('سطر واحد على الأقل: اسم + مقاس بكمية'); return; }
+    const good = lines.filter((l) => linePieces(l) > 0);
+    if (!good.length) { toastErr('سطر واحد على الأقل: مقاس بكمية'); return; }
     saving = true;
     try {
+      /* كل الأسطر التي تحمل نفس modelId (من «لون آخر لنفس الموديل») = موديل واحد */
+      const modelIds = new Map();
+      const idOf = (l) => {
+        if (l.modelId) return l.modelId;
+        const k = JSON.stringify([l.type, l.color, l.category, l.photo?.slice(0, 64) || '']);
+        if (!modelIds.has(k)) modelIds.set(k, undefined);
+        return undefined;
+      };
       const r = await receiveBatch({
         supplier, invoice, note,
         lines: good.map((l) => ({
-          name: l.name.trim(), category: l.category, type: l.type, season: l.season, material: l.material, color: l.color,
+          name: lineAutoName(l), category: l.category, type: l.type, season: l.season, material: l.material, color: l.color,
           cost: iqd(l.cost), price: iqd(l.price),
-          sizes: l.sizes, photo: l.photo
+          sizes: l.sizes, photo: l.photo,
+          modelId: typeof l.modelId === 'string' && l.modelId.startsWith('M-') ? l.modelId : undefined
         }))
       });
       buzz([30, 60, 30, 60, 30]);
@@ -118,13 +139,12 @@
       <div class="ln-body">
         <div class="row" style="gap:10px; align-items:flex-start">
           <div class="field" style="flex:1">
-            <label>اسم الموديل *</label>
-            <input class="input" bind:value={l.name} placeholder="مثال: بوت جلد أسود" />
+            <label>صورة الموديل * <span class="muted tiny">— هي الهوية</span></label>
+            <label class="ln-photo ln-photo-lg" class:has={!!l.photo} title="صورة الموديل">
+              {#if l.photo}<img src={l.photo} alt="" />{:else}<Icon name="image" size={22} color="var(--taupe)" /><span class="ph-hint">صوّري</span>{/if}
+              <input type="file" accept="image/*" capture="environment" style="display:none" onchange={(e) => onLinePhoto(l, e)} />
+            </label>
           </div>
-          <label class="ln-photo" class:has={!!l.photo} title="صورة الموديل">
-            {#if l.photo}<img src={l.photo} alt="" />{:else}<Icon name="image" size={20} color="var(--taupe)" />{/if}
-            <input type="file" accept="image/*" capture="environment" style="display:none" onchange={(e) => onLinePhoto(l, e)} />
-          </label>
         </div>
 
         <div class="field">
@@ -193,6 +213,9 @@
   <button class="btn block add-line" onclick={addLine}>
     <Icon name="plus" size={18} /> سطر موديل آخر
   </button>
+  <button class="btn block add-line same" onclick={addSameModelLine}>
+    <Icon name="copy" size={16} /> لون آخر لنفس الموديل — نفس الصورة والسعر
+  </button>
 
   <div class="field">
     <label>ملاحظة الفاتورة <span class="muted tiny">(اختياري)</span></label>
@@ -254,10 +277,12 @@
     background: rgba(255, 255, 255, 0.5);
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; overflow: hidden; position: relative;
-    margin-top: 26px;
   }
+  .ln-photo-lg { width: 92px; height: 92px; flex-direction: column; gap: 4px; }
+  .ph-hint { font-size: 10.5px; font-weight: 800; color: var(--taupe); }
   .ln-photo.has { border-style: solid; border-color: rgba(181, 73, 91, 0.4); }
   .ln-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .add-line.same { border-color: rgba(201, 162, 75, 0.45); color: #8a6a35; }
 
   .add-line {
     border-style: dashed;

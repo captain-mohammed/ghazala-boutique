@@ -54,9 +54,9 @@
     profit: todaySales.reduce((a, s) => a + s.profit, 0)
   });
 
-  /* موديل = one name+category across ALL its color×size cards; قطع = physical pieces */
+  /* موديل = one internal number across ALL its color×size cards; قطع = physical pieces */
   const stock = $derived({
-    models: new Set(products.map((p) => `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`)).size,
+    models: new Set(products.map((p) => p.modelId || `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`)).size,
     units: products.reduce((a, p) => a + (p.qty || 0), 0),
     value: products.reduce((a, p) => a + (p.qty || 0) * (p.cost || 0), 0),
     out: products.filter((p) => !p.qty).length
@@ -109,7 +109,8 @@
         name: p.name, category: p.category, type: p.type || '',
         color: p.color || '', cost: p.cost, price: p.price,
         sizes: { [String(p.size || '').trim() || '38']: 3 },
-        photo: p.photo || null
+        photo: p.photo || null,
+        modelId: p.modelId
       }]
     });
     buzz(10);
@@ -385,8 +386,9 @@
 <style>  .brand {
     display: flex;
     align-items: center;
+    justify-content: center; /* الشعار والاسم جنباً إلى جنب بمنتصف الصفحة */
     gap: 14px;
-    padding: 4px 6px 0;
+    padding: 4px 0 0;
   }
   .brand :global(.h1) { margin: 0; }
 

@@ -46,6 +46,16 @@
 
   const filtered = $derived(filter === 'all' ? sales : sales.filter((s) => s.status === filter));
 
+  /* صور القطع — الصورة هي الهوية، تُجلب للتفاصيل */
+  let photos = $state({});
+  $effect(() => {
+    let alive = true;
+    db.products.toArray().then((ps) => {
+      if (alive) photos = Object.fromEntries(ps.map((p) => [p.sku, { photo: p.photo }]));
+    });
+    return () => { alive = false; };
+  });
+
   const counts = $derived.by(() => {
     const c = { all: sales.length, pending: 0, delivered: 0, returned: 0 };
     for (const s of sales) if (c[s.status] != null) c[s.status]++;
@@ -222,11 +232,14 @@
 
       <div class="stack" style="gap:8px">
         {#each detail.items as it (it.sku)}
+          {@const ph = photos[it.sku]?.photo}
           <Glass class="row" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
-            <div>
-              <div class="bold small">{it.name}</div>
-              <VariantBits variants={[it]} />
-              <div class="muted small">{fmtIQD(it.price)} × {it.qty}</div>
+            <div style="display:flex; gap:10px; align-items:center; min-width:0">
+              <span class="it-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={15} color="var(--taupe)" />{/if}</span>
+              <div>
+                <VariantBits variants={[it]} />
+                <div class="muted small">{fmtIQD(it.price)} × {it.qty}</div>
+              </div>
             </div>
             <div class="money small">{fmtIQD(it.price * it.qty)}</div>
           </Glass>
@@ -328,6 +341,16 @@
     background: var(--accent-soft);
   }
   .a-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .it-thumb {
+    flex: none;
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid var(--line);
+  }
+  .it-thumb img { width: 100%; height: 100%; object-fit: cover; }
   .wa-chip {
     display: inline-flex;
     align-items: center;
