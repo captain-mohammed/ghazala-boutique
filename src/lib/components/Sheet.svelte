@@ -39,14 +39,15 @@
     style="transform: translateY({pull}px)"
     in:sheetSpring
     out:fly={{ y: 460, duration: 260, opacity: 1 }}
-    onpointerdown={onStart}
     onpointermove={onMove}
     onpointerup={onEnd}
     onpointercancel={onEnd}
   >
-    <div class="sheet-grab"></div>
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
+    <div class="sheet-grab" onpointerdown={onStart}></div>
     {#if title}
-      <div class="sheet-head">
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div class="sheet-head" onpointerdown={onStart}>
         <h2 class="h2">{title}</h2>
         <button class="iconbtn" aria-label="إغلاق" onclick={onclose}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 6 12 12M18 6 6 18"/></svg>
@@ -80,4 +81,7 @@
   /* أثناء السحب: بلا انتقال — تتبع الإصبع؛ عند الإفلات يرتد بسلاسة */
   .sheet { will-change: transform; }
   .sheet.dragging { transition: none !important; cursor: grabbing; }
+  /* السحب للإغلاق من مقبض الورقة فقط — لمس النموذج يمرّر المحتوى ولا يحرّك الورقة */
+  .sheet-grab { touch-action: none; cursor: grab; }
+  .sheet-head { touch-action: none; }
 </style>

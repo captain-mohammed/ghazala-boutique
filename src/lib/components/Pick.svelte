@@ -190,7 +190,6 @@
 
   /* ---------- الورقة ---------- */
   .pk-pop { position: fixed; z-index: 70; }
-  .pk-pop[hidden] { display: none; }
   .pk-list {
     background: rgba(251, 243, 238, 0.94);
     backdrop-filter: blur(26px) saturate(1.5);

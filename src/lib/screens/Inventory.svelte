@@ -363,32 +363,30 @@
               {/if}
             </div>
             <div class="card-body">
-              <!-- الدوائر يميناً كبيرة، والمعلومات يساراً -->
-              {#if g.colorRows.some((cr) => cr.color)}
-                <div class="card-colors">
-                  {#each g.colorRows as cr (cr.color)}
-                    <span class="cc-item" title="{cr.color} — {fmtNum(cr.qty)} قطعة">
-                      <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
-                      <b class="cc-qty">{fmtNum(cr.qty)}</b>
-                    </span>
-                  {/each}
-                </div>
-                <div class="card-info">
-                  {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, ...g.subsAll, ...g.subs2All, ...g.subs3All].filter(Boolean).join(' - ')}</div>{/if}
-                  <div class="card-sizes muted">
-                    <span class="sz-label">القياسات المتوفر:</span>
-                    {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
+              <!-- النوع بعرض البطاقة كاملاً أسفل الصورة مباشرة -->
+              {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, ...g.subsAll, ...g.subs2All, ...g.subs3All].filter(Boolean).join(' - ')}</div>{/if}
+              <!-- الصف: القياسات يميناً والدوائر يساراً -->
+              <div class="card-mid">
+                <div class="card-sizes-box">
+                  <span class="sz-label">القياسات المتوفر:</span>
+                  <div class="sz-grid">
+                    {#each g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).slice(0, 6) as sz, si (String(sz) + si)}
+                      <span class="sz-chip">{sz}</span>
+                    {/each}
+                    {#if !g.colorRows.some((c) => c.sizes.some((s) => s.qty > 0))}<span class="sz-chip empty">—</span>{/if}
                   </div>
                 </div>
-              {:else}
-                <div class="card-info solo">
-                  {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, ...g.subsAll, ...g.subs2All, ...g.subs3All].filter(Boolean).join(' - ')}</div>{/if}
-                  <div class="card-sizes muted">
-                    <span class="sz-label">القياسات المتوفر:</span>
-                    {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
+                {#if g.colorRows.some((cr) => cr.color)}
+                  <div class="card-colors">
+                    {#each g.colorRows.slice(0, 4) as cr (cr.color)}
+                      <span class="cc-item" title="{cr.color} — {fmtNum(cr.qty)} قطعة">
+                        <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
+                        <b class="cc-qty">{fmtNum(cr.qty)}</b>
+                      </span>
+                    {/each}
                   </div>
-                </div>
-              {/if}
+                {/if}
+              </div>
             </div>
             <div class="card-price">{fmtIQD(g.price)}</div>
           </Glass>
@@ -498,7 +496,7 @@
     grid-template-columns: repeat(2, 1fr); /* بطاقتان جنباً إلى جنب دائماً */
     gap: 14px;
   }
-  .cardwrap { position: relative; min-width: 0; }
+  .cardwrap { position: relative; min-width: 0; height: 100%; }
   /* البطاقة المحددة تبقى واضحة فوق الحجاب الضبابي */
   .cardwrap.lit { z-index: 71; }
   :global(.card) {
@@ -549,33 +547,49 @@
     border-color: transparent;
     letter-spacing: 0.5px;
   }
-  /* الدوائر يسار البطاقة — والألوان الجديدة تتزايد نحو اليمين */
-  .card-body { padding: 10px 12px 6px; display: flex; flex-direction: row-reverse; justify-content: flex-end; align-items: stretch; gap: 12px; flex: 1; }
-  /* حاوية الدوائر: تتمركز داخلها نفسها، وتمتد بطول منطقة المعلومات */
+  /* جسم البطاقة: ارتفاع مثبت — لا تمدد أبداً مهما كثر المحتوى */
+  .card-body { height: 122px; padding: 9px 12px 4px; display: flex; flex-direction: column; gap: 7px; flex: none; overflow: hidden; }
+  /* النوع بعرض البطاقة أسفل الصورة */
+  .card-type { font-weight: 800; font-size: 13.5px; color: var(--ink); width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
+  /* الصف الأوسط: القياسات يميناً (مرن) والدوائر يساراً (ثابتة) */
+  .card-mid { flex: 1; min-height: 0; display: flex; gap: 12px; }
+  /* الدوائر: عمودان ثابتان — صفّان كحد أقصى، بلا أي إطار أو خلفية */
   .card-colors {
     flex: none;
-    display: flex;
-    flex-direction: column;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    justify-content: center;
-    max-height: 96px;
-    min-width: 58px;
-    padding: 8px 10px;
-    border: 1px solid var(--line);
-    border-radius: var(--r-md);
-    background: rgba(255, 255, 255, 0.35);
-    align-content: center;
+    display: grid;
+    grid-template-columns: repeat(2, auto);
+    justify-content: start;
+    align-content: start;
+    gap: 8px 16px;
+    min-height: 0;
+    overflow: hidden;
   }
   .cc-item { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
   .cc-dot { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
   .cc-qty { color: var(--ink-2); font-weight: 800; font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums; }
-  .card-info { flex: 1; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; text-align: right; min-width: 0; }
-  .card-info.solo { align-items: center; text-align: center; width: 100%; }
-  .card-type { font-weight: 800; font-size: 13.5px; color: var(--ink); }
-  .card-sizes { font-size: 10.5px; line-height: 1.6; }
-  .sz-label { font-weight: 800; color: var(--taupe); }
+  /* حاوية القياسات: بلا حدود ظاهرة — تثبّت المساحة فقط */
+  .card-sizes-box {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow: hidden;
+  }
+  .sz-label { font-weight: 800; color: var(--taupe); font-size: 10.5px; }
+  .sz-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px 8px; }
+  .sz-chip {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--ink-2);
+    background: rgba(122, 46, 58, 0.06);
+    border-radius: 7px;
+    padding: 2px 6px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .sz-chip.empty { background: none; color: var(--taupe); }
   .card-price {
     margin: 8px 12px 12px;
     border-top: 1.5px solid var(--line-2);
@@ -587,6 +601,7 @@
     font-size: 15.5px;
     color: var(--burgundy);
     letter-spacing: 0.2px;
+    flex: none; /* السعر لا ينضغط ولا يتمدد */
   }
 
   /* model sheet */

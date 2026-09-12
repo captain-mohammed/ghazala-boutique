@@ -25,6 +25,7 @@
     {
       title: 'المال',
       items: [
+        { id: 'suppliers', icon: 'upload', label: 'دفتر الموردين', desc: 'منين اشتريتِ — وكم بيع من كل مورد' },
         { id: 'ledger', icon: 'truck', label: 'حساب الشركات', desc: 'المبالغ عند شركات التوصيل والتسوية' },
         { id: 'expenses', icon: 'wallet', label: 'المصاريف', desc: 'الإيجار والنقل والتغليف — تُخصم من الربح' }
       ]
