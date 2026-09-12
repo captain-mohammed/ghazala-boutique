@@ -152,12 +152,22 @@
   });
 
   /* موديل = one internal number across ALL its color×size cards; قطع = physical pieces.
-     Archived (المدينة القديمة) pieces are excluded from the نفد alert count. */
+     Archived (المدينة القديمة) pieces are excluded from the نفد alert count.
+     نفد = الموديل كامل وصل صفر — مقاس واحد ناقص يبقى فقرة، لا نفد. */
   const stock = $derived({
     models: new Set(products.map((p) => p.modelId || `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`)).size,
     units: products.reduce((a, p) => a + (p.qty || 0), 0),
     value: products.reduce((a, p) => a + (p.qty || 0) * (p.cost || 0), 0),
-    out: products.filter((p) => !p.qty && !archivedSkus.has(p.sku)).length
+    out: (() => {
+      const groups = new Map();
+      for (const p of products) {
+        if (archivedSkus.has(p.sku)) continue;
+        const k = p.modelId || `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+        if (!groups.has(k)) groups.set(k, true);
+        if ((p.qty || 0) > 0) groups.set(k, false);
+      }
+      return [...groups.values()].filter(Boolean).length;
+    })()
   });
 
   /* راكد = the CURRENT shelf stock has sat longer than the threshold, counted

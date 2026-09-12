@@ -24,7 +24,7 @@
   import ReceiveInvoice from './lib/screens/ReceiveInvoice.svelte';
   import ModelOptions from './lib/screens/ModelOptions.svelte';
   import Occasions from './lib/screens/Occasions.svelte';
-  import { sweepMonthClosing, backfillModelIds, backfillTypeTree } from './lib/db.js';
+  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide } from './lib/db.js';
 
   let locked = $state(true);
   let screen = $state('home');
@@ -80,6 +80,7 @@
     sweepMonthClosing();
     backfillModelIds();
     backfillTypeTree();
+    sweepOosModelWide();
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredInstall = e;

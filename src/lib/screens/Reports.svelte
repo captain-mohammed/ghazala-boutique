@@ -105,19 +105,18 @@
     return [...map.values()];
   });
 
-  /* نفد — same rule as the dashboard: only models whose CURRENT shelf stock
-     is zero, and only the specific colors/sizes that hit zero. One card per
-     model listing its holes. (The old «كمية قليلة 1-3» warning is retired.) */
+  /* نفد — الموديل كامل وصل صفر (كل الألوان والمقاسات معاً). مقاس واحد ناقص
+     يبقى فقرة في شجرة المقاسات و«استلام الناقص»، لا نفد. */
   const holes = $derived.by(() => {
     const map = new Map();
     for (const p of products) {
-      if ((p.qty || 0) > 0) continue;
       const k = modelGroupKey(p);
-      const cur = map.get(k) || { key: k, name: p.name, items: [] };
+      const cur = map.get(k) || { key: k, name: p.name, items: [], full: true };
       cur.items.push(p);
+      if ((p.qty || 0) > 0) cur.full = false;
       map.set(k, cur);
     }
-    return [...map.values()];
+    return [...map.values()].filter((m) => m.full);
   });
 
   const stockValue = $derived(products.reduce((a, p) => a + (p.qty || 0) * (p.cost || 0), 0));
@@ -318,7 +317,7 @@
   {#if holes.length}
     <Glass class="rise" style="animation-delay:0.2s; padding:16px">
       <h2 class="h2" style="margin-bottom:10px"><Icon name="alert" size={17} color="var(--warn)" /> نفد من المخزون ({holes.length})</h2>
-      <p class="muted small" style="margin:0 0 10px">مقاسات وألوان محددة صارت صفر — حان وقت الاستلام.</p>
+      <p class="muted small" style="margin:0 0 10px">موديلات خلصت كل قطعها — حان وقت الاستلام.</p>
       <div class="stack" style="gap:8px">
         {#each holes as h (h.key)}
           <div class="brow">

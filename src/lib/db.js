@@ -209,6 +209,7 @@ export async function addProduct(data, { moveNote } = {}) {
   delete p.id;
   await db.products.put(p);
   if (p.qty > 0) await logMovement({ sku, type: 'in', qty: p.qty, note: moveNote || 'إضافة أولية', date: createdAt });
+  await syncModelOos(sku);
   return p;
 }
 
@@ -220,8 +221,6 @@ export async function updateProduct(sku, changes, moveNote) {
   const diff = (Number(changes.qty ?? before.qty) || 0) - before.qty;
   /* pieces went back on the shelf → the راكد clock restarts from here */
   if (diff > 0) p.restockedAt = now;
-  const oosSince = applyOosStamp(before, p);
-  if (oosSince !== undefined) p.oosSince = oosSince;
   await db.products.put(p);
   if (diff !== 0) {
     await logMovement({
@@ -229,6 +228,7 @@ export async function updateProduct(sku, changes, moveNote) {
       note: moveNote || (diff > 0 ? 'تعديل يدوي — زيادة' : 'تعديل يدوي — نقصان')
     });
   }
+  await syncModelOos(sku);
   return p;
 }
 
@@ -238,8 +238,6 @@ export async function adjustQty(sku, delta, note) {
   const q = Math.max(0, (Number(p.qty) || 0) + delta);
   const patch = { qty: q, updatedAt: new Date().toISOString() };
   if (delta > 0) patch.restockedAt = patch.updatedAt;
-  const oosSince = applyOosStamp(p, { ...p, qty: q });
-  if (oosSince !== undefined) patch.oosSince = oosSince;
   await db.products.update(sku, patch);
   if (delta !== 0) {
     await logMovement({
@@ -247,6 +245,7 @@ export async function adjustQty(sku, delta, note) {
       note: note || (delta > 0 ? 'إضافة مخزون' : 'خصم مخزون')
     });
   }
+  await syncModelOos(sku);
   return q;
 }
 
@@ -418,12 +417,16 @@ export async function recordSale({ items, customerName, customerPhone, province,
     const p = await db.products.get(it.sku);
     if (p && !stockDeducted) {
       const nq = Math.max(0, p.qty - it.qty);
-      const patch = { qty: nq, updatedAt: now };
-      const oosSince = applyOosStamp(p, { ...p, qty: nq });
-      if (oosSince !== undefined) patch.oosSince = oosSince;
-      await db.products.update(it.sku, patch);
+      await db.products.update(it.sku, { qty: nq, updatedAt: now });
     }
     await logMovement({ sku: it.sku, type: 'out', qty: it.qty, note: `بيع #${id}${fromReservation ? ' • من حجز' : ''}` });
+  }
+  /* نفد على مستوى الموديل — مرة لكل موديل لمسته البيعة */
+  const synced = new Set();
+  for (const it of items) {
+    if (synced.has(it.sku)) continue;
+    synced.add(it.sku);
+    await syncModelOos(it.sku);
   }
   await vaultDeposit({ amount: sale.profit, saleId: id, note: `بيع #${id}` });
   return { ...sale, id };
@@ -545,14 +548,45 @@ export function archivedModels(products, days) {
   return out.sort((a, b) => a.emptySince - b.emptySince);
 }
 
-/* stamp oosSince the first time a card hits zero (cleared automatically when
-   stock returns) — called from updateProduct/adjustQty/recordSale paths */
-export function applyOosStamp(prev, next) {
-  const wasEmpty = (Number(prev?.qty) || 0) === 0;
-  const isEmpty = (Number(next?.qty) || 0) === 0;
-  if (!wasEmpty && isEmpty) return new Date().toISOString();
-  if (wasEmpty && !isEmpty) return null;
-  return prev?.oosSince ?? null;
+/* نفد stamping — على الموديل لا البطاقة: ختم oosSince لا ينزل إلا حين
+   تصبح كل بطاقات الموديل (كل الألوان والمقاسات) فارغة معاً، وأي قطعة
+   ترجع للرف تمحوه من الجميع. مقاس واحد وصل صفر يبقى فقرة في شجرة
+   المقاسات (واستلام الناقص)، لا نفد. */
+export async function syncModelOos(sku) {
+  const p = await db.products.get(sku);
+  if (!p) return;
+  const key = modelGroupKey(p);
+  const members = (await db.products.toArray()).filter((x) => modelGroupKey(x) === key);
+  if (members.every((m) => (m.qty || 0) === 0)) {
+    if (!members.some((m) => m.oosSince)) {
+      const now = new Date().toISOString();
+      for (const m of members) await db.products.update(m.sku, { oosSince: now });
+    }
+  } else {
+    for (const m of members) if (m.oosSince) await db.products.update(m.sku, { oosSince: null });
+  }
+}
+
+/* one-time convergence at boot: stamps become model-wide — old data carried
+   per-card stamps from single sizes hitting zero. Idempotent; cheap. */
+export async function sweepOosModelWide() {
+  const all = await db.products.toArray();
+  const groups = new Map();
+  for (const p of all) {
+    const k = modelGroupKey(p);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(p);
+  }
+  for (const members of groups.values()) {
+    if (members.every((m) => (m.qty || 0) === 0)) {
+      if (!members.some((m) => m.oosSince)) {
+        const now = new Date().toISOString();
+        for (const m of members) await db.products.update(m.sku, { oosSince: now });
+      }
+    } else {
+      for (const m of members) if (m.oosSince) await db.products.update(m.sku, { oosSince: null });
+    }
+  }
 }
 
 /* ---------------- Reservations (حجز) ----------------
@@ -659,6 +693,7 @@ export async function stocktakeApply(corrections) {
     if (diff !== 0) {
       await logMovement({ sku: c.sku, type: diff > 0 ? 'in' : 'out', qty: Math.abs(diff), note: 'جرد' });
     }
+    await syncModelOos(c.sku);
   }
 }
 
