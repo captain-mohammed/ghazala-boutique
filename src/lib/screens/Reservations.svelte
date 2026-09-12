@@ -1,6 +1,7 @@
 <script>
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
+  import Pick from '../components/Pick.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
   import VariantBits from '../components/VariantBits.svelte';
@@ -175,10 +176,12 @@
       <div class="row" style="gap:8px">
         <div class="field" style="flex:1">
           <label>المحافظة <span class="req">*</span></label>
-          <select class="input" bind:value={cProvince} class:invalid={tried && !cProvince} style="height:50px">
-            <option value="" disabled>اختاري…</option>
-            {#each PROVINCES as pv (pv)}<option value={pv}>{pv}</option>{/each}
-          </select>
+          <Pick
+            bind:value={cProvince}
+            invalid={tried && !cProvince}
+            placeholder="اختاري…"
+            options={PROVINCES}
+          />
           {#if tried && !cProvince}<span class="err">مطلوبة</span>{/if}
         </div>
         <div class="field" style="flex:1">

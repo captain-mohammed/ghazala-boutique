@@ -8,7 +8,9 @@
 </script>
 
 {#if c}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="backdrop" transition:fade={{ duration: 150 }} onclick={() => resolveConfirm(false)}>
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
     <div class="card glass-strong" in:springPop out:fade={{ duration: 140 }} onclick={(e) => e.stopPropagation()}>
       <h3>{c.title}</h3>
       {#if c.body}<p>{c.body}</p>{/if}

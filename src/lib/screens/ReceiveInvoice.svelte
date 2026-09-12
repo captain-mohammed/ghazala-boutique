@@ -1,6 +1,7 @@
 <script>
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
+  import Pick from '../components/Pick.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import { receiveBatch, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting } from '../db.js';
@@ -127,10 +128,7 @@
     <div class="field" style="flex:1.6">
       <label>المورد / منين شريتِ؟ <span class="req">*</span></label>
       {#if suppliers.length}
-        <select class="input" bind:value={supplier} style="height:50px">
-          <option value="">اختاري المورد…</option>
-          {#each suppliers as sup (sup)}<option value={sup}>{sup}</option>{/each}
-        </select>
+        <Pick bind:value={supplier} placeholder="اختاري المورد…" options={suppliers} />
       {:else}
         <input class="input" bind:value={supplier} placeholder="مثال: هاي مول — أبو علي" />
         <p class="muted tiny" style="margin:4px 2px 0">سجّلي مورديك من الإعدادات لتظهروا قائمة هنا.</p>

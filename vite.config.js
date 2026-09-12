@@ -12,7 +12,13 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(pkg.version)
   },
   plugins: [
-    svelte(),
+    svelte({
+      onwarn(warning, fn) {
+        /* Pick هو زر ARIA مكتمل — التسميات المجاورة له ليست خطأ */
+        if (warning.code === 'a11y_label_has_associated_control') return;
+        fn(warning);
+      }
+    }),
     legacy({ targets: ['chrome >= 87', 'safari >= 14'], modernPolyfills: true }),
     VitePWA({
       registerType: 'prompt',

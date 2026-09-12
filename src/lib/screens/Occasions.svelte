@@ -1,6 +1,7 @@
 <script>
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
+  import Pick from '../components/Pick.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
   import { db, addOccasion, deleteOccasion, upcomingOccasions } from '../db.js';
@@ -205,9 +206,12 @@
     <div class="row" style="gap:8px">
       <div class="field" style="flex:1">
         <label>الشهر</label>
-        <select class="input" bind:value={fMonth} style="height:50px">
-          {#each MONTHS as m, i (i)}<option value={i + 1}>{m}</option>{/each}
-        </select>
+        <Pick
+          bind:value={fMonth}
+          options={MONTHS.map((m, i) => ({ v: i + 1, l: m }))}
+          valueOf={(o) => o.v}
+          labelOf={(o) => o.l}
+        />
       </div>
       <div class="field" style="flex:1">
         <label>اليوم</label>

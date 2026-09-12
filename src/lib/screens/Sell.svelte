@@ -10,6 +10,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
+  import Pick from '../components/Pick.svelte';
   import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
@@ -644,22 +645,24 @@
           </div>
           <!-- لكل سطر اختيار اللون والمقاس من المتاح فقط -->
           <div class="ci-variants">
-            <select
-              class="ci-sel"
+            <Pick
               bind:value={c.color}
-              onchange={() => { c.size = ''; rekeyLine(c); }}
+              size="sm"
               disabled={colorOptsFor(c).length <= 1}
-            >
-              {#each colorOptsFor(c) as o (o)}<option value={o === NOCOLOR ? '' : o}>{o}</option>{/each}
-            </select>
-            <select
-              class="ci-sel"
+              options={colorOptsFor(c).map((o) => ({ v: o === NOCOLOR ? '' : o, l: o }))}
+              valueOf={(o) => o.v}
+              labelOf={(o) => o.l}
+              onchange={() => { c.size = ''; rekeyLine(c); }}
+            />
+            <Pick
               bind:value={c.size}
-              onchange={() => rekeyLine(c)}
+              size="sm"
               disabled={sizeOptsFor(c).length <= 1}
-            >
-              {#each sizeOptsFor(c) as o (o)}<option value={o === '—' ? '' : o}>{o === '—' ? 'مقاس واحد' : `مقاس ${o}`}</option>{/each}
-            </select>
+              options={sizeOptsFor(c).map((o) => ({ v: o === '—' ? '' : o, l: o === '—' ? 'مقاس واحد' : `مقاس ${o}` }))}
+              valueOf={(o) => o.v}
+              labelOf={(o) => o.l}
+              onchange={() => rekeyLine(c)}
+            />
           </div>
           <div class="muted small">{fmtIQD(c.price)} × {c.qty} = <span class="money">{fmtIQD(c.price * c.qty)}</span></div>
         </div>
@@ -689,10 +692,12 @@
     <div class="row" style="gap:10px">
       <div class="field" style="flex:1">
         <label>المحافظة <span class="req">*</span></label>
-        <select class="input" bind:value={cprovince} class:invalid={tried && !cprovince} style="height:50px">
-          <option value="" disabled>اختاري المحافظة…</option>
-          {#each PROVINCES as pv (pv)}<option value={pv}>{pv}</option>{/each}
-        </select>
+        <Pick
+          bind:value={cprovince}
+          invalid={tried && !cprovince}
+          placeholder="اختاري المحافظة…"
+          options={PROVINCES}
+        />
         {#if tried && !cprovince}<span class="err">المحافظة مطلوبة</span>{/if}
       </div>
     </div>
@@ -711,14 +716,9 @@
       <div class="field" style="flex:1">
         <label>شركة التوصيل</label>
         {#if companies.length}
-          <select class="input" bind:value={company} style="height:50px">
-            <option value="">بدون</option>
-            {#each companies as co (co)}<option value={co}>{co}</option>{/each}
-          </select>
+          <Pick bind:value={company} placeholder="بدون" options={companies} />
         {:else}
-          <select class="input" style="height:50px" disabled>
-            <option>لا شركات بعد</option>
-          </select>
+          <Pick placeholder="لا شركات بعد" disabled options={[]} />
           <button class="btn block" style="margin-top:6px" onclick={() => { buzz(8); goto('ledger'); }}>
             <Icon name="plus" size={15} /> ضيفي شركاتك من حساب شركات التوصيل
           </button>
@@ -899,19 +899,7 @@
   }
   .ci-thumb img { width: 100%; height: 100%; object-fit: cover; }
   .ci-variants { display: flex; gap: 6px; }
-  .ci-sel {
-    flex: 1;
-    min-width: 0;
-    height: 34px;
-    border-radius: 10px;
-    border: 1px solid var(--line-2);
-    background: rgba(255, 255, 255, 0.55);
-    color: var(--ink);
-    font-family: inherit;
-    font-size: 11.5px;
-    font-weight: 800;
-    padding: 0 8px;
-  }
+  .ci-variants > :global(.pk) { flex: 1; min-width: 0; width: auto; }
   :global(.vrow) {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     padding: 10px 12px;

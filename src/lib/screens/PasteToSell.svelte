@@ -1,6 +1,7 @@
 <script>
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
+  import Pick from '../components/Pick.svelte';
   import VariantBits from '../components/VariantBits.svelte';
   import { db, recordSale, piecesSoldToday } from '../db.js';
   import { fmtIQD, fmtNum, parseOrderText, buzz } from '../utils.js';
@@ -193,10 +194,12 @@
         <div class="row" style="gap:8px">
           <div class="field" style="flex:1">
             <label>المحافظة <span class="req">*</span></label>
-            <select class="input" bind:value={customerProvince} class:invalid={tried && !customerProvince} style="height:50px">
-              <option value="" disabled>اختاري…</option>
-              {#each PROVINCES as pv (pv)}<option value={pv}>{pv}</option>{/each}
-            </select>
+            <Pick
+              bind:value={customerProvince}
+              invalid={tried && !customerProvince}
+              placeholder="اختاري…"
+              options={PROVINCES}
+            />
             {#if tried && !customerProvince}<span class="err">مطلوبة</span>{/if}
           </div>
           <div class="field" style="flex:1">
