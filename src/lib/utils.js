@@ -43,6 +43,23 @@ function baghdadOffsetMs(d = new Date()) {
   return asUTC - d.getTime();
 }
 
+/* «YYYY-MM-DDTHH:mm» of an instant in Baghdad wall clock — the exact value
+   an <input type="datetime-local"> understands (offset-free wall time) */
+export function baghdadLocalInput(d = new Date()) {
+  const p = baghdadWall(d);
+  return `${p.year}-${p.month}-${p.day}T${String(+p.hour % 24).padStart(2, '0')}:${p.minute}`;
+}
+/* The ISO instant for a Baghdad wall-clock «YYYY-MM-DDTHH:mm» value.
+   DST-proof like startOfToday: guess the instant, re-measure Baghdad's
+   offset at it, subtract. Returns null for unparseable input. */
+export function isoFromBaghdadLocal(v) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(String(v || ''));
+  if (!m) return null;
+  const [, y, mo, d, h, mi] = m;
+  const guess = new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi));
+  return new Date(guess.getTime() - baghdadOffsetMs(guess)).toISOString();
+}
+
 export function fmtDate(iso) {
   if (!iso) return '—';
   const p = baghdadWall(new Date(iso));

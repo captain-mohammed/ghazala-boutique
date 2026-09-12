@@ -195,16 +195,20 @@ export async function nextModelId() {
 export async function addProduct(data, { moveNote } = {}) {
   const sku = data.sku || (await nextSku());
   const now = new Date().toISOString();
+  /* وقت الوصول المخصص (نموذج الإضافة): يُحترم إذا جاء صالحاً وغير مستقبلي —
+     الرکود والتصريف والترتيب والتقارير كلها تحسب من لحظة الوصول هذه */
+  const custom = data.createdAt ? new Date(data.createdAt).getTime() : NaN;
+  const createdAt = Number.isFinite(custom) && custom <= Date.now() ? new Date(custom).toISOString() : now;
   const p = {
     name: '', category: 'نسائية', brand: '', color: '', size: '', type: '', season: '', material: '',
     cost: 0, price: 0, qty: 0, barcode: '', notes: '', photo: null,
     supplier: '', supplierAt: null,
-    ...data, sku, createdAt: now, updatedAt: now
+    ...data, sku, createdAt, updatedAt: now
   };
   if (!p.modelId) p.modelId = await nextModelId();
   delete p.id;
   await db.products.put(p);
-  if (p.qty > 0) await logMovement({ sku, type: 'in', qty: p.qty, note: moveNote || 'إضافة أولية' });
+  if (p.qty > 0) await logMovement({ sku, type: 'in', qty: p.qty, note: moveNote || 'إضافة أولية', date: createdAt });
   return p;
 }
 
@@ -313,8 +317,8 @@ export async function backfillTypeTree() {
   return changed;
 }
 
-export async function logMovement({ sku, type, qty, note }) {
-  return db.movements.add({ sku, type, qty, note: note || '', date: new Date().toISOString() });
+export async function logMovement({ sku, type, qty, note, date }) {
+  return db.movements.add({ sku, type, qty, note: note || '', date: date || new Date().toISOString() });
 }
 
 /* ---------------- Batch receiving (فاتورة الوارد) ----------------

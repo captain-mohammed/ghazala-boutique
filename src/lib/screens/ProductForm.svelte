@@ -5,7 +5,7 @@
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting } from '../db.js';
-  import { fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
+  import { fmtIQD, buzz, iqd, fileToPhotoDataUrl, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, celebrateAt } from '../store.js';
 
   let { product = null, photo = null, ondone = () => {} } = $props();
@@ -33,6 +33,29 @@
   let notes = $state(product?.notes ?? '');
   let supplier = $state(product?.supplier ?? '');
   let suppliers = $state([]);
+
+  /* وقت الوصول للرف: افتراضياً «الآن» بتوقيت بغداد، وقابل للتعديل.
+     الرکود ونسبة التصريف وترتيب الأحدث ودفتر الشهر كلها تحسب من هذه اللحظة. */
+  let ts = $state(baghdadLocalInput());
+  let tsIsNow = $state(!product); // الإضافة تبدأ «الآن» — التعديل يحمل وقت الموديل الحالي
+  /* المستقبل غير مشروع — أي وقت بعد «الآن» يُرجع فوراً للآن */
+  function onTsChange() {
+    if (!ts) { tsIsNow = false; return; }
+    const iso = isoFromBaghdadLocal(ts);
+    if (iso && new Date(iso).getTime() > Date.now() + 60000) {
+      ts = baghdadLocalInput();
+      tsIsNow = true;
+      toastErr('وقت الوصول لا يمكن أن يكون بالمستقبل');
+      buzz([30, 40, 30]);
+      return;
+    }
+    tsIsNow = false;
+  }
+  function tsToNow() {
+    ts = baghdadLocalInput();
+    tsIsNow = true;
+    buzz(8);
+  }
 
   /* multi-color × multi-size: one card per selected color */
   let selColors = $state([]); // color labels ('' stored as NOCOLOR)
@@ -67,6 +90,12 @@
       selColors = cs;
       byColor = bc;
       siblings = group;
+      /* وقت الوصول المعروض: أقدم لحظة وصول بين قطع الموديل */
+      if (group.length) {
+        const earliest = Math.min(...group.map((x) => new Date(x.createdAt || x.updatedAt || Date.now()).getTime()));
+        ts = baghdadLocalInput(new Date(earliest));
+        tsIsNow = false;
+      }
     }
   })();
 
@@ -188,6 +217,9 @@
         }
       }
       if (!freshId) freshId = await nextModelId();
+      /* وقت الوصول: يُكتب فقط حين تُعدّله يدوياً — «الآن» يتركه لقاعدة البيانات */
+      const arrivalIso = tsIsNow ? null : isoFromBaghdadLocal(ts);
+      const withArrival = arrivalIso ? { createdAt: arrivalIso } : {};
       const base = {
         name: (product?.name || '').trim() || autoName, category, type, typeSub, typeSub2, typeSub3,
         brand: brand.trim(),
@@ -211,7 +243,7 @@
             if (editing) {
               /* pieces kept/changed on the shelf don't reset the راكد clock —
                  only a real restock (qty increase) does, and updateProduct handles that */
-              await updateProduct(twin.sku, { ...base, color, size: sz, qty: q, modelId: twin.modelId || freshId });
+              await updateProduct(twin.sku, { ...base, color, size: sz, qty: q, modelId: twin.modelId || freshId, ...withArrival });
             } else if (q > 0) {
               await updateProduct(twin.sku, {
                 qty: (twin.qty || 0) + q, cost: base.cost, price: base.price,
@@ -228,7 +260,7 @@
             touched.add(twin.sku);
             updated++;
           } else if (q > 0) {
-            const p = await addProduct({ ...base, color, size: sz, qty: q });
+            const p = await addProduct({ ...base, color, size: sz, qty: q, ...withArrival });
             idx.set(modelKey(p), p);
             touched.add(p.sku);
             created++;
@@ -376,6 +408,21 @@
     {/if}
   </div>
 
+  <div class="field">
+    <label>وقت الوصول للرف <span class="muted tiny">(بتوقيت بغداد)</span></label>
+    <div class="row" style="gap:8px; align-items:center">
+      <input
+        class="input ts-input"
+        type="datetime-local"
+        bind:value={ts}
+        onchange={onTsChange}
+        max={baghdadLocalInput()}
+      />
+      <button type="button" class="chip" class:on={tsIsNow} onclick={tsToNow}>الآن</button>
+    </div>
+    <p class="muted tiny" style="margin:4px 2px 0">البضاعة وصلت من قبل؟ عدّلي الوقت — الرکود وترتيب الأحدث والتقارير كلها تحسب منه.</p>
+  </div>
+
   <div class="row" style="gap:10px">
     <div class="field" style="flex:1">
       <label>سعر التكلفة (د.ع) *</label>
@@ -514,6 +561,8 @@
     border: 1px solid rgba(181, 73, 91, 0.25);
     border-radius: 12px; padding: 9px 12px;
   }
+  /* حقل التاريخ يُقرأ بالإنجليزية دائماً — اتجاهه لا ينقلب مع الواجهة */
+  .ts-input { direction: ltr; text-align: center; font-variant-numeric: tabular-nums; }
   :global(.profit) {
     display: flex;
     align-items: center;
