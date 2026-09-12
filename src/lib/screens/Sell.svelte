@@ -322,7 +322,7 @@
       found.qty += qty;
       cart = cart;
     } else {
-      cart = [...cart, { ...v, qty, max }];
+      cart = [...cart, { ...v, qty, max, vsKey: `${v.sku}|${v.color || ''}|${v.size || ''}` }];
     }
     buzz(8);
     toast(`${v.name} أُضيف للسلة`);
@@ -345,23 +345,40 @@
     return [...set].sort((a, b) => a.localeCompare(b, 'ar'));
   }
   function sizeOptsFor(c) {
-    const col = (c.color || '').trim();
-    let mates = modelMates(c).filter((x) => x.qty > 0 && ((x.color || '').trim() || NOCOLOR) === (col || NOCOLOR));
-    if (!mates.length) mates = modelMates(c).filter((x) => x.qty > 0);
-    const set = new Set(mates.map((x) => String(x.size || '').trim() || '—'));
-    set.add(String(c.size || '').trim() || '—');
+    /* المقاسات من اللون المختار حصراً — لا خلط مع ألوان أخرى */
+    const col = (c.color || '').trim() || NOCOLOR;
+    const set = new Set(
+      modelMates(c)
+        .filter((x) => x.qty > 0 && ((x.color || '').trim() || NOCOLOR) === col)
+        .map((x) => String(x.size || '').trim() || '—')
+    );
     return [...set].sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
+  }
+  /* ألوان الموديل كلها مع كمياتها — تظهر في بطاقة البيع */
+  function modelColorsOf(p) {
+    const map = new Map();
+    for (const x of modelMates(p)) {
+      const label = (x.color || '').trim() || NOCOLOR;
+      const cur = map.get(label) || { label, qty: 0 };
+      cur.qty += x.qty || 0;
+      map.set(label, cur);
+    }
+    return [...map.values()].map((v) => ({ ...v, hex: v.label === NOCOLOR ? '#d8cfc9' : hexForColor(v.label, opts.colors) }));
   }
   /* the line's sku must follow the chosen color/size — it IS the shelf card */
   function rekeyLine(c) {
-    const col = (c.color || '').trim();
+    /* بعد تغيير اللون: يبقى السطر داخل اللون المختار فقط */
+    const col = (c.color || '').trim() || NOCOLOR;
     const sz = String(c.size || '').trim();
-    const match =
-      modelMates(c).find((x) => ((x.color || '').trim() || NOCOLOR) === (col || NOCOLOR) && String(x.size || '').trim() === sz && x.qty > 0) ||
-      modelMates(c).find((x) => String(x.size || '').trim() === sz && x.qty > 0) ||
-      modelMates(c).find((x) => x.qty > 0) ||
-      modelMates(c)[0];
-    if (!match) return;
+    const inColor = modelMates(c).filter((x) => x.qty > 0 && ((x.color || '').trim() || NOCOLOR) === col);
+    const match = inColor.find((x) => String(x.size || '').trim() === sz) || inColor[0];
+    if (!match) {
+      /* اللون المختار نفد كلياً — يُحذف السطر بدل القفز لسطر لون آخر */
+      cart = cart.filter((x) => x !== c);
+      toastErr('نفد هذا اللون — حُذف السطر');
+      buzz([20, 40, 20]);
+      return;
+    }
     c.sku = match.sku;
     c.cost = match.cost ?? c.cost;
     c.max = match.qty || 0;
@@ -535,9 +552,13 @@
           <div class="pinfo">
             <!-- سلسلة النوع هي العنوان بجانب الصورة — واللون تحتها بدائرته -->
             <div class="pname">{[p.type, p.typeSub, p.typeSub2, p.typeSub3].filter(Boolean).join(' - ') || p.name}</div>
-            <div class="pmeta muted small">
-              {#if p.color}<i class="pdot" style="background:{hexForColor(p.color, opts.colors)}"></i>{/if}
-              {p.color || p.category}
+            <div class="pcolors">
+              {#each modelColorsOf(p) as cc (cc.label)}
+                <span class="pc-color">
+                  <i class="pdot" style="background:{cc.hex}"></i>
+                  <span class="pc-qty">{fmtNum(cc.qty)}</span>
+                </span>
+              {/each}
             </div>
             <div class="psizes muted tiny">مقاسات: {sizesLabel(p)}</div>
             <div class="prow">
@@ -650,7 +671,7 @@
               size="sm"
               disabled={colorOptsFor(c).length <= 1}
               options={colorOptsFor(c).map((o) => ({ v: o === NOCOLOR ? '' : o, l: o }))}
-              valueOf={(o) => o.v}
+              valOf={(o) => o.v}
               labelOf={(o) => o.l}
               onchange={() => { c.size = ''; rekeyLine(c); }}
             />
@@ -659,7 +680,7 @@
               size="sm"
               disabled={sizeOptsFor(c).length <= 1}
               options={sizeOptsFor(c).map((o) => ({ v: o === '—' ? '' : o, l: o === '—' ? 'مقاس واحد' : `مقاس ${o}` }))}
-              valueOf={(o) => o.v}
+              valOf={(o) => o.v}
               labelOf={(o) => o.l}
               onchange={() => rekeyLine(c)}
             />
@@ -811,7 +832,13 @@
     overflow: hidden;
   }
   .pthumb img { width: 100%; height: 100%; object-fit: cover; }
-  .pinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .pinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .pcolors { display: flex; flex-wrap: wrap; gap: 3px 10px; }
+  .pc-color { display: inline-flex; align-items: center; gap: 4px; }
+  .pc-qty { font-size: 10.5px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
+  .pcolors { display: flex; flex-wrap: wrap; gap: 3px 10px; }
+  .pc-color { display: inline-flex; align-items: center; gap: 4px; }
+  .pc-qty { font-size: 10.5px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
   .pname { font-weight: 800; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .psizes { margin-top: 1px; }
   .prow { display: flex; justify-content: space-between; align-items: baseline; }
@@ -915,6 +942,11 @@
     font-weight: 800;
     color: var(--burgundy);
     cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
     transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   .stp:active { transform: scale(0.85); }

@@ -1,3 +1,8 @@
+<script module>
+  /* قائمة واحدة مفتوحة في كل التطبيق — مشترك بين كل نسخ Pick */
+  let activeClose = null;
+</script>
+
 <script>
   /* Pick — قائمة اختيار فريدة لكل التطبيق (بدل القوائم المنسدلة الأصلية).
      - تفتح من مكانها: الشريحة الذهبية تجري حول الحقل ثم تتفتح الورقة بشرائح متتابعة
@@ -36,24 +41,40 @@
   const selected = $derived(options.find((o) => valOf(o) === value) || null);
   const label = $derived(selected ? labelOf(selected) : '');
 
-  function toggle() {
-    if (disabled) return;
-    if (open) { open = false; return; }
-    buzz(6);
+  function place() {
     const r = host.getBoundingClientRect();
     const vh = window.innerHeight;
     const vw = window.innerWidth;
     above = r.bottom + Math.min(options.length * 46 + 22, 264) > vh - 90 && r.top > 320;
-    /* نُبقي الورقة داخل الشاشة: إن فاضت يميناً نُثبت حافتها اليمنى */
-    const left = Math.max(10, Math.min(r.left, vw - Math.max(r.width, 190) - 10));
-    style = `top:${r.bottom + 8}px; inset-inline-start:${left}px; width:${Math.max(r.width, 190)}px`;
+    /* الورقة تحت الحقل تماماً — بإحداثيات فيزيائية حتى لا تنزلق في RTL،
+       ومثبتة داخل حدود الشاشة */
+    const width = Math.max(r.width, 190);
+    const left = Math.max(10, Math.min(r.left, vw - width - 10));
+    style = `top:${r.bottom + 8}px; left:${left}px; width:${width}px`;
+  }
+
+  function toggle() {
+    if (disabled) return;
+    if (open) { open = false; if (activeClose === close) activeClose = null; return; }
+    buzz(6);
+    activeClose?.();
+    place();
     open = true;
+    activeClose = close;
     tick().then(() => pop?.querySelector('.pk-opt.on')?.scrollIntoView({ block: 'nearest' }));
+    /* الورقة الأم قد تكون لا تزال تتحرك (نابض الفتح) — أعد التثبيت بعد استقرارها */
+    requestAnimationFrame(() => requestAnimationFrame(place));
+    setTimeout(() => { if (open) place(); }, 420);
+  }
+
+  function close() {
+    open = false;
+    if (activeClose === close) activeClose = null;
   }
 
   function pick(o) {
     value = valOf(o);
-    open = false;
+    close();
     buzz([10, 40, 10]);
     flip = true;
     setTimeout(() => (flip = false), 700);
@@ -61,12 +82,20 @@
   }
 
   function onDocClick(e) {
-    if (open && !host.contains(e.target) && !pop?.contains(e.target)) open = false;
+    if (open && !host.contains(e.target) && !pop?.contains(e.target)) close();
   }
   $effect(() => {
     document.addEventListener('pointerdown', onDocClick, true);
-    return () => document.removeEventListener('pointerdown', onDocClick, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDocClick, true);
+      if (activeClose === close) activeClose = null;
+    };
   });
+  /* الورقة تُرسم كاملة ثم تُنقل إلى body — خارج أوراق التمويه التي تقطع position:fixed */
+  function portal(el) {
+    document.body.appendChild(el);
+    return { destroy: () => el.remove() };
+  }
 </script>
 
 <button
@@ -90,7 +119,12 @@
 </button>
 
 {#if open}
-  <div class="pk-pop" bind:this={pop} style="{style}; --pk-above:{above ? 1 : 0}">
+  <div
+    class="pk-pop"
+    bind:this={pop}
+    use:portal
+    style="{style}; --pk-above:{above ? 1 : 0}"
+  >
     <div class="pk-list" class:above>
       {#each options as o, i (valOf(o))}
         <button
@@ -156,6 +190,7 @@
 
   /* ---------- الورقة ---------- */
   .pk-pop { position: fixed; z-index: 70; }
+  .pk-pop[hidden] { display: none; }
   .pk-list {
     background: rgba(251, 243, 238, 0.94);
     backdrop-filter: blur(26px) saturate(1.5);

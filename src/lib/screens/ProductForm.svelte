@@ -121,9 +121,14 @@
     if (!img) m.push('الصورة');
     if (!category) m.push('التصنيف');
     if (!type) m.push('النوع');
+    /* تفصيلات النوع المعرّفة في الإعدادات تصبح إجبارية مثل النوع نفسه */
+    if (!typeSub && subsNow.length) m.push('التفصيل');
+    if (!typeSub2 && subs2Now.length) m.push('تفصيل أدق');
+    if (!typeSub3 && subs3Now.length) m.push('تفصيل أخير');
     if (!season) m.push('الموسم');
     if (!selColors.length) m.push('اللون');
     if (!material) m.push('المادة');
+    if (!supplier.trim()) m.push('المورد');
     if (iqd(cost) <= 0) m.push('التكلفة');
     if (iqd(price) <= 0) m.push('سعر البيع');
     /* editing may end at zero pieces on purpose — that's exactly how «نفد» is saved */
@@ -290,8 +295,8 @@
 
   {#if type && subsNow.length}
     <div class="field">
-      <label>التفصيل <span class="muted tiny">— {type}</span></label>
-      <div class="row wrap" style="gap:8px">
+      <label>التفصيل <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— {type}</span></label>
+      <div class="row wrap" style="gap:8px; {isMissing('التفصيل') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
         {#each subsNow as st (st)}
           <button type="button" class="chip" class:on={typeSub === st} onclick={() => (typeSub = typeSub === st ? '' : st)}>{st}</button>
         {/each}
@@ -301,8 +306,8 @@
 
   {#if type && typeSub && subs2Now.length}
     <div class="field">
-      <label>تفصيل أدق <span class="muted tiny">— {typeSub}</span></label>
-      <div class="row wrap" style="gap:8px">
+      <label>تفصيل أدق <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— {typeSub}</span></label>
+      <div class="row wrap" style="gap:8px; {isMissing('تفصيل أدق') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
         {#each subs2Now as st2 (st2)}
           <button type="button" class="chip" class:on={typeSub2 === st2} onclick={() => (typeSub2 = typeSub2 === st2 ? '' : st2)}>{st2}</button>
         {/each}
@@ -312,8 +317,8 @@
 
   {#if type && typeSub && typeSub2 && subs3Now.length}
     <div class="field">
-      <label>تفصيل أخير <span class="muted tiny">— {typeSub2}</span></label>
-      <div class="row wrap" style="gap:8px">
+      <label>تفصيل أخير <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— {typeSub2}</span></label>
+      <div class="row wrap" style="gap:8px; {isMissing('تفصيل أخير') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
         {#each subs3Now as st3 (st3)}
           <button type="button" class="chip" class:on={typeSub3 === st3} onclick={() => (typeSub3 = typeSub3 === st3 ? '' : st3)}>{st3}</button>
         {/each}
@@ -358,11 +363,11 @@
   </div>
 
   <div class="field">
-    <label>المورد <span class="muted tiny">(منين شريتِ؟ — اختياري)</span></label>
+    <label>المورد <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">(منين شريتِ؟)</span></label>
     {#if suppliers.length}
-      <Pick bind:value={supplier} placeholder="بدون" options={suppliers} />
+      <Pick bind:value={supplier} placeholder="بدون" options={suppliers} invalid={isMissing('المورد')} />
     {:else}
-      <input class="input" bind:value={supplier} placeholder="مثال: هاي مول — أبو علي" />
+      <input class="input" bind:value={supplier} style={bad('المورد')} placeholder="مثال: هاي مول — أبو علي" />
       <p class="muted tiny" style="margin:4px 2px 0">سجّلي مورديك من الإعدادات لتظهروا قائمة هنا.</p>
     {/if}
   </div>

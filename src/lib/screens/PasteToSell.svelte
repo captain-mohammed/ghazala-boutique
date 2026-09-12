@@ -256,6 +256,8 @@
     width: 32px; height: 32px; border-radius: 10px;
     border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.6);
     font-size: 18px; font-weight: 800; color: var(--burgundy); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; line-height: 1;
   }
   .qn { min-width: 20px; text-align: center; font-weight: 800; }
 
