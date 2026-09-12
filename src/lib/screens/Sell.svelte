@@ -13,13 +13,14 @@
   import VariantBits from '../components/VariantBits.svelte';
   import Pick from '../components/Pick.svelte';
   import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType } from '../db.js';
-  import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
+  import { fmtIQD, fmtNum, buzz, iqd, isSameDay, salePieces } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters, filtersOpen } from '../store.js';
 
   let { goto } = $props();
 
   let products = $state([]);
+  let sales = $state([]);
   let opts = $state({ types: [], seasons: [], colors: [] });
 
   /* shared filters — the exact same فلاتر state as المخزون, in both directions */
@@ -37,13 +38,18 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, o] = await Promise.all([db.products.toArray(), modelOptions()]);
-      if (alive) { products = p; opts = o; }
+      const [p, s, o] = await Promise.all([db.products.toArray(), db.sales.toArray(), modelOptions()]);
+      if (alive) { products = p; sales = s; opts = o; }
     };
     grab();
     const t = setInterval(grab, 4000);
     return () => { alive = false; clearInterval(t); };
   });
+
+  /* دفتر حركة اليوم — سطر واحد صغير فوق الصفحة: قطع اليوم ومبلغها (بلا عمليات مرتجعة) */
+  const todaySales = $derived(sales.filter((s) => s.status !== 'returned' && isSameDay(s.date)));
+  const todayPieces = $derived(todaySales.reduce((a, s) => a + salePieces(s), 0));
+  const todayTotal = $derived(todaySales.reduce((a, s) => a + s.subtotal, 0));
 
   const cats = $derived.by(() => {
     const set = [...new Set(products.map((p) => p.category))];
@@ -540,6 +546,16 @@
 </script>
 
 <div class="stack" style="gap:12px">
+  <!-- دفتر حركة اليوم: يظهر أول ما تنزل أول قطعة — الصفحة تعرف إن اليوم بيع فيه -->
+  {#if todayPieces > 0}
+    <Glass class="dayline rise" radius="var(--r-md)">
+      <span class="dl-label">حركة اليوم</span>
+      <span class="dl-thread"></span>
+      <span class="dl-pieces">{fmtNum(todayPieces)} قطعة</span>
+      <span class="dl-sum">{fmtIQD(todayTotal)}</span>
+    </Glass>
+  {/if}
+
   <Glass class="search" radius="var(--r-md)">
     <Icon name="search" size={18} color="var(--taupe)" />
     <input placeholder="ابحث عن موديل…" bind:value={f.q} />
@@ -621,10 +637,11 @@
               {/each}
             </div>
             <div class="psizes muted tiny">مقاسات: {sizesLabel(p)}</div>
-            <div class="prow">
-              <span class="pprice">{fmtIQD(p.price)}</span>
-              <span class="pqty" class:low={gqty > 0 && gqty <= 2} class:zero={gqty === 0}>{gqty === 0 ? 'نفد' : gqty <= 2 ? `بقيت ${fmtNum(gqty)}` : `× ${fmtNum(gqty)}`}</span>
-            </div>
+          </div>
+          <!-- ملخص السطر: السعر بخط ثقيل وتحته تذكرة الكمية — مثل قيد الدفتر -->
+          <div class="psum">
+            <span class="pprice">{fmtIQD(p.price)}</span>
+            <span class="pticket" class:low={gqty > 0 && gqty <= 2} class:zero={gqty === 0}>{gqty === 0 ? 'نفد' : gqty <= 2 ? `بقيت ${fmtNum(gqty)}` : `× ${fmtNum(gqty)}`}</span>
           </div>
           <span class="add-ic"><Icon name="plus" size={16} color="#fff" /></span>
         </Glass>
@@ -872,46 +889,91 @@
     margin-inline-end: 4px; vertical-align: -1px;
   }
 
+  /* ── سطور الدفتر: كل بطاقة قيد على خط ذهبي — خيط واحد يحمل هوية التبويب كلها ── */
   :global(.pcard) {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 10px;
+    padding: 10px 12px 13px;
     cursor: pointer;
     text-align: right;
     transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  :global(.pcard:active) { transform: scale(0.98); }
-  :global(.pcard.oos) { opacity: 0.55; }
+  /* الخيط الذهبي: baseline كل قيد — يضيء تحت الإصبع */
+  :global(.pcard)::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    inset-inline: 14px;
+    height: 2px;
+    background: linear-gradient(to left, transparent, rgba(201, 161, 90, 0.75) 12%, rgba(201, 161, 90, 0.75) 88%, transparent);
+    opacity: 0.6;
+    pointer-events: none;
+    transition: opacity 0.2s ease-out;
+  }
+  :global(.pcard:active)::after { opacity: 1; }
+  :global(.pcard:active) { transform: scale(0.985); }
+  :global(.pcard.oos) { opacity: 0.6; }
+  /* قيد نافد: خط متقطع — سطر فارغ ينتظر تعبئة */
+  :global(.pcard.oos)::after {
+    background: none;
+    border-bottom: 1.5px dashed rgba(122, 46, 58, 0.4);
+  }
   .pthumb {
-    width: 64px; height: 64px;
-    border-radius: var(--r-md);
+    width: 68px; height: 68px;
+    border-radius: 14px;
     flex: none;
     display: flex; align-items: center; justify-content: center;
     background: linear-gradient(150deg, rgba(255, 255, 255, 0.65), rgba(181, 73, 91, 0.07));
-    border: 1px solid var(--line);
+    border: 1.5px solid rgba(201, 161, 90, 0.45); /* خيط الصورة الذهبي */
+    box-shadow: 0 0 0 3px rgba(201, 161, 90, 0.07), 0 3px 10px rgba(58, 26, 32, 0.08);
     overflow: hidden;
   }
   .pthumb img { width: 100%; height: 100%; object-fit: cover; }
-  .pinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  :global(.pcard.oos) .pthumb img { filter: grayscale(0.55); }
+  .pinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .pcolors { display: flex; flex-wrap: wrap; gap: 3px 10px; }
   .pc-color { display: inline-flex; align-items: center; gap: 4px; }
   .pc-qty { font-size: 10.5px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
   .pname { font-weight: 800; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .psizes { margin-top: 1px; }
-  .prow { display: flex; justify-content: space-between; align-items: baseline; }
-  .pprice { font-weight: 800; font-size: 13.5px; color: var(--burgundy); }
-  .pqty { font-size: 12px; color: var(--taupe); font-weight: 700; }
-  .pqty.low { color: #b45309; }
-  .pqty.zero { color: var(--burgundy-deep); }
+  .psizes { margin-top: 0; }
+  /* ملخص القيد: السعر ثقيل وتحته تذكرة الرف — مثل قيد الدفتر */
+  .psum { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
+  .pprice { font-weight: 900; font-size: 15px; color: var(--burgundy); font-variant-numeric: tabular-nums; letter-spacing: 0.2px; }
+  .pticket {
+    font-size: 10.5px; font-weight: 800; font-variant-numeric: tabular-nums;
+    color: var(--ink-2);
+    background: rgba(122, 46, 58, 0.07);
+    border-radius: 999px;
+    padding: 2px 9px;
+    line-height: 1.5;
+  }
+  .pticket.low { color: #b45309; background: rgba(180, 83, 9, 0.12); }
+  .pticket.zero { color: #fff; background: rgba(122, 46, 58, 0.92); }
+  /* خاتم الإضافة: دائرة نبيتية بإطار ذهبي — تُختم تحت الإصبع */
   .add-ic {
     flex: none;
-    width: 34px; height: 34px;
+    width: 38px; height: 38px;
     border-radius: 50%;
     background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
+    border: 1.5px solid rgba(201, 161, 90, 0.6);
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 12px rgba(181, 73, 91, 0.35);
+    box-shadow: 0 4px 12px rgba(181, 73, 91, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+  :global(.pcard:active) .add-ic { transform: scale(0.86) rotate(-6deg); }
+
+  /* ── دفتر حركة اليوم: سطر واحد يقول إن اليوم بيع فيه ── */
+  :global(.dayline) { display: flex; align-items: center; gap: 10px; padding: 11px 14px; }
+  .dl-label { font-size: 11px; font-weight: 800; color: var(--taupe); }
+  .dl-thread {
+    flex: 1;
+    height: 1.5px;
+    background: linear-gradient(to left, transparent, rgba(201, 161, 90, 0.55) 15%, rgba(201, 161, 90, 0.55) 85%, transparent);
+  }
+  .dl-pieces { font-size: 12px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .dl-sum { font-size: 13.5px; font-weight: 900; color: var(--burgundy); font-variant-numeric: tabular-nums; }
 
   .bar-portal { display: contents; }
   .cartbar {
@@ -924,9 +986,17 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px;
+    padding: 11px 8px 8px; /* أعلى أوسع قليلاً — خياطة الإيصال تسكن فيها */
     border-radius: 20px;
     z-index: 45;
+  }
+  /* خياطة الإيصال: خط ذهبي متقطع أعلى الشريط — فاتورة تُكتب الآن */
+  .cartbar::before {
+    content: '';
+    position: absolute;
+    top: 5px;
+    inset-inline: 16px;
+    border-top: 1.5px dashed rgba(201, 161, 90, 0.5);
   }
   .cart-info {
     flex: 1;

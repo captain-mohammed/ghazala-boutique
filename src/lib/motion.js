@@ -66,7 +66,7 @@ export function initSparks() {
   document.addEventListener(
     'pointerdown',
     (e) => {
-      const t = e.target.closest?.('.btn, .chip, .key, .tab, .wa-chip, .iconbtn, [data-tab], .key-glass, .menu, .alert, .sale');
+      const t = e.target.closest?.('.btn, .chip, .key, .tab, .wa-chip, .iconbtn, [data-tab], .key-glass, .menu, .alert, .sale, .add-ic');
       if (!t) return;
       spawnSparks(e.clientX, e.clientY, 8);
     },
