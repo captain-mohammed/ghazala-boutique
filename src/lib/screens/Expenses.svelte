@@ -2,14 +2,38 @@
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
-  import { db, addExpense, deleteExpense, EXPENSE_CATEGORIES } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, isSameDay, startOfToday, daysAgoStart, buzz, iqd } from '../utils.js';
-  import { toastOk } from '../store.js';
+  import Sheet from '../components/Sheet.svelte';
+  import { db, addExpense, updateExpense, deleteExpense, EXPENSE_CATEGORIES } from '../db.js';
+  import { fmtIQD, fmtNum, fmtDate, isSameDay, startOfToday, daysAgoStart, buzz, iqd, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
+  import { toastOk, toastErr } from '../store.js';
 
   let expenses = $state([]);
   let amount = $state('');
   let category = $state('نقل');
   let note = $state('');
+  /* تحرير مصروف: المبلغ والملاحظة والوقت — الوقت ينقله لتقريره الصحيح */
+  let editing = $state(null);
+  let eAmount = $state('');
+  let eNote = $state('');
+  let eTs = $state('');
+
+  function openEdit(e) {
+    editing = e;
+    eAmount = String(e.amount);
+    eNote = e.note || '';
+    eTs = baghdadLocalInput(new Date(e.date));
+    buzz(8);
+  }
+  async function saveEdit() {
+    if (!editing) return;
+    const iso = isoFromBaghdadLocal(eTs);
+    if (!iso) { toastErr('وقت غير صالح'); return; }
+    if (new Date(iso).getTime() > Date.now() + 60000) { toastErr('الوقت لا يكون بالمستقبل'); buzz([30, 40, 30]); return; }
+    await updateExpense(editing.id, { amount: iqd(eAmount) || editing.amount, note: eNote, date: iso });
+    editing = null;
+    buzz([14, 30, 14]);
+    toastOk('حُرر المصروف — التقرير يحسبه بوقته الجديد');
+  }
 
   $effect(() => {
     let alive = true;
@@ -100,12 +124,36 @@
             <div class="muted tiny">{fmtDate(e.date)}</div>
           </div>
           <div class="money small">-{fmtIQD(e.amount)}</div>
+          <button class="e-x" aria-label="تعديل" onclick={() => openEdit(e)}><Icon name="edit" size={12} /></button>
           <button class="e-x" aria-label="حذف" onclick={() => remove(e)}><Icon name="x" size={13} /></button>
         </Glass>
       {/each}
     </div>
   {/if}
 </div>
+
+<Sheet open={!!editing} title="تعديل المصروف" onclose={() => (editing = null)}>
+  {#if editing}
+    <div class="stack" style="gap:12px">
+      <div class="row" style="gap:8px">
+        <div class="field" style="flex:1">
+          <label>المبلغ (د.ع)</label>
+          <input class="input" bind:value={eAmount} inputmode="numeric" />
+        </div>
+        <div class="field" style="flex:1">
+          <label>الوقت (بتوقيت بغداد)</label>
+          <input class="input ts-input" type="datetime-local" bind:value={eTs} max={baghdadLocalInput()} />
+        </div>
+      </div>
+      <div class="field">
+        <label>ملاحظة</label>
+        <input class="input" bind:value={eNote} placeholder="اختياري…" />
+      </div>
+      <button class="btn primary lg block" onclick={saveEdit}><Icon name="check" size={18} /> حفظ التعديل</button>
+      <p class="muted tiny" style="margin:0">تعديل الوقت ينقل المصروف لتقريره الصحيح — صافي الشهر يُحسب من التاريخ.</p>
+    </div>
+  {/if}
+</Sheet>
 
 <style>
   .sums { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
@@ -126,7 +174,8 @@
     flex: none; width: 28px; height: 28px;
     border-radius: 50%; border: none;
     background: rgba(181, 73, 91, 0.08); color: var(--burgundy);
-    display: flex; align-items: center; justify-content: center;
-    cursor: pointer;
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   }
+  .e-x[aria-label="تعديل"] { background: rgba(201, 161, 90, 0.14); color: #8a6a35; }
+  .ts-input { direction: ltr; text-align: center; font-variant-numeric: tabular-nums; }
 </style>

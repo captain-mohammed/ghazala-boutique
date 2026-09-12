@@ -64,6 +64,18 @@
     await save('modelColors', opts.colors, 'دُبطت درجة اللون');
   }
 
+  /* منتقي الدرجات — شريط صبغة + شبكة درجات، دقيق على الموبايل */
+  import ColorPicker from '../components/ColorPicker.svelte';
+  let pickOpen = $state(false);
+  let pickFrom = $state('#b5495b');
+  let pickMode = $state('new'); // 'new' | { label }
+  function openPickNew() { pickMode = 'new'; pickFrom = newColorHex; pickOpen = true; buzz(8); }
+  function openPickRecolor(label, hex) { pickMode = label; pickFrom = hex; pickOpen = true; buzz(8); }
+  function onPick(hex) {
+    if (pickMode === 'new') newColorHex = hex;
+    else recolor(pickMode, hex);
+  }
+
   /* ---- القوائم الفرعية تحت النوع (بوت ← كعب عالي…) — عدديها كما تحبين ---- */
   async function addSub(type, name) {
     const n = String(name || '').trim();
@@ -310,26 +322,31 @@
 
     <Glass class="rise" style="padding:16px; animation-delay:0.2s">
       <h2 class="h2" style="margin-bottom:4px"><Icon name="sparkle" size={17} color="var(--gold)" /> الألوان ودوائرها</h2>
-      <p class="muted small" style="margin:0 0 10px">اختاري درجة الدائرة بالضبط من علبة الألوان قبل الإضافة — وبالنموذج التصوير يصير نفس اللون.</p>
+      <p class="muted small" style="margin:0 0 10px">لمسة على الدائرة تفتح منتقي الدرجات: صبغة بشريط قوس قزح ثم درجة من الشبكة — دقيق بالإبهام.</p>
       <div class="row" style="gap:8px; margin-bottom:12px">
-        <input class="color-box" type="color" bind:value={newColorHex} aria-label="درجة اللون" />
+        <button type="button" class="pick-btn" onclick={openPickNew} aria-label="درجة اللون الجديد">
+          <span class="dot" style="background:{newColorHex}"></span>
+          <Icon name="edit" size={12} color="var(--taupe)" />
+        </button>
         <input class="input" style="flex:1" bind:value={newColorName} placeholder="اسم اللون…" onkeydown={(e) => e.key === 'Enter' && addColor()} />
         <button class="btn" onclick={addColor}><Icon name="plus" size={16} /> لون</button>
       </div>
       <div class="color-list">
         {#each opts.colors as c (c.label)}
           <div class="color-row">
-            <label class="dot-wrap" title="اضبطي الدرجة بدقة">
+            <button type="button" class="dot-wrap" title="اضبطي الدرجة بدقة" onclick={() => openPickRecolor(c.label, c.hex)}>
               <span class="dot" style="background:{c.hex}"></span>
-              <input type="color" value={c.hex} onchange={(e) => recolor(c.label, e.target.value)} aria-label="درجة {c.label}" />
-            </label>
+              <Icon name="edit" size={10} color="var(--taupe)" />
+            </button>
             <span class="bold small" style="flex:1">{c.label}</span>
-            <span class="muted tiny">{c.hex}</span>
+            <span class="muted tiny" dir="ltr">{c.hex}</span>
             <button class="opt-x dark" onclick={() => rmColor(c.label)} aria-label="حذف {c.label}"><Icon name="x" size={13} /></button>
           </div>
         {/each}
       </div>
     </Glass>
+
+    <ColorPicker open={pickOpen} hex={pickFrom} onpick={onPick} onclose={() => (pickOpen = false)} />
   </div>
 {:else}
   <div class="muted small" style="padding:20px; text-align:center">تحميل…</div>
@@ -359,15 +376,16 @@
     border: 1.5px solid var(--line-2);
     box-shadow: inset 0 2px 5px rgba(255, 255, 255, 0.3), inset 0 -3px 6px rgba(0, 0, 0, 0.16);
   }
-  .dot-wrap input[type="color"] { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
-  .color-box {
-    width: 50px; height: 50px; flex: none;
+  /* زر فتح منتقي الدرجات */
+  .pick-btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+    background: rgba(255, 255, 255, 0.45);
+    border: 1.5px dashed var(--line-2);
     border-radius: 14px;
-    border: 1.5px solid var(--line-2);
-    background: none;
-    padding: 4px;
+    padding: 7px 10px;
     cursor: pointer;
   }
+  .pick-btn:active { transform: scale(0.94); }
 
   .sub-block { display: flex; flex-direction: column; }
   .sub-toggle {

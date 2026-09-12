@@ -8,7 +8,7 @@
   import VariantBits from '../components/VariantBits.svelte';
   import TargetRing from '../components/TargetRing.svelte';
   import { db, allSettings, upcomingOccasions, vaultState, vaultManual, archivedModels } from '../db.js';
-  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey, stockArrival, shelfAgeDays } from '../utils.js';
+  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey, stockArrival, shelfAgeDays, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
   import Sheet from '../components/Sheet.svelte';
   import { invoicePreset, sellPrefill, toastOk, toastErr, celebrateAt } from '../store.js';
@@ -258,11 +258,19 @@
   let vaultOpen = $state(false);
   let vaultAmount = $state('');
   let vaultNote = $state('');
+  let vaultDate = $state(''); // اختياري — إيداع/سحب بتاريخ سابق
   async function vaultMove(kind) {
     const a = Math.round(Number(vaultAmount) || 0);
     if (a <= 0) { toastErr('اكتبي المبلغ أولاً'); return; }
-    await vaultManual(kind, a, vaultNote.trim());
-    vaultAmount = ''; vaultNote = '';
+    let when;
+    if (vaultDate) {
+      const iso = isoFromBaghdadLocal(vaultDate);
+      if (!iso) { toastErr('وقت غير صالح'); return; }
+      if (new Date(iso).getTime() > Date.now() + 60000) { toastErr('الوقت لا يكون بالمستقبل'); buzz([30, 40, 30]); return; }
+      when = iso;
+    }
+    await vaultManual(kind, a, vaultNote.trim(), when);
+    vaultAmount = ''; vaultNote = ''; vaultDate = '';
     toastOk(kind === 'in' ? 'أودعتِ في الخزنة 💰' : 'سُحب من الخزنة');
     buzz([10, 30, 10]);
   }
@@ -535,6 +543,10 @@
         <input class="input" placeholder="مبلغ" bind:value={vaultAmount} inputmode="numeric" style="flex:1" />
         <input class="input" placeholder="سبب (اختياري)" bind:value={vaultNote} style="flex:2" />
       </div>
+      <div>
+        <input class="input ts-input" type="datetime-local" bind:value={vaultDate} max={baghdadLocalInput()} />
+        <p class="muted tiny" style="margin:3px 2px 0">الوقت اختياري — فارغ يعني الآن. الإيداع السابق يُدوَّن بتاريخه الصحيح في كشف الخزنة.</p>
+      </div>
       <div class="row" style="gap:8px">
         <button class="btn primary block" onclick={() => vaultMove('in')}><Icon name="plus" size={15} /> إيداع</button>
         <button class="btn block" onclick={() => vaultMove('out')}><Icon name="x" size={15} /> سحب</button>
@@ -607,6 +619,7 @@
     background: linear-gradient(90deg, var(--gold), #a4803e);
     transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
   }
+  .ts-input { direction: ltr; text-align: center; font-variant-numeric: tabular-nums; }
   .v-sheet-top { text-align: center; display: flex; flex-direction: column; gap: 2px; }
   .v-balance { font-size: 26px; font-weight: 800; color: var(--burgundy); }
   .v-entry { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--r-sm); background: rgba(255, 255, 255, 0.35); border: 1px solid var(--line); }

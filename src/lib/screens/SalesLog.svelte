@@ -4,8 +4,8 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, setSaleStatus, returnSale } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, fmtAgo, buzz, buildSalesMessage, sendWhatsApp, salePieces, WA_STATUS_TEMPLATES } from '../utils.js';
+  import { db, setSaleStatus, returnSale, setSaleDate } from '../db.js';
+  import { fmtIQD, fmtNum, fmtDate, fmtAgo, buzz, buildSalesMessage, sendWhatsApp, salePieces, WA_STATUS_TEMPLATES, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   const FILTERS = [
@@ -18,6 +18,19 @@
   let sales = $state([]);
   let filter = $state('all');
   let detail = $state(null);
+  /* تعديل وقت العملية — يسري على الخزنة والحركات والتقارير */
+  let tsBox = $state(false);
+  let saleTs = $state('');
+  async function saveTs() {
+    const iso = isoFromBaghdadLocal(saleTs);
+    if (!iso) { toastErr('وقت غير صالح'); return; }
+    if (new Date(iso).getTime() > Date.now() + 60000) { toastErr('وقت العملية لا يكون بالمستقبل'); buzz([30, 40, 30]); return; }
+    await setSaleDate(detail.id, iso);
+    detail = { ...detail, date: iso };
+    tsBox = false;
+    buzz([14, 30, 14]);
+    toastOk('حُرر وقت العملية — الخزنة والحركات والتقارير كلها تبعته');
+  }
   let waTemplates = $state({}); // { pending, delivered, returned } — قالب لكل حالة
 
   $effect(() => {
@@ -252,7 +265,19 @@
           <span class="bold">{detail.customerName || 'زبون'}</span>
           <span class="st {STATUS[detail.status]?.cls}">{STATUS[detail.status]?.label}</span>
         </div>
-        <div class="muted small">{fmtDate(detail.date)} · {fmtAgo(detail.date)}</div>
+        <div class="muted small">
+          {fmtDate(detail.date)} · {fmtAgo(detail.date)}
+          <button type="button" class="ts-edit" onclick={() => { saleTs = baghdadLocalInput(new Date(detail.date)); tsBox = !tsBox; buzz(6); }}>
+            <Icon name="edit" size={10} /> عدّلي الوقت
+          </button>
+        </div>
+        {#if tsBox}
+          <div class="row" style="gap:8px; align-items:center">
+            <input class="input ts-input" type="datetime-local" bind:value={saleTs} max={baghdadLocalInput()} style="flex:1; min-width:0" />
+            <button class="btn primary" style="flex:none" onclick={saveTs}>حفظ</button>
+          </div>
+          <p class="muted tiny" style="margin:0">الوقت الجديد يسري على الخزنة وحركات المخزون وكل التقارير.</p>
+        {/if}
         {#if detail.customerPhone}
           <div class="row small muted"><Icon name="phone" size={14} /> {detail.customerPhone}</div>
         {/if}
@@ -459,4 +484,14 @@
     border-radius: 10px;
     direction: ltr;
   }
+  .ts-edit {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-family: inherit; font-size: 10px; font-weight: 800;
+    color: var(--burgundy);
+    background: rgba(181, 73, 91, 0.09);
+    border: none; border-radius: 999px;
+    padding: 2px 8px; margin-inline-start: 5px; cursor: pointer;
+  }
+  .ts-edit:active { transform: scale(0.94); }
+  .ts-input { direction: ltr; text-align: center; font-variant-numeric: tabular-nums; }
 </style>

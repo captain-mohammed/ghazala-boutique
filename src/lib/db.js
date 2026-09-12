@@ -482,12 +482,33 @@ export async function returnSale(id) {
   const now = new Date().toISOString();
   for (const it of s.items) {
     const p = await db.products.get(it.sku);
-    if (p) await db.products.update(it.sku, { qty: p.qty + it.qty, updatedAt: now });
+    if (p) {
+      await db.products.update(it.sku, { qty: p.qty + it.qty, updatedAt: now });
+      await syncModelOos(it.sku); /* القطع رجعت للرف — النفد ينمحى إن كان كامل الموديل راجع */
+    }
     await logMovement({ sku: it.sku, type: 'in', qty: it.qty, note: `إرجاع بيع #${id}` });
   }
   await db.sales.update(id, { status: 'returned' });
   /* the sale's profit leaves the vault — recorded, never hidden */
   await vaultWithdraw({ amount: s.profit, saleId: id, note: `إرجاع بيع #${id}` });
+}
+
+/* تعديل وقت العملية: العملية سُجلت متأخرة أو بالغلط؟ الوقت الجديد يسري على
+   العملية نفسها وعلى قيود الخزنة وحركات المخزون المرتبطة بها — فكل التقارير
+   (اليوم/الأسبوع/الشهر/الرسم البياني/ساعات الذروة/دفتر الشهر) تحسب صح. */
+export async function setSaleDate(id, iso) {
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) throw new Error('وقت غير صالح');
+  const when = new Date(t).toISOString();
+  await db.sales.update(id, { date: when });
+  const vaultRows = await db.vault.where('saleId').equals(id).toArray();
+  for (const v of vaultRows) await db.vault.update(v.id, { date: when });
+  const tags = [`بيع #${id}`, `إرجاع بيع #${id}`];
+  const moves = await db.movements.toArray();
+  for (const m of moves) {
+    if (tags.some((tag) => (m.note || '').includes(tag))) await db.movements.update(m.id, { date: when });
+  }
+  return when;
 }
 
 /* ---------------- خزنة الغزالة (the vault) ----------------
@@ -507,10 +528,11 @@ export async function vaultWithdraw({ amount, saleId = null, note = '' }) {
 }
 
 /* manual entry — vault money taken out (مشتريات، مصاريف شخصية…) */
-export async function vaultManual(kind, amount, note) {
+export async function vaultManual(kind, amount, note, date) {
   const a = Math.round(Number(amount) || 0);
   if (a <= 0) return;
-  await db.vault.add({ date: new Date().toISOString(), kind: kind === 'in' ? 'in' : 'out', amount: a, saleId: null, note: note || (kind === 'in' ? 'إيداع يدوي' : 'سحب') });
+  const when = date ? new Date(date).toISOString() : new Date().toISOString();
+  await db.vault.add({ date: when, kind: kind === 'in' ? 'in' : 'out', amount: a, saleId: null, note: note || (kind === 'in' ? 'إيداع يدوي' : 'سحب') });
 }
 
 export async function vaultState() {
@@ -619,6 +641,7 @@ export async function createReservation({ sku, customerName, customerPhone, note
   const now = new Date();
   const expiresAt = new Date(now.getTime() + hours * 3600000).toISOString();
   await db.products.update(sku, { qty: p.qty - 1, updatedAt: now.toISOString() });
+  await syncModelOos(sku); /* آخر قطعة حجزت → الموديل كامل صار نافداً */
   await logMovement({ sku, type: 'out', qty: 1, note: `حجز لـ ${customerName || 'زبونة'}` });
   const id = await db.reservations.add({
     sku, name: p.name, price: p.price,
@@ -632,7 +655,10 @@ export async function createReservation({ sku, customerName, customerPhone, note
 /* restore stock for an expired/cancelled reservation */
 async function releaseReservation(r, note) {
   const p = await db.products.get(r.sku);
-  if (p) await db.products.update(r.sku, { qty: p.qty + 1, updatedAt: new Date().toISOString() });
+  if (p) {
+    await db.products.update(r.sku, { qty: p.qty + 1, updatedAt: new Date().toISOString() });
+    await syncModelOos(r.sku); /* رجعت قطعة للرف — ختم النفد ينمحى إن كان موجوداً */
+  }
   await logMovement({ sku: r.sku, type: 'in', qty: 1, note });
 }
 
@@ -683,13 +709,22 @@ export async function sweepExpiredReservations() {
 
 export const EXPENSE_CATEGORIES = ['إيجار', 'نقل', 'تغليف', 'كهرباء', 'أخرى'];
 
-export async function addExpense({ amount, category, note }) {
+export async function addExpense({ amount, category, note, date }) {
   return db.expenses.add({
     amount: Math.max(0, Number(amount) || 0),
     category: category || 'أخرى',
     note: note || '',
-    date: new Date().toISOString()
+    date: date || new Date().toISOString()
   });
+}
+
+export async function updateExpense(id, { amount, note, date }) {
+  const patch = {};
+  if (amount !== undefined) patch.amount = Math.max(0, Number(amount) || 0);
+  if (note !== undefined) patch.note = note || '';
+  /* تعديل الوقت يحرك المصروف للتقرير الصحيح — صافي الشهر يُحسب من التاريخ */
+  if (date) patch.date = new Date(date).toISOString();
+  if (Object.keys(patch).length) await db.expenses.update(id, patch);
 }
 
 export async function deleteExpense(id) {

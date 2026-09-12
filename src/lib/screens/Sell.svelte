@@ -422,8 +422,12 @@
   }
 
   /* ---- swap color/size of a cart line — only variants that actually exist in stock ---- */
-  const modelMates = (c) =>
-    products.filter((x) => (x.name || '').trim().toLowerCase() === (c.name || '').trim().toLowerCase() && (!c.category || x.category === c.category));
+  /* الأخوات = الموديل كله بالرقم الداخلي — الاسم قد يتغير بتعديل النوع فلا يكفي للمطابقة */
+  const modelMates = (c) => {
+    const self = products.find((x) => x.sku === c.sku);
+    if (!self) return [];
+    return products.filter((x) => modelGroupKey(x) === modelGroupKey(self));
+  };
   function colorOptsFor(c) {
     const set = new Set(modelMates(c).filter((x) => x.qty > 0).map((x) => (x.color || '').trim() || NOCOLOR));
     set.add((c.color || '').trim() || NOCOLOR); // keep the line's own choice listed
@@ -502,6 +506,7 @@
   const savedCustomers = $derived.by(() => {
     const map = new Map();
     for (const s of [...sales].sort((a, b) => new Date(b.date) - new Date(a.date))) {
+      if (s.status === 'returned') continue; /* المرتجعات لا تصنع زبونة محفوظة */
       const phone = String(s.customerPhone || '').replace(/\D/g, '');
       if (!phone) continue;
       const cur = map.get(phone);
