@@ -459,8 +459,9 @@
     buzz(6);
   }
 
-  /* ---- Checkout ---- */
+  /* ---- Checkout — خطوتان: القطع ثم التوصيل والمراجعة ---- */
   let checkout = $state(false);
+  let step = $state(1);
   let cname = $state('');
   let cphone = $state('');
   let cprovince = $state('');
@@ -474,6 +475,84 @@
   let saving = $state(false);
   let tried = $state(false);
 
+  /* زبونات محفوظات: تتجمع من مبيعاتها السابقة — الأحدث أولاً. لمسة على الاسم
+     وتُعبّى الحقول كلها (الاسم، الهاتف، المحافظة، العنوان) بلا إعادة كتابة */
+  const savedCustomers = $derived.by(() => {
+    const map = new Map();
+    for (const s of [...sales].sort((a, b) => new Date(b.date) - new Date(a.date))) {
+      const phone = String(s.customerPhone || '').replace(/\D/g, '');
+      if (!phone) continue;
+      const cur = map.get(phone);
+      if (cur) { cur.orders++; continue; }
+      map.set(phone, {
+        phone: String(s.customerPhone || '').trim(),
+        name: (s.customerName || '').trim(),
+        province: s.province || '',
+        address: s.address || '',
+        orders: 1
+      });
+    }
+    return [...map.values()].slice(0, 6);
+  });
+  const phoneDigits = $derived(cphone.replace(/\D/g, ''));
+
+  function pickCustomer(c) {
+    cname = c.name;
+    cphone = c.phone;
+    cprovince = PROVINCES.includes(c.province) ? c.province : '';
+    caddress = c.address || '';
+    tried = false;
+    buzz(8);
+    toast(`بيانات ${c.name || c.phone} جاهزة`);
+  }
+
+  function gotoStep2() {
+    if (!cart.length) return;
+    step = 2;
+    buzz(8);
+  }
+
+  /* الحقول الثلاثة الإجبارية: الاسم، موبايل صحيح (10 أرقام على الأقل)، المحافظة */
+  const nameValid = $derived(cname.trim().length > 0);
+  const phoneValid = $derived(phoneDigits.length >= 10 && phoneDigits.length <= 15);
+  const provinceValid = $derived(cprovince !== '');
+  const clientValid = $derived(nameValid && phoneValid && provinceValid);
+  const missingClient = $derived([
+    ...(!nameValid ? ['اسم الزبون'] : []),
+    ...(!phoneValid ? ['رقم موبايل صحيح'] : []),
+    ...(!provinceValid ? ['المحافظة'] : [])
+  ]);
+
+  async function openCheckout() {
+    if (!cart.length) return;
+    fee = await getSetting('deliveryFee', 5000);
+    companies = await getSetting('deliveryCompanies', []);
+    /* أول شركة جاهزة مُختارة سلفاً — لا «بدون» في الإتمام */
+    if (!company && companies.length) company = companies[0];
+    step = 1;
+    tried = false;
+    checkout = true;
+    buzz(10);
+  }
+
+  function closeCheckout() {
+    checkout = false;
+    step = 1;
+    tried = false;
+  }
+
+  /* تأكيد البيع: تحقق حقيقي قبل الحفظ — وأول حقل ناقص يُمرَّر إليه بعينها */
+  function confirmCheckout() {
+    if (!clientValid) {
+      tried = true;
+      buzz([30, 40, 30]);
+      toastErr(`مطلوب قبل التأكيد: ${missingClient.join(' - ')}`);
+      setTimeout(() => document.querySelector('.co-bad')?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+      return;
+    }
+    finishSale();
+  }
+
   /* cart bar portal — pinned to the viewport, immune to the screen transform */
   let barHost = $state(null);
   $effect(() => {
@@ -483,18 +562,10 @@
     return () => barHost.remove();
   });
 
-  /* the three required client fields: الاسم، الهاتف، المحافظة */
-  const clientValid = $derived(cname.trim().length > 0 && cphone.trim().length >= 7 && cprovince !== '');
-
-  async function openCheckout() {
-    if (!cart.length) return;
-    fee = await getSetting('deliveryFee', 5000);
-    companies = await getSetting('deliveryCompanies', []);
-    /* أول شركة جاهزة مُختارة سلفاً — لا «بدون» في الإتمام */
-    if (!company && companies.length) company = companies[0];
-    checkout = true;
-    buzz(10);
-  }
+  /* لو أُفرغت السلة خلف الورقة المفتوحة (نفدت الكميات) — تُغلق بهدوء */
+  $effect(() => {
+    if (checkout && !cart.length) { checkout = false; step = 1; }
+  });
 
   async function finishSale() {
     if (saving) return;
@@ -512,6 +583,7 @@
         status: 'pending'
       });
       checkout = false;
+      step = 1;
       cart = [];
       cname = ''; cphone = ''; cprovince = ''; caddress = ''; barcode = ''; company = ''; tried = false;
       buzz([30, 60, 30, 60, 30]);
@@ -730,9 +802,15 @@
   {/if}
 </Sheet>
 
-<!-- Checkout sheet -->
-<Sheet open={checkout} title="إتمام البيع" onclose={() => (checkout = false)}>
-  <div class="stack" style="gap:14px">
+<!-- Checkout — خطوتان: القطع ثم التوصيل والمراجعة -->
+<Sheet open={checkout} title={step === 1 ? 'إتمام البيع — القطع' : 'إتمام البيع — التوصيل'} onclose={closeCheckout}>
+  {#if step === 1}
+  <div class="stack" style="gap:12px">
+    <div class="step-track">
+      <span class="st-item on"><i class="st-dot"></i>القطع</span>
+      <span class="st-thread"></span>
+      <span class="st-item"><i class="st-dot"></i>التوصيل</span>
+    </div>
     {#each cart as c (c.vsKey)}
       {@const cph = products.find((x) => x.sku === c.sku)?.photo}
       <Glass class="citem" radius="var(--r-md)">
@@ -772,31 +850,63 @@
       </Glass>
     {/each}
 
-    <hr class="divider-gold" />
+    <div class="sumline">
+      <span class="muted small">{fmtNum(cart.length)} سطر — {fmtNum(cartCount)} قطعة</span>
+      <span class="money">{fmtIQD(subtotal)}</span>
+    </div>
+    <button class="btn primary lg block" onclick={gotoStep2}>
+      متابعة للتوصيل
+      <Icon name="back" size={17} />
+    </button>
+  </div>
+  {:else}
+  <div class="stack" style="gap:12px">
+    <div class="step-track">
+      <span class="st-item"><i class="st-dot"></i>القطع</span>
+      <span class="st-thread"></span>
+      <span class="st-item on"><i class="st-dot"></i>التوصيل</span>
+    </div>
+    <button class="step-back" onclick={() => { step = 1; buzz(6); }}>
+      <Icon name="undo" size={13} /> رجوع للقطع
+    </button>
+
+    {#if savedCustomers.length}
+      <div class="field">
+        <label>زبونات محفوظات <span class="muted tiny">(لمسة وتتعبى)</span></label>
+        <div class="row wrap" style="gap:6px">
+          {#each savedCustomers as c (c.phone)}
+            <button type="button" class="chip" class:on={phoneDigits === c.phone.replace(/\D/g, '')} onclick={() => pickCustomer(c)}>
+              {c.name || c.phone}
+              <b class="ch-ord">{fmtNum(c.orders)}</b>
+            </button>
+          {/each}
+        </div>
+      </div>
+    {/if}
 
     <div class="row" style="gap:10px">
-      <div class="field" style="flex:1">
+      <div class="field" style="flex:1" class:co-bad={tried && !nameValid}>
         <label>اسم الزبون <span class="req">*</span></label>
-        <input class="input" bind:value={cname} class:invalid={tried && !cname.trim()} placeholder="الاسم الكامل" />
-        {#if tried && !cname.trim()}<span class="err">الاسم مطلوب</span>{/if}
+        <input class="input" bind:value={cname} class:invalid={tried && !nameValid} placeholder="الاسم الكامل" />
+        {#if tried && !nameValid}<span class="err">الاسم مطلوب</span>{/if}
       </div>
-      <div class="field" style="flex:1">
+      <div class="field" style="flex:1" class:co-bad={tried && !phoneValid}>
         <label>هاتف الزبون <span class="req">*</span></label>
-        <input class="input" bind:value={cphone} inputmode="tel" class:invalid={tried && cphone.trim().length < 7} placeholder="07xx…" />
-        {#if tried && cphone.trim().length < 7}<span class="err">رقم صحيح مطلوب</span>{/if}
+        <input class="input" bind:value={cphone} inputmode="tel" class:invalid={tried && !phoneValid} placeholder="07xx…" />
+        {#if tried && !phoneValid}<span class="err">رقم موبايل صحيح مطلوب (10 أرقام على الأقل)</span>{/if}
       </div>
     </div>
 
     <div class="row" style="gap:10px">
-      <div class="field" style="flex:1">
+      <div class="field" style="flex:1" class:co-bad={tried && !provinceValid}>
         <label>المحافظة <span class="req">*</span></label>
         <Pick
           bind:value={cprovince}
-          invalid={tried && !cprovince}
+          invalid={tried && !provinceValid}
           placeholder="اختاري المحافظة…"
           options={PROVINCES}
         />
-        {#if tried && !cprovince}<span class="err">المحافظة مطلوبة</span>{/if}
+        {#if tried && !provinceValid}<span class="err">المحافظة مطلوبة</span>{/if}
       </div>
     </div>
     <div class="row" style="gap:10px">
@@ -840,20 +950,41 @@
       </div>
     </div>
 
-    <Glass class="totals" radius="var(--r-md)">
-      <div class="row" style="justify-content:space-between"><span class="muted">المجموع</span><span class="money">{fmtIQD(subtotal)}</span></div>
-      <div class="row" style="justify-content:space-between"><span class="muted">التوصيل</span><span class="money">{fmtIQD(iqd(fee))}</span></div>
-      <hr class="divider-gold" style="margin:4px 0" />
-      <div class="row" style="justify-content:space-between">
-        <span class="bold">الإجمالي</span>
-        <span class="bold" style="font-size:18px; color:var(--burgundy)">{fmtIQD(subtotal + iqd(fee))}</span>
+    <!-- مراجعة الطلب قبل التأكيد: القطع، ثم الحساب -->
+    <Glass class="review" radius="var(--r-md)">
+      <div class="rv-head">
+        <span class="bold small">مراجعة الطلب</span>
+        <span class="rv-count">{fmtNum(cartCount)} قطعة — {fmtNum(cart.length)} سطر</span>
+      </div>
+      <div class="rv-lines">
+        {#each cart as c (c.vsKey)}
+          <div class="rv-line">
+            <VariantBits variants={[c]} />
+            <span class="rv-title">{[c.type, c.typeSub, c.typeSub2, c.typeSub3].filter(Boolean).join(' - ') || c.name}</span>
+            <span class="rv-qty">× {fmtNum(c.qty)}</span>
+            <span class="rv-sum">{fmtIQD(c.price * c.qty)}</span>
+          </div>
+        {/each}
+      </div>
+      <div class="rv-totals">
+        <div class="row" style="justify-content:space-between"><span class="muted">المجموع</span><span class="money">{fmtIQD(subtotal)}</span></div>
+        <div class="row" style="justify-content:space-between"><span class="muted">التوصيل</span><span class="money">{fmtIQD(iqd(fee))}</span></div>
+        <div class="row" style="justify-content:space-between">
+          <span class="bold">الإجمالي</span>
+          <span class="bold" style="font-size:18px; color:var(--burgundy)">{fmtIQD(subtotal + iqd(fee))}</span>
+        </div>
       </div>
     </Glass>
 
-    <button class="btn primary lg block" onclick={() => { if (!clientValid) { tried = true; buzz([30, 40, 30]); return; } finishSale(); }} disabled={saving || !cart.length}>
+    {#if tried && missingClient.length}
+      <div class="comiss pop">مطلوب قبل التأكيد: {missingClient.join(' - ')}</div>
+    {/if}
+
+    <button class="btn primary lg block" onclick={confirmCheckout} disabled={saving || !cart.length}>
       <Icon name="check" size={20} /> تأكيد البيع
     </button>
   </div>
+  {/if}
 </Sheet>
 
 <style>
@@ -1114,4 +1245,46 @@
   .req { color: var(--burgundy); font-weight: 800; }
   .err { display: block; font-size: 11px; color: var(--burgundy); font-weight: 700; margin-top: 3px; }
   :global(.invalid) { border-color: rgba(181, 73, 91, 0.55) !important; background: rgba(181, 73, 91, 0.05); }
+
+  /* ── خطوتا الإتمام: خيط الدفتر يربط القطع بالتوصيل ── */
+  .step-track { display: flex; align-items: center; gap: 8px; padding: 0 2px; }
+  .st-item { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: var(--taupe); }
+  .st-item.on { color: var(--burgundy); }
+  .st-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); flex: none; transition: background 0.2s, box-shadow 0.2s; }
+  .st-item.on .st-dot { background: var(--burgundy); box-shadow: 0 0 0 3px rgba(181, 73, 91, 0.15); }
+  .st-thread { flex: 1; height: 1.5px; background: linear-gradient(to left, rgba(201, 161, 90, 0.15), rgba(201, 161, 90, 0.55)); }
+  .step-back {
+    align-self: flex-start;
+    display: inline-flex; align-items: center; gap: 5px;
+    background: none; border: none; cursor: pointer;
+    font-family: inherit; font-size: 12px; font-weight: 800;
+    color: var(--burgundy); padding: 2px 4px;
+  }
+  /* عدّاد الطلبات داخل رقاقة الزبونة المحفوظة */
+  .ch-ord {
+    font-size: 9.5px; font-weight: 800; color: var(--burgundy);
+    background: rgba(181, 73, 91, 0.12);
+    border-radius: 999px; padding: 1px 6px; margin-inline-start: 5px;
+    font-variant-numeric: tabular-nums;
+  }
+  /* إطار الحقل الناقص — العين تُمرَّر إليه عند التأكيد الفاشل */
+  .co-bad { outline: 2px solid rgba(181, 73, 91, 0.45); outline-offset: 4px; border-radius: 12px; }
+  .comiss {
+    font-size: 12px; font-weight: 800; color: var(--burgundy-deep);
+    background: var(--accent-soft);
+    border: 1px solid rgba(181, 73, 91, 0.25);
+    border-radius: 12px; padding: 9px 12px;
+  }
+  .sumline { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px; }
+
+  /* ── مراجعة الطلب: القطع ملخصة ثم الحساب — قبل التأكيد بآخر نظرة ── */
+  :global(.review) { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
+  .rv-head { display: flex; align-items: center; justify-content: space-between; }
+  .rv-count { font-size: 10.5px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
+  .rv-lines { display: flex; flex-direction: column; gap: 6px; max-height: 148px; overflow-y: auto; }
+  .rv-line { display: flex; align-items: center; gap: 7px; font-size: 11.5px; }
+  .rv-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); font-weight: 700; }
+  .rv-qty { font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; flex: none; }
+  .rv-sum { font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; flex: none; }
+  .rv-totals { display: flex; flex-direction: column; gap: 6px; border-top: 1.5px dashed rgba(201, 161, 90, 0.45); padding-top: 9px; }
 </style>
