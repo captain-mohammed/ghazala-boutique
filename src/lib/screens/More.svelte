@@ -18,6 +18,7 @@
     {
       title: 'الزبونات',
       items: [
+        { id: 'customers', icon: 'user', label: 'دفتر الزبونات', desc: 'كل زبونة بإجمالياتها وآخر زيارة وذكرياتها' },
         { id: 'reservations', icon: 'clock', label: 'الحجوزات', desc: 'قطع محجوزة لزبوناتك — تحويل لبيع بأمان' },
         { id: 'occasions', icon: 'calendar', label: 'المناسبات', desc: 'أعياد ميلاد وذكريات زبوناتك — ذكّرهم بوقتهم' }
       ]

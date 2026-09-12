@@ -17,6 +17,7 @@
   import About from './lib/screens/About.svelte';
   import DeliveryLedger from './lib/screens/DeliveryLedger.svelte';
   import Suppliers from './lib/screens/Suppliers.svelte';
+  import Customers from './lib/screens/Customers.svelte';
   import Expenses from './lib/screens/Expenses.svelte';
   import Reservations from './lib/screens/Reservations.svelte';
   import PasteToSell from './lib/screens/PasteToSell.svelte';
@@ -128,6 +129,7 @@
         {:else if screen === 'receive'}<ReceiveInvoice {goto} />
         {:else if screen === 'modelopts'}<ModelOptions />
         {:else if screen === 'suppliers'}<Suppliers {goto} />
+        {:else if screen === 'customers'}<Customers {goto} />
         {:else if screen === 'occasions'}<Occasions />
         {/if}
       </div>
