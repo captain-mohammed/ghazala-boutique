@@ -1,5 +1,4 @@
 <script>
-  import { onMount } from 'svelte';
   import Icon from '../components/Icon.svelte';
   import Ticker from '../components/Ticker.svelte';
   import VariantBits from '../components/VariantBits.svelte';
@@ -25,19 +24,19 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, s, e, c] = await Promise.all([db.products.toArray(), db.sales.toArray(), db.expenses.toArray(), getSetting('monthClosing', [])]);
+      const [p, s, e, c, st] = await Promise.all([db.products.toArray(), db.sales.toArray(), db.expenses.toArray(), getSetting('monthClosing', []), allSettings()]);
       if (!alive) return;
       products = p;
       sales = s;
       expenses = e;
       closings = Array.isArray(c) ? c : [];
+      /* حد الرکود حيّ مع كل جلب — تغييره في الإعدادات ينعكس دون مغادرة الصفحة */
+      settings = st;
     };
     grab();
     const t = setInterval(grab, 5000);
     return () => { alive = false; clearInterval(t); };
   });
-
-  onMount(async () => { settings = await allSettings(); });
 
   const from = $derived(period === 'today' ? startOfToday() : period === 'week' ? daysAgoStart(6) : period === 'month' ? daysAgoStart(29) : new Date(0));
   const inPeriod = $derived(sales.filter((s) => s.status !== 'returned' && new Date(s.date) >= from));

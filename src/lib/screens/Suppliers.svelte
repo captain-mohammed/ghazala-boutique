@@ -2,7 +2,6 @@
   /* دفتر الموردين — منين اشتريتِ وكم بيع
      كل مورد: عدد الموديلات، القطع المشتراة، التكلفة الإجمالية،
      القطع المتبقية على الرف، ما بيع، وإيراد مبيعاته وربحه. */
-  import { onMount } from 'svelte';
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
@@ -14,10 +13,17 @@
   let rows = $state([]);
   let open = $state(null);   // supplier being expanded
   let loading = $state(true);
+  let loadedOnce = false;
 
-  onMount(load);
+  /* حيّ مثل باقي الشاشات — بيع جديد أو مورد سُجّل في الإعدادات يظهران دون مغادرة،
+     وبوابة التحميل تظهر على أول جلب فقط حتى لا ترمش الصفحة كل ثوانٍ */
+  $effect(() => {
+    load();
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  });
   async function load() {
-    loading = true;
+    if (!loadedOnce) loading = true;
     const [products, sales, suppliers] = await Promise.all([
       db.products.toArray(),
       db.sales.toArray(),
@@ -70,6 +76,7 @@
       };
     }).sort((a, b) => b.boughtCost - a.boughtCost);
     loading = false;
+    loadedOnce = true;
   }
 
   function openModel(sku) {

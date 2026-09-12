@@ -32,9 +32,9 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, s, r, v, sm, mc] = await Promise.all([
+      const [p, s, r, v, sm, mc, st] = await Promise.all([
         db.products.toArray(), db.sales.toArray(), db.reservations.toArray(), vaultState(),
-        getSetting('seasonMoods', null), getSetting('moodCustom', [])
+        getSetting('seasonMoods', null), getSetting('moodCustom', []), allSettings()
       ]);
       if (!alive) return;
       products = p;
@@ -43,6 +43,9 @@
       vault = v;
       moods = sm && typeof sm === 'object' ? sm : {};
       customMoods = Array.isArray(mc) ? mc : [];
+      /* الإعدادات حيّة مع كل جلب — الهدف والرکود والمدينة القديمة وصحة النسخة
+         تتحدث لحظياً بدل أن تنتظر إعادة تشغيل */
+      settings = st;
       loaded = true;
     };
     grab();
