@@ -40,7 +40,11 @@
   let siblings = $state([]);  // loaded existing variants (edit mode)
 
   let opts = $state({ categories: [], types: [], seasons: [], materials: [], colors: [], typeSubs: {} });
-  (async () => { suppliers = (await getSetting('suppliers', [])) || []; })();
+  (async () => {
+    suppliers = (await getSetting('suppliers', [])) || [];
+    /* أول مورد جاهز مُختار سلفاً — لا «بدون» في التطبيق */
+    if (!supplier && suppliers.length) supplier = suppliers[0];
+  })();
   (async () => {
     opts = await modelOptions();
     if (product) {
@@ -365,7 +369,7 @@
   <div class="field">
     <label>المورد <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">(منين شريتِ؟)</span></label>
     {#if suppliers.length}
-      <Pick bind:value={supplier} placeholder="بدون" options={suppliers} invalid={isMissing('المورد')} />
+      <Pick bind:value={supplier} placeholder="اختاري المورد…" options={suppliers} invalid={isMissing('المورد')} />
     {:else}
       <input class="input" bind:value={supplier} style={bad('المورد')} placeholder="مثال: هاي مول — أبو علي" />
       <p class="muted tiny" style="margin:4px 2px 0">سجّلي مورديك من الإعدادات لتظهروا قائمة هنا.</p>

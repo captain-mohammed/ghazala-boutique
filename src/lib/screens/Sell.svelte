@@ -427,6 +427,8 @@
     if (!cart.length) return;
     fee = await getSetting('deliveryFee', 5000);
     companies = await getSetting('deliveryCompanies', []);
+    /* أول شركة جاهزة مُختارة سلفاً — لا «بدون» في الإتمام */
+    if (!company && companies.length) company = companies[0];
     checkout = true;
     buzz(10);
   }
@@ -737,7 +739,7 @@
       <div class="field" style="flex:1">
         <label>شركة التوصيل</label>
         {#if companies.length}
-          <Pick bind:value={company} placeholder="بدون" options={companies} />
+          <Pick bind:value={company} placeholder="اختاري الشركة…" options={companies} />
         {:else}
           <Pick placeholder="لا شركات بعد" disabled options={[]} />
           <button class="btn block" style="margin-top:6px" onclick={() => { buzz(8); goto('ledger'); }}>

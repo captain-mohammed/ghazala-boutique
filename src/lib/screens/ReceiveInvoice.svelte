@@ -30,8 +30,12 @@
   let lines = $state([blank()]);
   let saving = $state(false);
 
-  /* سجل الموردين من الإعدادات — والاسم الجديد يُحفظ فيه تلقائياً عند الحفظ */
-  (async () => { suppliers = (await getSetting('suppliers', [])) || []; })();
+  /* سجل الموردين من الإعدادات — والاسم الجديد يُحفظ فيه تلقائياً عند الحفظ.
+     أول مورد مُختار سلفاً — لا تُترك القائمة فارغة */
+  (async () => {
+    suppliers = (await getSetting('suppliers', [])) || [];
+    if (!supplier && suppliers.length) supplier = suppliers[0];
+  })();
 
   /* a restock suggestion / size-run hole may arrive pre-filled */
   $effect(() => {

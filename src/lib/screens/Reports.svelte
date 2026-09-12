@@ -152,11 +152,13 @@
   /* ---- Sell-through rate: % of each model sold since it arrived ----
      Per MODEL: every color × size card of the same name+category counts
      together (a 4-color model isn't 4 strangers). arrived = what's on the
-     shelf now + everything ever sold of it. */
+     shelf now + everything sold of it **within the chosen period** — so
+     التصريف يتبع الفترة مثل باقي التقرير (اليوم/أسبوع/شهر/الكل). */
   const sellThrough = $derived.by(() => {
     const soldQty = new Map();
     for (const s of sales) {
       if (s.status === 'returned') continue;
+      if (new Date(s.date) < from) continue; /* خارج الفترة المختارة */
       for (const it of s.items) soldQty.set(it.sku, (soldQty.get(it.sku) || 0) + (Number(it.qty) || 0));
     }
     const map = new Map();
@@ -174,6 +176,7 @@
   });
   const movingFast = $derived(sellThrough.filter((x) => x.rate >= 60 && x.sold >= 3).slice(0, 4));
   const movingSlow = $derived(sellThrough.filter((x) => x.rate < 25 && x.arrived >= 3).slice(-4).reverse());
+  const periodLabel = $derived(PERIODS.find((p) => p.id === period)?.label || '');
 </script>
 
 <div class="stack" style="gap:12px">
@@ -249,8 +252,11 @@
 
   {#if sellThrough.length}
     <Glass class="rise" style="animation-delay:0.2s; padding:16px">
-      <h2 class="h2" style="margin-bottom:4px"><Icon name="flame" size={17} color="var(--burgundy)" /> نسبة التصريف</h2>
-      <p class="muted small" style="margin:0 0 10px">كم٪ من كل موديل انباع منذ وصل — مقياس التاجر الحقيقي.</p>
+      <div class="row" style="justify-content:space-between; margin-bottom:4px">
+        <h2 class="h2"><Icon name="flame" size={17} color="var(--burgundy)" /> نسبة التصريف</h2>
+        <span class="tiny bold" style="color:var(--taupe)">فترة: {periodLabel}</span>
+      </div>
+      <p class="muted small" style="margin:0 0 10px">كم٪ من كل موديل انباع خلال {periodLabel} — مقياس التاجر الحقيقي. غيّري الفترة من الأعلى.</p>
       {#if movingFast.length}
         <div class="st-head good">يدور بسرعة — ما يلبث على الرف</div>
         {#each movingFast as x (x.key)}
