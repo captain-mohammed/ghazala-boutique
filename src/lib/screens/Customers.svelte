@@ -47,15 +47,31 @@
       const last = sales[0]?.date || null;
       const openRes = c.reservations.filter((r) => r.status === 'active' && new Date(r.expiresAt) > new Date());
       const nextOcc = nextOccasionOf(c.occasions);
+      const daysSince = last ? Math.floor((Date.now() - new Date(last).getTime()) / 86400000) : null;
       return {
         ...c, sales, spent, pieces, last, openRes,
         orders: active.length,
         vip: spent >= 150000 || active.length >= 3,
         recent: last ? new Date(last) >= weekAgo : false,
-        nextOcc
+        nextOcc,
+        daysSince,
+        /* ختم الغزالة: كل 5 عمليات مكتملة = بطاقة مكتملة — مشتق بلا سكيما */
+        stampFill: active.length > 0 && active.length % 5 === 0 ? 5 : active.length % 5,
+        stampCards: Math.floor(active.length / 5)
       };
     }).sort((a, b) => b.spent - a.spent);
     loading = false;
+  }
+
+  /* الزبونات الغايبات: كانوا يبيعن ثم صمتن 21 يوم أو أكثر — يستاهلن سالّمة */
+  const goneQuiet = $derived(
+    customers.filter((c) => c.daysSince !== null && c.daysSince >= 21).sort((a, b) => b.daysSince - a.daysSince)
+  );
+
+  async function waGoneQuiet(c) {
+    const msg = `مرحباً ${c.name} 🌷\nشتقتنا! وصلت موديلات جديدة على ذوقك بالضبط 💛\nمعك بوتيك غزالة — وقت ما تمرين، الباب مفتوح 🦌`;
+    const { opened } = await sendWhatsApp(msg, c.phone);
+    if (opened) toastOk('فُتح واتساب — أرسلي الرسالة 💬');
   }
 
   function nextOccasionOf(list) {
@@ -112,6 +128,27 @@
       <input bind:value={q} placeholder="ابحثي بالاسم أو الرقم…" />
     </div>
 
+    {#if goneQuiet.length}
+      <Glass class="rise gone" style="padding:13px 14px">
+        <div class="row" style="gap:7px; align-items:center; margin-bottom:8px">
+          <span class="gone-ic">🌙</span>
+          <span class="bold small">غايبين عنا</span>
+          <span class="muted tiny">صامتات من 21 يوم أو أكثر</span>
+        </div>
+        <div class="stack" style="gap:7px">
+          {#each goneQuiet.slice(0, 6) as c (c.name + '|' + c.phone)}
+            <div class="row" style="gap:8px; align-items:center">
+              <span class="g-name">{c.name}</span>
+              <span class="muted tiny">منذ {fmtNum(c.daysSince)} يوم</span>
+              <button class="g-wa" onclick={() => waGoneQuiet(c)} disabled={!c.phone}>
+                <Icon name="whatsapp" size={12} /> سالّمي عليها
+              </button>
+            </div>
+          {/each}
+        </div>
+      </Glass>
+    {/if}
+
     {#each filtered as c, i (c.name + '|' + c.phone)}
       <Glass class="rise" style="animation-delay:{Math.min(i * 0.04, 0.3)}s; padding:13px 14px">
         <button class="cust" onclick={() => openDetail(c)}>
@@ -126,6 +163,12 @@
             <div class="muted tiny">
               {fmtNum(c.orders)} عملية — {fmtNum(c.pieces)} قطعة
               {#if c.phone}- {c.phone}{/if}
+            </div>
+            <div class="stamps" title="ختم الغزالة: كل 5 عمليات = بطاقة مكتملة">
+              {#each Array(5) as _, si (si)}
+                <i class="stamp" class:on={si < c.stampFill}></i>
+              {/each}
+              {#if c.stampCards > 0}<b class="st-x">{fmtNum(c.stampCards)} 🦌</b>{/if}
             </div>
           </div>
           <div class="col" style="align-items:flex-end; gap:2px; flex:none">
@@ -156,6 +199,12 @@
           <div><b>{fmtNum(detail.orders)}</b><span>عملية</span></div>
           <div><b>{fmtNum(detail.pieces)}</b><span>قطعة</span></div>
           <div><b>{fmtNum(detail.reservations.length)}</b><span>حجز</span></div>
+        </div>
+        <div class="stamps big" title="ختم الغزالة: كل 5 عمليات = بطاقة مكتملة">
+          {#each Array(5) as _, si (si)}
+            <i class="stamp" class:on={si < detail.stampFill}></i>
+          {/each}
+          {#if detail.stampCards > 0}<b class="st-x">{fmtNum(detail.stampCards)} بطاقة مكتملة 🦌</b>{/if}
         </div>
         {#if detail.phone}
           <button class="btn gold block" onclick={() => waCustomer(detail)}>
@@ -230,4 +279,33 @@
   .stats b { font-size: 16px; color: var(--ink); font-variant-numeric: tabular-nums; }
   .stats span { font-size: 10.5px; color: var(--taupe); }
   .occ-line { margin-top: 8px; text-align: center; }
+  /* ختم الغزالة: خمس نقاط ذهبية تتملى مع العمليات */
+  .stamps { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+  .stamps.big { margin-top: 10px; justify-content: center; }
+  .stamp {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: rgba(255, 255, 255, 0.6);
+    border: 1.5px solid var(--line-2);
+    flex: none;
+  }
+  .stamp.on {
+    background: linear-gradient(150deg, var(--gold), #a4803e);
+    border-color: transparent;
+    box-shadow: 0 1px 4px rgba(164, 128, 62, 0.4);
+  }
+  .st-x { font-size: 10px; font-weight: 800; color: #8a6a35; margin-inline-start: 4px; }
+  /* الزبونات الغايبات */
+  .gone { border-inline-start: 3px solid rgba(156, 123, 107, 0.45); }
+  .gone-ic { font-size: 15px; }
+  .g-name { font-weight: 800; font-size: 12.5px; color: var(--ink); }
+  .g-wa {
+    margin-inline-start: auto;
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: inherit; font-size: 10.5px; font-weight: 800;
+    color: #1f7a44;
+    background: rgba(37, 211, 102, 0.14);
+    border: none; border-radius: 999px;
+    padding: 4px 10px; cursor: pointer;
+  }
+  .g-wa:active { transform: scale(0.95); }
 </style>

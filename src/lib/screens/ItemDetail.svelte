@@ -118,7 +118,7 @@
         <span class="id-type">{[p.type, p.typeSub, p.typeSub2, p.typeSub3, p.color].filter(Boolean).join(' - ') || p.category}</span>
         <VariantBits dense variants={[{ color: p.color, size: p.size }]} />
       </div>
-      <div class="muted small">{[p.category, p.season, p.material].filter(Boolean).join(' - ')}{p.typeSub ? ` - تفصيل: ${p.typeSub}` : ''}{p.typeSub2 ? ` - أدق: ${p.typeSub2}` : ''}{p.typeSub3 ? ` - أخير: ${p.typeSub3}` : ''}</div>
+      <div class="muted small">{[p.category, ...(Array.isArray(p.seasons) && p.seasons.length ? p.seasons : (p.season ? [p.season] : [])), p.material].filter(Boolean).join(' - ')}{p.typeSub ? ` - تفصيل: ${p.typeSub}` : ''}{p.typeSub2 ? ` - أدق: ${p.typeSub2}` : ''}{p.typeSub3 ? ` - أخير: ${p.typeSub3}` : ''}</div>
       <div class="sku">{p.sku}</div>
       {#if p.supplier}
         <div class="sup"><Icon name="upload" size={12} /> من {p.supplier}{p.supplierAt ? ` - ${fmtDate(p.supplierAt)}` : ''}</div>

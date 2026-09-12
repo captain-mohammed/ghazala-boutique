@@ -4,7 +4,7 @@
   import VariantBits from '../components/VariantBits.svelte';
   import { db, allSettings, getSetting, WOMENS_TYPES, modelGroupKey } from '../db.js';
   import Glass from '../components/Glass.svelte';
-  import { fmtIQD, fmtNum, fmtDate, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR, shelfAgeDays, stockArrival } from '../utils.js';
+  import { fmtIQD, fmtNum, fmtDate, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR, shelfAgeDays, stockArrival, baghdadWeekday, baghdadDayPart } from '../utils.js';
 
   let products = $state([]);
   let sales = $state([]);
@@ -68,6 +68,24 @@
 
   const DAY_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
   const dayName = (d) => DAY_AR[d.getDay()];
+
+  /* ---- ساعات الذروة: متى تبيع فعلاً؟ (كل المبيعات غير المرتجعة، بتوقيت بغداد) ---- */
+  const peak = $derived.by(() => {
+    const byDay = Array(7).fill(0);
+    const parts = { 'الصباح': 0, 'الظهر': 0, 'المساء': 0, 'الليل': 0 };
+    let any = false;
+    for (const s of sales) {
+      if (s.status === 'returned') continue;
+      any = true;
+      byDay[baghdadWeekday(s.date)] += salePieces(s);
+      parts[baghdadDayPart(s.date)] += salePieces(s);
+    }
+    if (!any) return null;
+    const maxDay = Math.max(1, ...byDay);
+    const bestDayQty = Math.max(...byDay);
+    const bestPart = Object.entries(parts).sort((a, b) => b[1] - a[1])[0];
+    return { byDay, maxDay, bestDay: DAY_AR[byDay.indexOf(bestDayQty)], bestDayQty, bestPart: bestPart[0], bestPartQty: bestPart[1] };
+  });
 
   /* Best sellers in period */
   const best = $derived.by(() => {
@@ -202,6 +220,23 @@
       {/each}
     </div>
   </Glass>
+
+  {#if peak}
+    <Glass class="rise" style="animation-delay:0.12s; padding:16px">
+      <h2 class="h2" style="margin-bottom:4px"><Icon name="clock" size={17} color="var(--gold)" /> وقت الذروة</h2>
+      <p class="muted small" style="margin:0 0 10px">متى يبيع بوتيكك فعلاً — كل المبيعات منذ البداية، بتوقيت بغداد.</p>
+      <div class="peak-days">
+        {#each peak.byDay as qty, i (i)}
+          <div class="pk-day">
+            <i class="pk-bar" style="height:{Math.max(4, (qty / peak.maxDay) * 44)}px" class:best={qty > 0 && qty === peak.bestDayQty}></i>
+            <span class="pk-lab">{DAY_AR[i].slice(0, 3)}</span>
+          </div>
+        {/each}
+      </div>
+      <div class="peak-line"><Icon name="flame" size={12} color="var(--burgundy)" /> أكثر يوم بيعاً: <b>{peak.bestDay}</b> — {fmtNum(peak.bestDayQty)} قطعة</div>
+      <div class="peak-line"><Icon name="clock" size={12} color="var(--taupe)" /> ذروة الساعات: <b>{peak.bestPart}</b> — {fmtNum(peak.bestPartQty)} قطعة</div>
+    </Glass>
+  {/if}
 
   {#if best.length}
     <Glass class="rise" style="animation-delay:0.15s; padding:16px">
@@ -481,4 +516,11 @@
   }
   .st-head.good { color: var(--good); }
   .st-head.slow { color: var(--warn); margin-top: 6px; }
+  /* وقت الذروة: أعمدة الأسبوع بخط غزالة الذهبي */
+  .peak-days { display: flex; justify-content: space-between; align-items: flex-end; gap: 6px; margin-bottom: 10px; }
+  .pk-day { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
+  .pk-bar { width: 100%; max-width: 26px; border-radius: 6px 6px 3px 3px; background: rgba(122, 46, 58, 0.14); display: block; }
+  .pk-bar.best { background: linear-gradient(180deg, var(--gold), #a4803e); box-shadow: 0 2px 8px rgba(164, 128, 62, 0.35); }
+  .pk-lab { font-size: 9.5px; font-weight: 800; color: var(--taupe); }
+  .peak-line { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); padding: 2px 0; flex-wrap: wrap; }
 </style>

@@ -91,6 +91,19 @@ export function fmtAgo(iso) {
 export const baghdadHour = (d = new Date()) => +baghdadWall(d).hour % 24;
 export const isNightBaghdad = (d = new Date()) => { const h = baghdadHour(d); return h >= 18 || h < 6; };
 
+/* ساعات الذروة: يوم الأسبوع ببغداد (0=الأحد) + فترة اليوم من لحظة البيع */
+export function baghdadWeekday(iso) {
+  const p = baghdadWall(new Date(iso));
+  return new Date(Date.UTC(+p.year, +p.month - 1, +p.day)).getUTCDay();
+}
+export function baghdadDayPart(iso) {
+  const h = baghdadHour(new Date(iso));
+  if (h >= 5 && h < 12) return 'الصباح';
+  if (h >= 12 && h < 16) return 'الظهر';
+  if (h >= 16 && h < 20) return 'المساء';
+  return 'الليل';
+}
+
 /* Baghdad calendar keys — stable day/month buckets for stats */
 export function baghdadDayKey(when) {
   const p = baghdadWall(new Date(when));
@@ -263,6 +276,26 @@ export const DEFAULT_WA_TEMPLATE =
   'التوصيل: {delivery}\n' +
   'الإجمالي: {total}\n\n' +
   'شكراً لثقتك بغزالة 🦌';
+
+/* رسالة لكل حالة — الحالة تختار القالب والسجل يرسل الصح */
+export const DEFAULT_WA_TEMPLATE_DELIVERED =
+  'مرحباً {customer} 🌸\n\n' +
+  'وصلتك طلبية {order}؟ 🛍️\n' +
+  'نتمنى تنال إعجابك ✨\n\n' +
+  'رأيك يسعدنا — وشكراً لثقتك بغزالة 🦌';
+
+export const DEFAULT_WA_TEMPLATE_RETURNED =
+  'مرحباً {customer} 🌸\n\n' +
+  'طلبك رقم {order} رجعلنا — ما المشكلة؟ 🌷\n' +
+  'ممكن نحاول نلبيك بموديل ثاني؟\n\n' +
+  'شكراً لثقتك بغزالة 🦌';
+
+/* حالة السجل → مفتاح الإعداد + قالبها الافتراضي */
+export const WA_STATUS_TEMPLATES = {
+  pending: { key: 'waTemplate', def: DEFAULT_WA_TEMPLATE, label: 'قيد التوصيل' },
+  delivered: { key: 'waTemplateDelivered', def: DEFAULT_WA_TEMPLATE_DELIVERED, label: 'تم التسليم' },
+  returned: { key: 'waTemplateReturned', def: DEFAULT_WA_TEMPLATE_RETURNED, label: 'راجع' }
+};
 
 export function buildSalesMessage(sale, template = DEFAULT_WA_TEMPLATE) {
   const itemLines = (sale.items || [])

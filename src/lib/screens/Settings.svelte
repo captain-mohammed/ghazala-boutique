@@ -3,7 +3,7 @@
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import { db, allSettings, setSetting, seedDemo, wipeAll } from '../db.js';
-  import { buzz, hashPin, DEFAULT_WA_TEMPLATE, WA_VARS, baghdadMonthKey } from '../utils.js';
+  import { buzz, hashPin, WA_VARS, WA_STATUS_TEMPLATES } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   let { goto = () => {} } = $props();
@@ -12,19 +12,18 @@
   let dailyTarget = $state(0);
   let vaultGoal = $state(500000);
   let archiveDays = $state(30);
-  let moods = $state({});
-  let currentMood = $state('');
-  let customMood = $state('');
-  let customList = $state([]);
   let suppliers = $state([]);
   let newSup = $state('');
-  const moodMonthKey = baghdadMonthKey(0);
   let loaded = $state(false);
 
-  /* WhatsApp message template */
-  let waText = $state(DEFAULT_WA_TEMPLATE);
+  /* WhatsApp templates — قالب لكل حالة (قيد التوصيل / تم التسليم / راجع) */
+  const WA_STATUSES = Object.entries(WA_STATUS_TEMPLATES).map(([id, t]) => ({ id, ...t }));
+  let waStatus = $state('pending');
+  let waText = $state('');
   let waTouched = $state(false);
   let waBox = $state(false);
+
+  const waCurrent = $derived(WA_STATUSES.find((s) => s.id === waStatus) || WA_STATUSES[0]);
 
   onMount(async () => {
     const s = await allSettings();
@@ -32,16 +31,23 @@
     dailyTarget = s.dailyTarget ?? 0;
     vaultGoal = s.vaultGoal ?? 500000;
     archiveDays = s.archiveDays ?? 30;
-    moods = { ...(s.seasonMoods || {}) };
-    currentMood = moods[moodMonthKey] || '';
-    customList = Array.isArray(s.moodCustom) ? s.moodCustom : [];
     suppliers = Array.isArray(s.suppliers) ? s.suppliers : [];
-    if (typeof s.waTemplate === 'string' && s.waTemplate.trim()) {
-      waText = s.waTemplate;
-      waTouched = true;
-    }
+    waText = s[waCurrent.key] || waCurrent.def;
+    waTouched = !!s[waCurrent.key];
     loaded = true;
   });
+
+  /* تبديل حالة القالب — النص والافتراضي يتبعانها */
+  async function switchWaStatus(id) {
+    waStatus = id;
+    buzz(6);
+    await loadWa();
+  }
+  async function loadWa() {
+    const s = await allSettings();
+    waText = s[waCurrent.key] || waCurrent.def;
+    waTouched = !!s[waCurrent.key];
+  }
 
   async function saveDead() {
     await setSetting('deadStockDays', Math.max(1, Math.round(Number(deadDays) || 30)));
@@ -55,41 +61,6 @@
     toastOk('تم حفظ الأهداف');
     buzz([12, 30, 12]);
   }
-  function monthLabelAr(key) {
-    const m = Number(key.split('-')[1]);
-    return ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'][m - 1] || '';
-  }
-  async function setMood(m) {
-    currentMood = m;
-    moods = { ...moods, [moodMonthKey]: m };
-    await setSetting('seasonMoods', moods);
-    toastOk(`مزاج ${monthLabelAr(moodMonthKey)}: ${m} 🌷`);
-    buzz(10);
-  }
-  /* كلمة مزاج من عندها — تنضاف لقائمتها وتُطبق على الشهر الحالي */
-  async function addCustomMood() {
-    const w = String(customMood || '').trim();
-    if (!w) return;
-    if (!customList.includes(w)) {
-      customList = [...customList, w];
-      await setSetting('moodCustom', customList);
-    }
-    customMood = '';
-    await setMood(w);
-  }
-  async function rmCustomMood(w) {
-    customList = customList.filter((x) => x !== w);
-    await setSetting('moodCustom', customList);
-    if (currentMood === w) await clearMood();
-  }
-  async function clearMood() {
-    currentMood = '';
-    moods = { ...moods, [moodMonthKey]: null };
-    await setSetting('seasonMoods', moods);
-    toastOk('مُسح مزاج الشهر');
-    buzz(8);
-  }
-
   /* الموردون — سجل يظهر كقائمة منسدلة في فاتورة الوارد ونموذج الموديل */
   async function addSupplier() {
     const name = String(newSup || '').trim();
@@ -108,27 +79,27 @@
     buzz(6);
   }
 
-  /* WhatsApp template save / reset */
+  /* WhatsApp template save / reset — على مفتاح الحالة المختارة */
   function insertVar(token) {
     waText = (waText || '') + token;
     buzz(8);
   }
   async function saveWaTemplate() {
     if (!waText.trim()) { toastErr('الرسالة لا يمكن أن تكون فارغة'); return; }
-    await setSetting('waTemplate', waText);
+    await setSetting(waCurrent.key, waText);
     waTouched = true;
-    toastOk('تم حفظ رسالة الواتساب');
+    toastOk(`تم حفظ رسالة «${waCurrent.label}»`);
     buzz([14, 30, 14]);
   }
   async function resetWaTemplate() {
     const ok = await askConfirm({
       title: 'استعادة الرسالة الافتراضية؟',
-      body: 'سيُستبدل النص الحالي بالرسالة الأصلية.',
+      body: `سيُستبدل نص رسالة «${waCurrent.label}» بالرسالة الأصلية.`,
       okLabel: 'استعادة'
     });
     if (!ok) return;
-    waText = DEFAULT_WA_TEMPLATE;
-    await setSetting('waTemplate', waText);
+    waText = waCurrent.def;
+    await setSetting(waCurrent.key, waText);
     waTouched = false;
     toastOk('أُعيدت الرسالة الافتراضية');
     buzz(10);
@@ -205,35 +176,16 @@
       </div>
     </Glass>
 
-    <Glass class="rise" style="padding:16px; animation-delay:0.09s">
-      <h2 class="h2" style="margin-bottom:4px"><Icon name="flag" size={17} color="var(--gold)" /> مزاج الموسم</h2>
-      <p class="muted small" style="margin:0 0 10px">كلمة تختصرين فيها شهرك الحالي — تظهر فوق الرئيسية وتتلون بها. الشهور بلا اختيار تظهر «هادي».</p>
-      <div class="stack" style="gap:10px">
-        <div class="muted tiny bold">الشهر الحالي: {monthLabelAr(moodMonthKey)}</div>
-        {#if customList.length}
-          <div class="row wrap" style="gap:6px">
-            {#each customList as w (w)}
-              <button type="button" class="chip" class:on={currentMood === w} onclick={() => setMood(w)}>
-                {w}
-                <span class="chip-x" role="button" tabindex="0" aria-label="حذف {w} من القائمة" onclick={(e) => { e.stopPropagation(); rmCustomMood(w); }} onkeydown={(e) => { if (e.key === 'Enter') { e.stopPropagation(); rmCustomMood(w); } }}>×</span>
-              </button>
-            {/each}
-          </div>
-        {:else}
-          <div class="muted tiny">اكتبي أول كلمة مزاج وأصبحت زر — تظهر على الرئيسية فوراً</div>
-        {/if}
-        <div class="row" style="gap:8px">
-          <input class="input" style="flex:1" bind:value={customMood} placeholder="اكتبي مزاجك الخاص…" onkeydown={(e) => e.key === 'Enter' && addCustomMood()} />
-          <button class="btn" onclick={addCustomMood}>تطبيق</button>
-        </div>
-        <button class="btn block" style="min-height:36px" onclick={clearMood}>مسح مزاج الشهر</button>
-      </div>
-    </Glass>
-
     <Glass class="rise" style="padding:16px; animation-delay:0.12s">
       <div class="row" style="justify-content:space-between; margin-bottom:12px">
         <h2 class="h2"><Icon name="whatsapp" size={17} /> رسالة الواتساب</h2>
         {#if waTouched}<span class="small muted">مُخصصة</span>{/if}
+      </div>
+      <!-- قالب لكل حالة — الشريط يبدّل بينها -->
+      <div class="row wrap" style="gap:6px; margin-bottom:10px">
+        {#each WA_STATUSES as st (st.id)}
+          <button type="button" class="chip" class:on={waStatus === st.id} onclick={() => switchWaStatus(st.id)}>{st.label}</button>
+        {/each}
       </div>
       {#if waBox}
         <div class="stack" style="gap:10px">

@@ -7,7 +7,7 @@
   import Glass from '../components/Glass.svelte';
   import ProductForm from './ProductForm.svelte';
   import ItemDetail from './ItemDetail.svelte';
-  import { db, modelOptions, hexForColor, deleteProducts, modelGroupKey, subsOfType, subsOfType2, subsOfType3, countUnderType, typeChain } from '../db.js';
+  import { db, modelOptions, hexForColor, deleteProducts, modelGroupKey, subsOfType, subsOfType2, subsOfType3, countUnderType, typeChain, seasonsOf } from '../db.js';
   import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl } from '../utils.js';
   import { toastErr, toastOk, askConfirm, invoicePreset, catalogFilters, filtersOpen } from '../store.js';
   import { get } from 'svelte/store';
@@ -75,8 +75,8 @@
     ...typeRows
   ]);
   const seasons = $derived.by(() => [
-    { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => p.season).length, clear: true },
-    ...opts.seasons.map((s) => ({ value: s, label: s, icon: 'calendar', count: products.filter((p) => p.season === s).length }))
+    { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => seasonsOf(p).length).length, clear: true },
+    ...opts.seasons.map((s) => ({ value: s, label: s, icon: 'calendar', count: products.filter((p) => seasonsOf(p).includes(s)).length }))
   ]);
   const AVAIL = [
     { value: 'all', label: 'الكل', icon: 'dots', clear: true },
@@ -94,11 +94,11 @@
     let list = products;
     if (f.cat !== 'الكل') list = list.filter((p) => p.category === f.cat);
     if (f.typ !== 'الكل') list = list.filter((p) => matchType(p, f.typ));
-    if (f.season !== 'الكل') list = list.filter((p) => p.season === f.season);
+    if (f.season !== 'الكل') list = list.filter((p) => seasonsOf(p).includes(f.season));
     if (f.q.trim()) {
       const s = f.q.trim().toLowerCase();
       list = list.filter((p) =>
-        [p.name, p.brand, p.color, p.sku, p.size, p.barcode, p.type, p.season, p.material].filter(Boolean).join(' ').toLowerCase().includes(s)
+        [p.name, p.brand, p.color, p.sku, p.size, p.barcode, p.type, seasonsOf(p).join(' '), p.material].filter(Boolean).join(' ').toLowerCase().includes(s)
       );
     }
     const map = new Map();
@@ -134,7 +134,8 @@
         name: lead.name, category: lead.category,
         type: lead.type, typeSub: lead.typeSub || subsAll[0] || '', typeSub2: lead.typeSub2 || subs2All[0] || '', typeSub3: lead.typeSub3 || subs3All[0] || '',
         subsAll, subs2All, subs3All,
-        season: lead.season, material: lead.material,
+        seasons: [...new Set(items.flatMap((x) => seasonsOf(x)))],
+        material: lead.material,
         photo: items.find((x) => x.photo)?.photo || null,
         createdAt: Math.max(...items.map((x) => new Date(x.createdAt || 0).getTime())),
         colorRows,
@@ -192,6 +193,14 @@
   let formPhoto = $state(null);
   let wraps = $state([]); // card host elements — for pinning the long-press menu below its card
 
+  /* جدار الصور: تصفح الصور أولاً — ثلاث بطاقات بالصف، النوع والسعر رقاقة */
+  let wall = $state(localStorage.getItem('ghazala.inv.wall') === '1');
+  function toggleWall() {
+    wall = !wall;
+    try { localStorage.setItem('ghazala.inv.wall', wall ? '1' : '0'); } catch { /* noop */ }
+    buzz(8);
+  }
+
   function closeDetail() { detailGroup = null; openSku = null; }
   function openAdd() {
     editing = null;
@@ -213,8 +222,7 @@
   const dialActions = [
     { id: 'add', label: 'إضافة موديل', icon: 'plus' },
     { id: 'invoice', label: 'فاتورة وارد', icon: 'upload' }
-  ];
-  function onDial(a) {
+  ];  function onDial(a) {
     if (a.id === 'add') openAddFlow();
     if (a.id === 'invoice') goto('receive');
   }
@@ -328,8 +336,13 @@
     {/if}
   </Glass>
 
-  <div class="muted small sort-note">
-    {fmtNum(totalModels)} موديل{f.cat !== 'الكل' ? ` في ${f.cat}` : ''} — كل بطاقة تجمع مقاسات الموديل وألوانه
+  <div class="sort-row">
+    <div class="muted small sort-note">
+      {fmtNum(totalModels)} موديل{f.cat !== 'الكل' ? ` في ${f.cat}` : ''} — كل بطاقة تجمع مقاسات الموديل وألوانه
+    </div>
+    <button type="button" class="chip" class:on={wall} onclick={toggleWall} title="جدار الصور">
+      <Icon name="image" size={12} /> جدار الصور
+    </button>
   </div>
 
   {#if sorted.length === 0}
@@ -341,7 +354,7 @@
       icon={isDefault ? 'box' : 'search'}
     />
   {:else}
-    <div class="grid">
+    <div class="grid" class:wall={wall}>
       {#each sorted as g, i (g.key + g.items.length)}
         <div class="cardwrap" class:lit={quickOps && quickOps.g.key === g.key} bind:this={wraps[i]}>
           <Glass
@@ -364,7 +377,9 @@
               {:else}
                 <span class="thumb-badge">{fmtNum(g.qty)}</span>
               {/if}
+              {#if wall}<span class="wall-price">{fmtIQD(g.price)}</span>{/if}
             </div>
+            {#if !wall}
             <div class="card-body">
               <!-- النوع بعرض البطاقة كاملاً أسفل الصورة مباشرة -->
               {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, ...g.subsAll, ...g.subs2All, ...g.subs3All].filter(Boolean).join(' - ')}</div>{/if}
@@ -396,6 +411,7 @@
               </div>
             </div>
             <div class="card-price">{fmtIQD(g.price)}</div>
+            {/if}
           </Glass>
         </div>
       {/each}
@@ -439,7 +455,7 @@
         </div>
         <div class="mv-info">
           {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="mv-type">{typeChain(g)}</div>{/if}
-          <div class="muted small">{[g.category, g.season, g.material].filter(Boolean).join(' - ')}</div>
+          <div class="muted small">{[g.category, g.seasons.length ? g.seasons.join(' - ') : '', g.material].filter(Boolean).join(' - ')}</div>
           <div class="mv-stats">
             <span class="money" style="color:var(--burgundy)">{fmtIQD(g.price)}</span>
             <span class="mv-qty" class:zero={g.qty === 0}>{fmtNum(g.qty)} قطعة</span>
@@ -611,6 +627,28 @@
     background: rgba(181, 73, 91, 0.1);
     border-radius: 6px;
     padding: 1px 6px;
+  }
+  /* صف العنوان: العدّاد يميناً ومفتاح جدار الصور يساراً */
+  .sort-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  /* جدار الصور: ثلاث بطاقات بالصف — الصورة تتكلم */
+  .grid.wall { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .wall-price {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px 8px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 2px 8px rgba(58, 26, 32, 0.12);
   }
   .card-price {
     margin: 8px 12px 12px;

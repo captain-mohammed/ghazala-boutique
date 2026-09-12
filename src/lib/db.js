@@ -84,10 +84,10 @@ export const DEFAULT_SETTINGS = {
   deliveryCompanies: [],
   suppliers: [],       // سجل الموردين — تُدار من الإعدادات وتظهر قائمة في الفاتورة ونموذج الموديل
   waTemplate: null, // null → app default (see DEFAULT_WA_TEMPLATE in utils.js)
+  waTemplateDelivered: null, // null → app default — رسالة «تم التسليم»
+  waTemplateReturned: null,  // null → app default — رسالة «راجع»
   dailyTarget: 0,      // قطع — daily goal ring on the dashboard (0 = off)
   vaultGoal: 500000,   // د.ع — the vault celebration threshold (0 = off)
-  seasonMoods: null,   // { '2026-09': 'أعراس' } — مزاج الموسم per month
-  moodCustom: [],      // كلمات مزاج من عند المستونة — تظهر كأزرار مع المعتادة
   archiveDays: 30,     // sold-out this long → المدينة القديمة (archive shelf)
   typeSubs: null,      // { 'بوت': ['كعب عالي','كعب قصير'] } — القائمة الثانية تحت النوع
   typeSubs2: null,     // { 'بوت': { 'كعب عالي': ['جيب جانبي',…] } } — القائمة الثالثة تحت التفصيل
@@ -337,6 +337,21 @@ export const sameModel = (a, b) =>
 /* The grouping key for one MODEL (all colors × sizes = one card) */
 export const modelGroupKey = (p) => p.modelId || `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
 
+/* مواسم القطعة — مصفوفة منذ 0.17.0؛ الحقل النصي القديم season يبقى احتياطاً */
+export const seasonsOf = (p) =>
+  Array.isArray(p?.seasons) && p.seasons.length ? p.seasons : p?.season ? [p.season] : [];
+
+/* one-time migration: season string → seasons array (يدوم على البيانات القديمة) */
+export async function sweepSeasonArrays() {
+  const all = await db.products.toArray();
+  for (const p of all) {
+    const arr = seasonsOf(p);
+    if (!Array.isArray(p.seasons) || p.seasons.length !== arr.length || arr.some((s, i) => s !== p.seasons[i])) {
+      await db.products.update(p.sku, { seasons: arr });
+    }
+  }
+}
+
 export async function receiveBatch({ supplier = '', invoice = '', note = '', lines = [] }) {
   const sup = supplier.trim();
   const invNote = sup ? `فاتورة وارد${invoice ? ` #${invoice.trim()}` : ''} — ${sup}` : 'فاتورة وارد';
@@ -364,6 +379,7 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
           typeSub2: ln.typeSub2 || twin.typeSub2 || '',
           typeSub3: ln.typeSub3 || twin.typeSub3 || '',
           season: ln.season || twin.season || '',
+          seasons: ln.season ? [ln.season] : seasonsOf(twin),
           material: ln.material || twin.material || '',
           supplier: sup || twin.supplier || '',
           supplierAt: new Date().toISOString(),
@@ -379,6 +395,7 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
           name, category: ln.category || 'نسائية', type: ln.type || '',
           typeSub: ln.typeSub || '', typeSub2: ln.typeSub2 || '', typeSub3: ln.typeSub3 || '',
           season: ln.season || '', material: ln.material || '',
+          seasons: ln.season ? [ln.season] : [],
           color: (ln.color || '').trim(), size: sz,
           cost: Number(ln.cost) || 0, price: Number(ln.price) || 0, qty,
           photo: ln.photo || null, supplier: sup, supplierAt: new Date().toISOString(),

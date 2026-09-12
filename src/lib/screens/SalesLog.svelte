@@ -5,7 +5,7 @@
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
   import { db, setSaleStatus, returnSale } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, fmtAgo, buzz, buildSalesMessage, sendWhatsApp, salePieces } from '../utils.js';
+  import { fmtIQD, fmtNum, fmtDate, fmtAgo, buzz, buildSalesMessage, sendWhatsApp, salePieces, WA_STATUS_TEMPLATES } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   const FILTERS = [
@@ -18,7 +18,7 @@
   let sales = $state([]);
   let filter = $state('all');
   let detail = $state(null);
-  let waTemplate = $state(null); // loaded once from settings
+  let waTemplates = $state({}); // { pending, delivered, returned } — قالب لكل حالة
 
   $effect(() => {
     let alive = true;
@@ -31,13 +31,17 @@
     return () => { alive = false; clearInterval(t); };
   });
 
-  /* Pick up a template edited in الإعدادات live (SalesLog polls too, but the
-     template only needs a cheap one-shot read per screen mount). */
+  /* Pick up templates edited in الإعدادات live — قالب لكل حالة، يُجلب كل 4 ثوانٍ */
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const row = await db.settings.get('waTemplate');
-      if (alive) waTemplate = row?.value || null;
+      const keys = Object.values(WA_STATUS_TEMPLATES).map((t) => t.key);
+      const rows = await db.settings.bulkGet(keys);
+      if (alive) {
+        waTemplates = Object.fromEntries(
+          keys.map((k, i) => [k, rows[i]?.value || null])
+        );
+      }
     };
     grab();
     const t = setInterval(grab, 4000);
@@ -70,7 +74,8 @@
 
   /* The WhatsApp action belongs to sales still in play — قيد التوصيل أو راجع.
      A delivered sale's notification was already sent. */
-  const waEligible = (s) => s.status === 'pending' || s.status === 'returned';
+  /* كل حالة لها قالبها — حتى «تم التسليم» لها شكر صغير */
+  const waEligible = (s) => !!s;
 
   async function markDelivered(s) {
     await setSaleStatus(s.id, 'delivered');
@@ -141,7 +146,9 @@
   }
 
   async function shareWhatsApp(s) {
-    const msg = buildSalesMessage(s, waTemplate);
+    const statusTpl = WA_STATUS_TEMPLATES[s.status] || WA_STATUS_TEMPLATES.pending;
+    const custom = waTemplates[statusTpl.key];
+    const msg = buildSalesMessage(s, custom || statusTpl.def);
     const { opened, copied } = await sendWhatsApp(msg, s.customerPhone);
     buzz([14, 30, 14]);
     if (opened) {

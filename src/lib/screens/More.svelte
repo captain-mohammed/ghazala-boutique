@@ -35,7 +35,7 @@
       title: 'التطبيق',
       items: [
         { id: 'modelopts', icon: 'sliders', label: 'خيارات الموديلات', desc: 'التصنيفات، الأنواع وتفصيلها، المواسم، المواد، والألوان' },
-        { id: 'settings', icon: 'settings', label: 'الإعدادات', desc: 'التوصيل، المزاج، الرسائل، الرقم السري' },
+        { id: 'settings', icon: 'settings', label: 'الإعدادات', desc: 'التوصيل، الرسائل، الرقم السري' },
         { id: 'backup', icon: 'shield', label: 'النسخ الاحتياطي', desc: 'حماية بياناتك — نسخة واستعادة' },
         { id: 'about', icon: 'info', label: 'عن التطبيق', desc: 'بوتيك غزالة ومعلومات النسخة' }
       ]

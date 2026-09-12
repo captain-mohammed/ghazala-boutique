@@ -4,7 +4,7 @@
   import Pick from '../components/Pick.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
-  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting } from '../db.js';
+  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf } from '../db.js';
   import { fmtIQD, buzz, iqd, fileToPhotoDataUrl, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, celebrateAt } from '../store.js';
 
@@ -26,7 +26,7 @@
   let typeSub2 = $state(product?.typeSub2 ?? ''); // القائمة الثالثة تحت التفصيل
   let typeSub3 = $state(product?.typeSub3 ?? ''); // القائمة الرابعة تحت تفصيل أدق
   let brand = $state(product?.brand ?? '');
-  let season = $state(product?.season ?? '');
+  let seasons = $state(Array.isArray(product?.seasons) && product.seasons.length ? [...product.seasons] : (product?.season ? [product.season] : []));
   let material = $state(product?.material ?? '');
   let cost = $state(product?.cost ?? '');
   let price = $state(product?.price ?? '');
@@ -90,6 +90,14 @@
       selColors = cs;
       byColor = bc;
       siblings = group;
+      /* الشجرة والمواسم من الموديل كله — أول قيمة موجودة بين القطع (البطاقة
+         المضغوطة قد تكون خالية منها بينما أخواتها حاملاتها) */
+      const pick = (k) => group.map((x) => x[k]).find(Boolean) || '';
+      if (!type) type = pick('type');
+      if (!typeSub) typeSub = pick('typeSub');
+      if (!typeSub2) typeSub2 = pick('typeSub2');
+      if (!typeSub3) typeSub3 = pick('typeSub3');
+      seasons = [...new Set([...seasons, ...group.flatMap((x) => seasonsOf(x))])];
       /* وقت الوصول المعروض: أقدم لحظة وصول بين قطع الموديل */
       if (group.length) {
         const earliest = Math.min(...group.map((x) => new Date(x.createdAt || x.updatedAt || Date.now()).getTime()));
@@ -132,6 +140,12 @@
     }
   }
 
+  /* الموسم تعدد اختيار — القطعة تُعرض في كل مواسمها */
+  function toggleSeason(s) {
+    seasons = seasons.includes(s) ? seasons.filter((x) => x !== s) : [...seasons, s];
+    buzz(6);
+  }
+
   /* القائمة الفرعية تتغير مع النوع — والقيمة القديمة تُمسح إذا خرجت عن القائمة */
   const subsNow = $derived(subsOfType(opts.typeSubs, type));
   $effect(() => { if (typeSub && !subsNow.includes(typeSub)) typeSub = ''; });
@@ -158,7 +172,7 @@
     if (!typeSub && subsNow.length) m.push('التفصيل');
     if (!typeSub2 && subs2Now.length) m.push('تفصيل أدق');
     if (!typeSub3 && subs3Now.length) m.push('تفصيل أخير');
-    if (!season) m.push('الموسم');
+    if (!seasons.length) m.push('الموسم');
     if (!selColors.length) m.push('اللون');
     if (!material) m.push('المادة');
     if (!supplier.trim()) m.push('المورد');
@@ -223,7 +237,7 @@
       const base = {
         name: (product?.name || '').trim() || autoName, category, type, typeSub, typeSub2, typeSub3,
         brand: brand.trim(),
-        season, material, cost: iqd(cost), price: iqd(price), photo: img, notes: notes.trim(),
+        seasons, season: seasons[0] || '', material, cost: iqd(cost), price: iqd(price), photo: img, notes: notes.trim(),
         supplier: (supplier || '').trim(),
         modelId: freshId
       };
@@ -252,6 +266,7 @@
                 typeSub2: twin.typeSub2 || base.typeSub2 || '',
                 typeSub3: twin.typeSub3 || base.typeSub3 || '',
                 season: twin.season || base.season,
+                seasons: [...new Set([...seasonsOf(twin), ...base.seasons])],
                 material: twin.material || base.material, photo: twin.photo || base.photo,
                 supplier: base.supplier || twin.supplier || '',
                 modelId: twin.modelId || freshId
@@ -320,55 +335,54 @@
     </div>
   </div>
 
-  <div class="field">
+  <!-- شجرة النوع: التفاصيل كلها تتدلى من النوع بخيط ذهبي — واضح أنها أبناؤه -->
+  <div class="field type-group">
     <label>النوع *</label>
     <div class="row wrap" style="gap:8px">
       {#each opts.types as t (t)}
         <button type="button" class="chip" class:on={type === t} onclick={() => (type = type === t ? '' : t)}>{t}</button>
       {/each}
     </div>
+    {#if type && subsNow.length}
+      <div class="sub-level">
+        <label class="sub-label">التفصيل <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— تحت «{type}»</span></label>
+        <div class="row wrap" style="gap:6px; {isMissing('التفصيل') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
+          {#each subsNow as st (st)}
+            <button type="button" class="chip chip-sub" class:on={typeSub === st} onclick={() => (typeSub = typeSub === st ? '' : st)}>{st}</button>
+          {/each}
+        </div>
+      </div>
+      {#if typeSub && subs2Now.length}
+        <div class="sub-level">
+          <label class="sub-label">تفصيل أدق <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— تحت «{typeSub}»</span></label>
+          <div class="row wrap" style="gap:6px; {isMissing('تفصيل أدق') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
+            {#each subs2Now as st2 (st2)}
+              <button type="button" class="chip chip-sub" class:on={typeSub2 === st2} onclick={() => (typeSub2 = typeSub2 === st2 ? '' : st2)}>{st2}</button>
+            {/each}
+          </div>
+        </div>
+        {#if typeSub2 && subs3Now.length}
+          <div class="sub-level">
+            <label class="sub-label">تفصيل أخير <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— تحت «{typeSub2}»</span></label>
+            <div class="row wrap" style="gap:6px; {isMissing('تفصيل أخير') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
+              {#each subs3Now as st3 (st3)}
+                <button type="button" class="chip chip-sub" class:on={typeSub3 === st3} onclick={() => (typeSub3 = typeSub3 === st3 ? '' : st3)}>{st3}</button>
+              {/each}
+            </div>
+          </div>
+        {/if}
+      {/if}
+    {/if}
   </div>
 
-  {#if type && subsNow.length}
-    <div class="field">
-      <label>التفصيل <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— {type}</span></label>
-      <div class="row wrap" style="gap:8px; {isMissing('التفصيل') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
-        {#each subsNow as st (st)}
-          <button type="button" class="chip" class:on={typeSub === st} onclick={() => (typeSub = typeSub === st ? '' : st)}>{st}</button>
-        {/each}
-      </div>
-    </div>
-  {/if}
-
-  {#if type && typeSub && subs2Now.length}
-    <div class="field">
-      <label>تفصيل أدق <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— {typeSub}</span></label>
-      <div class="row wrap" style="gap:8px; {isMissing('تفصيل أدق') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
-        {#each subs2Now as st2 (st2)}
-          <button type="button" class="chip" class:on={typeSub2 === st2} onclick={() => (typeSub2 = typeSub2 === st2 ? '' : st2)}>{st2}</button>
-        {/each}
-      </div>
-    </div>
-  {/if}
-
-  {#if type && typeSub && typeSub2 && subs3Now.length}
-    <div class="field">
-      <label>تفصيل أخير <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— {typeSub2}</span></label>
-      <div class="row wrap" style="gap:8px; {isMissing('تفصيل أخير') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
-        {#each subs3Now as st3 (st3)}
-          <button type="button" class="chip" class:on={typeSub3 === st3} onclick={() => (typeSub3 = typeSub3 === st3 ? '' : st3)}>{st3}</button>
-        {/each}
-      </div>
-    </div>
-  {/if}
-
   <div class="field">
-    <label>تصنيف الموسم *</label>
-    <div class="row wrap" style="gap:8px">
+    <label>تصنيف الموسم * <span class="muted tiny">(اختاري وحدة أو أكثر)</span></label>
+    <div class="row wrap" style="gap:8px; {isMissing('الموسم') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
       {#each opts.seasons as s (s)}
-        <button type="button" class="chip" class:on={season === s} onclick={() => (season = season === s ? '' : s)}>{s}</button>
+        <button type="button" class="chip" class:on={seasons.includes(s)} onclick={() => toggleSeason(s)}>{s}</button>
       {/each}
     </div>
+    {#if seasons.length > 1}<p class="muted tiny" style="margin:4px 2px 0"> القطعة تُعرض في كل المواسم المختارة ({seasons.join('، ')})</p>{/if}
   </div>
 
   <ColorSwatches
@@ -563,6 +577,17 @@
   }
   /* حقل التاريخ يُقرأ بالإنجليزية دائماً — اتجاهه لا ينقلب مع الواجهة */
   .ts-input { direction: ltr; text-align: center; font-variant-numeric: tabular-nums; }
+  /* شجرة النوع: خيط ذهبي يربط التفاصيل بنوعها الأم — التسلسل مرئي */
+  .type-group {
+    padding-inline-start: 14px;
+    border-inline-start: 2px solid rgba(201, 161, 90, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .sub-level { display: flex; flex-direction: column; gap: 6px; }
+  .sub-label { font-size: 12px; color: var(--ink-2); }
+  .chip-sub { font-size: 12px; padding: 5px 12px; opacity: 0.92; }
   :global(.profit) {
     display: flex;
     align-items: center;

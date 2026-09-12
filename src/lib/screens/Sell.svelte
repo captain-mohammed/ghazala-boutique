@@ -12,7 +12,7 @@
   import { longpress, flyToCart, popBadge } from '../motion.js';
   import VariantBits from '../components/VariantBits.svelte';
   import Pick from '../components/Pick.svelte';
-  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType } from '../db.js';
+  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType, createReservation, seasonsOf } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters, filtersOpen } from '../store.js';
@@ -82,8 +82,8 @@
     ...typeRows
   ]);
   const seasons = $derived.by(() => [
-    { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => p.season).length, clear: true },
-    ...opts.seasons.map((s) => ({ value: s, label: s, icon: 'calendar', count: products.filter((p) => p.season === s).length }))
+    { value: 'الكل', label: 'الكل', icon: 'dots', count: products.filter((p) => seasonsOf(p).length).length, clear: true },
+    ...opts.seasons.map((s) => ({ value: s, label: s, icon: 'calendar', count: products.filter((p) => seasonsOf(p).includes(s)).length }))
   ]);
 
   /* same three states as المخزون — one shared vocabulary (no منخفضة) */
@@ -108,11 +108,11 @@
     else if (f.availSell === 'out') list = list.filter((p) => p.qty === 0);
     if (f.cat !== 'الكل') list = list.filter((p) => p.category === f.cat);
     if (f.typ !== 'الكل') list = list.filter((p) => matchType(p, f.typ));
-    if (f.season !== 'الكل') list = list.filter((p) => p.season === f.season);
+    if (f.season !== 'الكل') list = list.filter((p) => seasonsOf(p).includes(f.season));
     if (f.q.trim()) {
       const s = f.q.trim().toLowerCase();
       list = list.filter((p) =>
-        [p.name, p.brand, p.color, p.sku, p.size, p.barcode, p.type, p.season, p.material].filter(Boolean).join(' ').toLowerCase().includes(s)
+        [p.name, p.brand, p.color, p.sku, p.size, p.barcode, p.type, seasonsOf(p).join(' '), p.material].filter(Boolean).join(' ').toLowerCase().includes(s)
       );
     }
     const map = new Map();
@@ -331,6 +331,33 @@
   let vOpen = $state(false);
   let vpick = $state(null); // { name, price, cost, variants: [...] }
   let pk = $state({});      // vsKey → qty
+  /* الحجز السريع من داخل القاطع: قطعة واحدة لزبونة، 48 ساعة */
+  let rName = $state('');
+  let rPhone = $state('');
+
+  async function reserveFromPicker() {
+    const chosen = vpick.variants.filter((v) => pk[vsKey(v)] > 0);
+    const v = chosen[0] || vpick.variants.find((x) => freeOf(x) > 0);
+    if (!v) { toastErr('ما فيه قطعة متوفرة للحجز'); return; }
+    if (!rName.trim() || rPhone.replace(/\D/g, '').length < 10) {
+      toastErr('الاسم ورقم موبايل صحيح مطلوبان للحجز');
+      buzz([30, 40, 30]);
+      return;
+    }
+    try {
+      await createReservation({ sku: v.sku, customerName: rName, customerPhone: rPhone });
+      vOpen = false;
+      vpick = null;
+      pk = {};
+      rName = '';
+      rPhone = '';
+      buzz([15, 40, 15]);
+      celebrateAt(window.innerWidth / 2, window.innerHeight / 2.5, '📌');
+      toastOk('حُجزت القطعة — محجوزة 48 ساعة، تطلع من المخزون لحين ما تنحجز');
+    } catch (e) {
+      toastErr(e?.message || 'تعذر الحجز');
+    }
+  }
 
   function openVariants(p) {
     vpick = { name: p.name, price: p.price, cost: p.cost, category: p.category, type: p.type || '', typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '', variants: variantsOf(p) };
@@ -566,6 +593,8 @@
     if (saving) return;
     saving = true;
     try {
+      const buyerName = cname;
+      const salePhoneDigits = cphone.replace(/\D/g, '');
       const sale = await recordSale({
         items: cart.map((c) => ({ sku: c.sku, name: c.name, type: c.type || '', typeSub: c.typeSub || '', typeSub2: c.typeSub2 || '', typeSub3: c.typeSub3 || '', price: c.price, cost: c.cost, qty: c.qty, color: c.color || '', size: c.size || '' })),
         customerName: cname,
@@ -593,6 +622,18 @@
           buzz([40, 80, 40, 80, 40]);
           toastOk(ms.text, 'success', 4200);
         }, 700);
+      }
+      /* ختم الغزالة: كل 5 طلبات مكتملة لزبونة واحدة — ولاء يستاهل احتفال */
+      if (salePhoneDigits) {
+        const all = await db.sales.toArray();
+        const orders = all.filter((s) => s.status !== 'returned' && String(s.customerPhone || '').replace(/\D/g, '') === salePhoneDigits).length;
+        if (orders > 0 && orders % 5 === 0) {
+          setTimeout(() => {
+            celebrateAt(window.innerWidth / 2, window.innerHeight / 2, '🦌');
+            buzz([30, 60, 30, 60, 30]);
+            toastOk(`الختمة ${fmtNum(orders)} لـ${buyerName} — استاهل هدية صغيرة 🎁`, 'success', 5000);
+          }, 1400);
+        }
       }
     } catch (e) {
       console.error(e);
@@ -781,6 +822,18 @@
       <button class="btn primary lg block" onclick={confirmVariants} disabled={!Object.keys(pk).length}>
         <Icon name="check" size={20} />
         أضيفي للسلة ({Object.values(pk).reduce((a, b) => a + b, 0)} قطعة)
+      </button>
+
+      <hr class="divider-gold" style="margin:2px 0" />
+
+      <!-- الحجز السريع: قطعة واحدة لزبونة بدون ما تطلعين من البيع -->
+      <p class="muted tiny" style="margin:0">أو احجزيها لزبونة — قطعة واحدة، 48 ساعة:</p>
+      <div class="row" style="gap:8px">
+        <input class="input" bind:value={rName} placeholder="اسم الزبونة…" style="flex:1; min-width:0" />
+        <input class="input" bind:value={rPhone} inputmode="tel" placeholder="07xx…" style="flex:1; min-width:0" />
+      </div>
+      <button class="btn block" onclick={reserveFromPicker}>
+        <Icon name="pin" size={16} /> احجزيها
       </button>
     </div>
   {/if}
