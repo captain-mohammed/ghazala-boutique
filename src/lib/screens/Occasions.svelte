@@ -209,7 +209,7 @@
         <Pick
           bind:value={fMonth}
           options={MONTHS.map((m, i) => ({ v: i + 1, l: m }))}
-          valueOf={(o) => o.v}
+          valOf={(o) => o.v}
           labelOf={(o) => o.l}
         />
       </div>

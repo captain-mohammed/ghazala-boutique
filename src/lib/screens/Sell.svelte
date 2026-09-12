@@ -9,9 +9,10 @@
   import SpeedDial from '../components/SpeedDial.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
+  import { longpress } from '../motion.js';
   import VariantBits from '../components/VariantBits.svelte';
   import Pick from '../components/Pick.svelte';
-  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType, typeChain } from '../db.js';
+  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters, filtersOpen } from '../store.js';
@@ -266,9 +267,23 @@
 
   function addToCart(p) {
     if (p.qty <= 0) { toastErr('هذا الموديل نفد من المخزون'); return; }
-    /* multi-variant model → she picks اللون/المقاس at إتمام البيع; single variant adds straight away */
-    if (variantsOf(p).length > 1) { openVariants(p); return; }
+    /* سرعة هي الجوهر: لمسة واحدة = +1 قطعة فوراً.
+       موديل بعدة تفاصيل → تُضاف أول قطعة متوفرة (أول لون بمقاسه)، والتعديل من السلة أو بالضغط المطول. */
+    const variants = variantsOf(p);
+    if (variants.length > 1) {
+      const v = variants[0];
+      addLine({ sku: v.sku, name: p.name, price: p.price, cost: p.cost, category: p.category, type: p.type || '', typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '', color: v.color === NOCOLOR ? '' : v.color, size: v.size === '—' ? '' : v.size });
+      toast(`${p.modelChain || p.type || p.name} — ${v.color === NOCOLOR ? '' : v.color + ' '}${v.size !== '—' ? 'مقاس ' + v.size : ''} × 1`);
+      return;
+    }
     addLine({ sku: p.sku, name: p.name, price: p.price, cost: p.cost, category: p.category, type: p.type || '', typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '', color: p.color || '', size: String(p.size || '').trim() });
+  }
+
+  /* ضغطة مطولة على بطاقة البيع → قاطع التفاصيل الكامل (ألوان × مقاسات) */
+  function openPickerFor(p) {
+    if (p.qty <= 0) { toastErr('هذا الموديل نفد من المخزون'); return; }
+    if (variantsOf(p).length > 1) { openVariants(p); return; }
+    addToCart(p);
   }
 
   /* ---- Variant picker: colors × sizes chosen at checkout, only what's available ---- */
@@ -555,6 +570,7 @@
           as="button"
           class="pcard rise {gqty === 0 ? 'oos' : ''}"
           style="animation-delay:{Math.min(i * 0.04, 0.4)}s"
+          onlongpress={(e) => openPickerFor(p)}
           onclick={() => addToCart(p)}
         >
           <div class="pthumb">
@@ -574,7 +590,7 @@
             <div class="psizes muted tiny">مقاسات: {sizesLabel(p)}</div>
             <div class="prow">
               <span class="pprice">{fmtIQD(p.price)}</span>
-              <span class="pqty" class:zero={gqty === 0}>{gqty === 0 ? 'نفد' : `× ${fmtNum(gqty)}`}</span>
+              <span class="pqty" class:low={gqty > 0 && gqty <= 2} class:zero={gqty === 0}>{gqty === 0 ? 'نفد' : gqty <= 2 ? `بقيت ${fmtNum(gqty)}` : `× ${fmtNum(gqty)}`}</span>
             </div>
           </div>
           <span class="add-ic"><Icon name="plus" size={16} color="#fff" /></span>
@@ -589,12 +605,12 @@
   {#if cart.length}
     <div class="cartbar glass-strong">
       <button class="cart-info" onclick={() => { buzz(8); openCheckout(); }}>
-        <span class="cart-badge pop">{cartCount}</span>
+        <span class="cart-badge pop">{fmtNum(cartCount)}</span>
         <div class="cart-txt">
           <div class="bold">متابعة البيع</div>
-          <div class="muted small">{fmtIQD(subtotal)}</div>
+          <div class="muted small">{fmtNum(cart.length)} سطر — {fmtIQD(subtotal)}</div>
         </div>
-        <Icon name="back" size={18} color="var(--burgundy)" />
+        <span class="cart-go"><Icon name="back" size={17} /></span>
       </button>
       <button class="cart-x" onclick={() => { archiveLast(); cart = []; buzz(10); }} aria-label="إفراغ السلة">
         <Icon name="trash" size={17} />
@@ -822,6 +838,7 @@
     border-radius: 50%; border: 1px solid var(--line-2);
     margin-inline-end: 4px; vertical-align: -1px;
   }
+
   :global(.pcard) {
     display: flex;
     align-items: center;
@@ -834,8 +851,8 @@
   :global(.pcard:active) { transform: scale(0.98); }
   :global(.pcard.oos) { opacity: 0.55; }
   .pthumb {
-    width: 58px; height: 58px;
-    border-radius: var(--r-sm);
+    width: 64px; height: 64px;
+    border-radius: var(--r-md);
     flex: none;
     display: flex; align-items: center; justify-content: center;
     background: linear-gradient(150deg, rgba(255, 255, 255, 0.65), rgba(181, 73, 91, 0.07));
@@ -847,14 +864,12 @@
   .pcolors { display: flex; flex-wrap: wrap; gap: 3px 10px; }
   .pc-color { display: inline-flex; align-items: center; gap: 4px; }
   .pc-qty { font-size: 10.5px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
-  .pcolors { display: flex; flex-wrap: wrap; gap: 3px 10px; }
-  .pc-color { display: inline-flex; align-items: center; gap: 4px; }
-  .pc-qty { font-size: 10.5px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
   .pname { font-weight: 800; font-size: 14px; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .psizes { margin-top: 1px; }
   .prow { display: flex; justify-content: space-between; align-items: baseline; }
   .pprice { font-weight: 800; font-size: 13.5px; color: var(--burgundy); }
   .pqty { font-size: 12px; color: var(--taupe); font-weight: 700; }
+  .pqty.low { color: #b45309; }
   .pqty.zero { color: var(--burgundy-deep); }
   .add-ic {
     flex: none;
@@ -890,6 +905,13 @@
     cursor: pointer;
     text-align: right;
     padding: 4px 6px;
+  }
+  .cart-go {
+    flex: none;
+    width: 30px; height: 30px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
+    color: #fff;
   }
   .cart-badge {
     width: 40px; height: 40px;

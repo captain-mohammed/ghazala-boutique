@@ -57,6 +57,9 @@
     }
     return rows;
   });
+  /* المقاسات المتوفرة للموديل كله — بلا تكرار بين الألوان */
+  const allSizes = (g) =>
+    [...new Set(g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)))].sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
   const matchType = (p, tv) => {
     if (String(tv).startsWith(TYPE_SEP3)) return p.typeSub3 === tv.slice(3) && !!p.typeSub2;
     if (String(tv).startsWith(TYPE_SEP2)) return p.typeSub2 === tv.slice(2) && !!p.typeSub;
@@ -369,21 +372,25 @@
               <div class="card-mid">
                 <div class="card-sizes-box">
                   <span class="sz-label">القياسات المتوفر:</span>
-                  <div class="sz-grid">
-                    {#each g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).slice(0, 6) as sz, si (String(sz) + si)}
+                  <div class="sz-flow">
+                    {#each allSizes(g).slice(0, 5) as sz (String(sz))}
                       <span class="sz-chip">{sz}</span>
                     {/each}
-                    {#if !g.colorRows.some((c) => c.sizes.some((s) => s.qty > 0))}<span class="sz-chip empty">—</span>{/if}
+                    {#if allSizes(g).length > 5}<span class="sz-more">+{fmtNum(allSizes(g).length - 5)}</span>{/if}
+                    {#if !allSizes(g).length}<span class="sz-chip empty">—</span>{/if}
                   </div>
                 </div>
                 {#if g.colorRows.some((cr) => cr.color)}
                   <div class="card-colors">
-                    {#each g.colorRows.slice(0, 4) as cr (cr.color)}
+                    {#each g.colorRows.filter((cr) => cr.qty > 0).slice(0, 6) as cr (cr.color)}
                       <span class="cc-item" title="{cr.color} — {fmtNum(cr.qty)} قطعة">
                         <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
                         <b class="cc-qty">{fmtNum(cr.qty)}</b>
                       </span>
                     {/each}
+                    {#if g.colorRows.filter((cr) => cr.qty > 0).length > 6}
+                      <span class="cc-item"><span class="cc-more">+{fmtNum(g.colorRows.filter((cr) => cr.qty > 0).length - 6)}</span></span>
+                    {/if}
                   </div>
                 {/if}
               </div>
@@ -503,6 +510,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
+    align-items: stretch; /* البطاقة زر — المتصفح يوسّط المحتوى افتراضياً */
     padding: 0;
     overflow: hidden;
     cursor: pointer;
@@ -553,23 +561,29 @@
   .card-type { font-weight: 800; font-size: 13.5px; color: var(--ink); width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
   /* الصف الأوسط: القياسات يميناً (مرن) والدوائر يساراً (ثابتة) */
   .card-mid { flex: 1; min-height: 0; display: flex; gap: 12px; }
-  /* الدوائر: عمودان ثابتان — صفّان كحد أقصى، بلا أي إطار أو خلفية */
+  /* الدوائر: ثلاثة بكل صف، ملتصقة بيسار البطاقة دائماً */
   .card-colors {
     flex: none;
+    margin-right: auto; /* يدفع الصندوق لأقصى اليسار مهما كان عدد الدوائر */
     display: grid;
-    grid-template-columns: repeat(2, auto);
-    justify-content: start;
+    grid-template-columns: repeat(3, auto);
     align-content: start;
-    gap: 8px 16px;
+    gap: 7px 8px;
     min-height: 0;
     overflow: hidden;
   }
+  .cc-more {
+    width: 20px; height: 20px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 800; color: var(--burgundy);
+    background: rgba(181, 73, 91, 0.1);
+  }
   .cc-item { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
-  .cc-dot { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
-  .cc-qty { color: var(--ink-2); font-weight: 800; font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .cc-dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
+  .cc-qty { color: var(--ink-2); font-weight: 800; font-size: 10px; line-height: 1; font-variant-numeric: tabular-nums; }
   /* حاوية القياسات: بلا حدود ظاهرة — تثبّت المساحة فقط */
   .card-sizes-box {
-    flex: 1;
+    flex: 0 1 auto; /* لا تلتقط المساحة الحرة —:auto-margin هو اللي يدفع الدوائر لليسار */
     min-width: 0;
     min-height: 0;
     display: flex;
@@ -578,18 +592,26 @@
     overflow: hidden;
   }
   .sz-label { font-weight: 800; color: var(--taupe); font-size: 10.5px; }
-  .sz-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px 8px; }
+  .sz-flow { display: flex; flex-wrap: wrap; gap: 3px 4px; align-content: flex-start; overflow: hidden; }
   .sz-chip {
-    font-size: 10.5px;
+    font-size: 10px;
     font-weight: 700;
     color: var(--ink-2);
     background: rgba(122, 46, 58, 0.06);
-    border-radius: 7px;
-    padding: 2px 6px;
+    border-radius: 6px;
+    padding: 1px 6px;
     text-align: center;
     font-variant-numeric: tabular-nums;
   }
   .sz-chip.empty { background: none; color: var(--taupe); }
+  .sz-more {
+    font-size: 10px;
+    font-weight: 800;
+    color: var(--burgundy);
+    background: rgba(181, 73, 91, 0.1);
+    border-radius: 6px;
+    padding: 1px 6px;
+  }
   .card-price {
     margin: 8px 12px 12px;
     border-top: 1.5px solid var(--line-2);
