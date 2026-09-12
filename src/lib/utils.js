@@ -55,6 +55,21 @@ export function fmtDate(iso) {
 
 export const MONTHS_AR = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
 
+/* «منذ ساعتين» — عمر العملية بالكلمات، بغداد كمنطقة زمنية ضمنياً عبر فرق الوقت فقط */
+export function fmtAgo(iso) {
+  if (!iso) return '';
+  const m = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (m < 1) return 'الآن';
+  if (m < 60) return `منذ ${m} دقيقة`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `منذ ${h} ساعة`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `منذ ${d} يوم`;
+  const mo = Math.floor(d / 30);
+  if (mo < 12) return `منذ ${mo} شهر`;
+  return `منذ ${Math.floor(mo / 12)} سنة`;
+}
+
 /* Baghdad wall-clock hour (0-23) and the night window auto theme uses */
 export const baghdadHour = (d = new Date()) => +baghdadWall(d).hour % 24;
 export const isNightBaghdad = (d = new Date()) => { const h = baghdadHour(d); return h >= 18 || h < 6; };

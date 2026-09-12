@@ -5,7 +5,7 @@
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
   import { db, setSaleStatus, returnSale } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, buzz, buildSalesMessage, sendWhatsApp, salePieces } from '../utils.js';
+  import { fmtIQD, fmtNum, fmtDate, fmtAgo, buzz, buildSalesMessage, sendWhatsApp, salePieces } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   const FILTERS = [
@@ -92,13 +92,19 @@
     if (detail?.id === s.id) detail = { ...detail, status: 'returned' };
   }
 
-  /* ---- Swipe the sale row: pull left reveals quick actions (تم التسليم / راجع) ---- */
+  /* ---- Swipe the sale row: pull left follows the finger, revealing
+     both quick actions (تم التسليم / راجع) side by side. Tap the open
+     row to close it, swipe right or tap another row to snap shut. ---- */
+  const OPEN = 150; /* يكفي لعرض الزرين معاً */
   let swipedId = $state(null);
+  let drag = $state(0); /* الإزاحة اللحظية أثناء السحب — الصف تتبع الإصبع */
+  let dragging = $state(false);
   const swipe = { active: false, id: null, x0: 0, dx: 0 };
 
   function swipeStart(e, id) {
     if (e.pointerType === 'mouse') return;
     swipe.active = true;
+    dragging = true;
     swipe.id = id;
     swipe.x0 = e.clientX;
     swipe.dx = 0;
@@ -106,13 +112,32 @@
   function swipeMove(e) {
     if (!swipe.active) return;
     swipe.dx = e.clientX - swipe.x0;
+    /* مقاومة ناعمة بعد نقطة الفتح، وسحب للخلف يغلق الصف مباشرة */
+    if (swipedId === swipe.id) {
+      drag = Math.min(0, Math.max(-OPEN - 40, -OPEN + swipe.dx));
+    } else {
+      drag = swipe.dx < 0 ? Math.max(-OPEN - 40, swipe.dx) : 0;
+    }
   }
   function swipeEnd() {
     if (!swipe.active) return;
     swipe.active = false;
-    if (swipe.dx < -56) swipedId = swipe.id;
-    else if (swipe.dx > 40) swipedId = null;
+    dragging = false;
+    if (swipedId === swipe.id) {
+      if (drag > -OPEN + 34) swipedId = null; /* سُحبت للخلف بعيداً */
+    } else if (swipe.dx < -46) {
+      swipedId = swipe.id;
+      buzz(8);
+    }
+    drag = 0;
     swipe.dx = 0;
+  }
+
+  function rowX(s) {
+    /* أثناء السحب الفعلي يأخذ الإزاحة اللحظية الأولوية — تتبع الإصبع باتجاهين */
+    if (swipe.active && swipe.id === s.id) return drag;
+    if (swipedId === s.id) return -OPEN;
+    return 0;
   }
 
   async function shareWhatsApp(s) {
@@ -151,13 +176,14 @@
         <div
           class="swipe-wrap"
           class:open={swipedId === s.id}
+          class:dragging={dragging && swipe.id === s.id}
           onpointerdown={(e) => swipeStart(e, s.id)}
           onpointermove={swipeMove}
           onpointerup={swipeEnd}
           onpointercancel={swipeEnd}
         >
-          <!-- actions exist only while a row is open — nothing ever hides behind the card -->
-          {#if swipedId === s.id}
+          <!-- actions live under the full row width — both always visible when open -->
+          {#if swipedId === s.id || (swipe.active && swipe.id === s.id && drag < -60)}
             <div class="swipe-actions">
               {#if s.status !== 'delivered'}
                 <button class="sw-btn ok" onclick={() => { swipedId = null; markDelivered(s); }}>
@@ -173,9 +199,9 @@
           {/if}
           <Glass
             as="button"
-            class="sale rise"
-            style="animation-delay:{Math.min(i * 0.04, 0.3)}s"
-            onclick={() => { if (Math.abs(swipe.dx) < 8) { buzz(6); detail = s; } }}
+            class="sale rise {swipedId === s.id ? 'dimmed' : ''}"
+            style="animation-delay:{Math.min(i * 0.04, 0.3)}s; transform: translateX({rowX(s)}px)"
+            onclick={() => { if (Math.abs(swipe.dx) < 8) { if (swipedId === s.id) { swipedId = null; } else { buzz(6); detail = s; } } }}
           >
           <span class="s-ic"><Icon name={s.status === 'returned' ? 'undo' : 'truck'} size={19} color="var(--burgundy)" /></span>
           <div class="a-body">
@@ -218,7 +244,7 @@
           <span class="bold">{detail.customerName || 'زبون'}</span>
           <span class="st {STATUS[detail.status]?.cls}">{STATUS[detail.status]?.label}</span>
         </div>
-        <div class="muted small">{fmtDate(detail.date)}</div>
+        <div class="muted small">{fmtDate(detail.date)} · {fmtAgo(detail.date)}</div>
         {#if detail.customerPhone}
           <div class="row small muted"><Icon name="phone" size={14} /> {detail.customerPhone}</div>
         {/if}
@@ -226,7 +252,7 @@
           <div class="row small muted"><Icon name="flag" size={14} /> {detail.province}{detail.address ? ' — ' + detail.address : ''}</div>
         {/if}
         {#if detail.barcode}
-          <div class="row small muted"><Icon name="scan" size={14} /> باركود شركة التوصيل: <span class="bold" style="letter-spacing:1px">{detail.barcode}</span></div>
+          <div style="margin-top:6px"><span class="bc-chip"><Icon name="scan" size={13} /> {detail.barcode}</span></div>
         {/if}
       </Glass>
 
@@ -294,10 +320,12 @@
     inset: 0;
     display: flex;
     justify-content: flex-start;
-    gap: 8px;
-    padding: 0 12px;
     align-items: center;
+    gap: 8px;
+    padding: 0 14px;
     z-index: 0;
+    /* تدرّج خفيف يسبق الأزرار — يوحي بأن هناك أكثر من إجراء */
+    background: linear-gradient(to left, rgba(122, 46, 58, 0.06), transparent 55%);
   }
   .sw-btn {
     display: inline-flex;
@@ -307,24 +335,31 @@
     cursor: pointer;
     font-family: inherit;
     font-weight: 800;
-    font-size: 12px;
-    padding: 10px 12px;
+    font-size: 12.5px;
+    min-height: 44px;
+    padding: 10px 14px;
     border-radius: 14px;
     color: #fff;
     white-space: nowrap;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+  .sw-btn:active { transform: scale(0.94); }
   .sw-btn.ok { background: linear-gradient(135deg, #4e8a5f, #3c7050); }
   .sw-btn.ret { background: linear-gradient(135deg, var(--burgundy), var(--burgundy-deep)); }
   .swipe-wrap :global(.sale) {
     position: relative;
     z-index: 1;
-    transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform;
+    touch-action: pan-y;
   }
+  /* أثناء السحب الفعلي: بلا انتقال وبلا أنيميشن دخول — الصف تتبع الإصبع لحظياً.
+     أنيميشن .rise بـ fill-mode both كان يطغى على التحويل اللحظي. */
+  .swipe-wrap.dragging :global(.sale) { transition: none; animation: none; }
   /* .rise uses fill-mode both — release it so the open-translate applies */
-  .swipe-wrap.open :global(.sale) {
-    animation: none;
-    transform: translateX(-96px);
-  }
+  .swipe-wrap.open :global(.sale) { animation: none; }
+  /* الصف المفتوح يخفت قليلاً — الأزرار هي البطلة */
+  .swipe-wrap :global(.sale.dimmed) { filter: brightness(0.97); }
 
   :global(.sale) {
     display: flex;
@@ -402,4 +437,18 @@
   .st-delivered { background: rgba(78, 138, 95, 0.14); color: var(--good); }
   .st-returned { background: rgba(122, 46, 58, 0.12); color: var(--burgundy-deep); }
   :global(.head-card) { padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+  .bc-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 800;
+    font-size: 12.5px;
+    letter-spacing: 1.5px;
+    color: var(--burgundy-deep);
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px dashed var(--line-2);
+    padding: 6px 12px;
+    border-radius: 10px;
+    direction: ltr;
+  }
 </style>

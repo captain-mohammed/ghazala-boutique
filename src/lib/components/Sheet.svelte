@@ -2,6 +2,27 @@
   import { fade, fly } from 'svelte/transition';
   import { sheetSpring } from '../motion.js';
   let { open = false, title = '', onclose = () => {}, children, footer = null } = $props();
+
+  /* ---- سحب الورقة للأسفل للإغلاق — تتبع الإصبع مع ارتداد مرن ---- */
+  let pull = $state(0);
+  let dragging = $state(false);
+  let y0 = 0;
+
+  function onStart(e) {
+    if (e.pointerType === 'mouse') return;
+    dragging = true;
+    y0 = e.clientY;
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    pull = Math.max(0, e.clientY - y0);
+  }
+  function onEnd() {
+    if (!dragging) return;
+    dragging = false;
+    if (pull > 110) onclose();
+    pull = 0;
+  }
 </script>
 
 {#if open}
@@ -10,7 +31,17 @@
     transition:fade={{ duration: 180 }}
     onclick={(e) => { if (e.target === e.currentTarget) onclose(); }}
   ></div>
-  <div class="sheet" in:sheetSpring out:fly={{ y: 460, duration: 260, opacity: 1 }}>
+  <div
+    class="sheet"
+    class:dragging
+    style="transform: translateY({pull}px)"
+    in:sheetSpring
+    out:fly={{ y: 460, duration: 260, opacity: 1 }}
+    onpointerdown={onStart}
+    onpointermove={onMove}
+    onpointerup={onEnd}
+    onpointercancel={onEnd}
+  >
     <div class="sheet-grab"></div>
     {#if title}
       <div class="sheet-head">
@@ -44,4 +75,7 @@
     background: rgba(255, 255, 255, 0.35);
     border-radius: 0 0 var(--r-lg) var(--r-lg);
   }
+  /* أثناء السحب: بلا انتقال — تتبع الإصبع؛ عند الإفلات يرتد بسلاسة */
+  .sheet { will-change: transform; }
+  .sheet.dragging { transition: none !important; cursor: grabbing; }
 </style>

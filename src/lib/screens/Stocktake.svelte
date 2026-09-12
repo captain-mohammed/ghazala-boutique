@@ -2,6 +2,7 @@
   import Icon from '../components/Icon.svelte';
   import Scanner from '../components/Scanner.svelte';
   import Glass from '../components/Glass.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
   import VariantBits from '../components/VariantBits.svelte';
   import { db, stocktakeApply } from '../db.js';
   import { fmtNum, buzz } from '../utils.js';
@@ -77,6 +78,13 @@
 </script>
 
 <div class="stack" style="gap:12px">
+  {#if products.length === 0}
+    <EmptyState
+      title="مخزونك فارغ"
+      subtitle="أضيفي موديلاتك أولاً من تبويب المخزون، وهنا تطابقين العدّ مع الرفوف"
+      icon="check"
+    />
+  {:else}
   <div class="row" style="gap:10px">
     <Glass class="search" radius="var(--r-md)">
       <Icon name="search" size={18} color="var(--taupe)" />
@@ -124,6 +132,7 @@
       </Glass>
     {/each}
   </div>
+  {/if}
 </div>
 
 <Scanner open={scanOpen} title="جرد — مسح موديل" onclose={() => (scanOpen = false)} onscan={onScan} />
