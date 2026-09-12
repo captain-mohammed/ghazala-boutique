@@ -16,6 +16,8 @@
   let currentMood = $state('');
   let customMood = $state('');
   let customList = $state([]);
+  let suppliers = $state([]);
+  let newSup = $state('');
   const moodMonthKey = baghdadMonthKey(0);
   let loaded = $state(false);
 
@@ -33,6 +35,7 @@
     moods = { ...(s.seasonMoods || {}) };
     currentMood = moods[moodMonthKey] || '';
     customList = Array.isArray(s.moodCustom) ? s.moodCustom : [];
+    suppliers = Array.isArray(s.suppliers) ? s.suppliers : [];
     if (typeof s.waTemplate === 'string' && s.waTemplate.trim()) {
       waText = s.waTemplate;
       waTouched = true;
@@ -85,6 +88,24 @@
     await setSetting('seasonMoods', moods);
     toastOk('مُسح مزاج الشهر');
     buzz(8);
+  }
+
+  /* الموردون — سجل يظهر كقائمة منسدلة في فاتورة الوارد ونموذج الموديل */
+  async function addSupplier() {
+    const name = String(newSup || '').trim();
+    if (!name) return;
+    if (suppliers.includes(name)) { toastErr('المورد موجود مسبقاً'); return; }
+    suppliers = [...suppliers, name];
+    await setSetting('suppliers', [...suppliers]);
+    newSup = '';
+    toastOk('أُضيف المورد');
+    buzz(8);
+  }
+  async function rmSupplier(name) {
+    suppliers = suppliers.filter((x) => x !== name);
+    await setSetting('suppliers', [...suppliers]);
+    toastOk('حُذف المورد من السجل');
+    buzz(6);
   }
 
   /* WhatsApp template save / reset */
@@ -235,6 +256,29 @@
           <Icon name="edit" size={16} /> تعديل نص الرسالة
         </button>
       {/if}
+    </Glass>
+
+    <Glass class="rise" style="padding:16px; animation-delay:0.14s">
+      <h2 class="h2" style="margin-bottom:4px"><Icon name="upload" size={17} color="var(--gold)" /> الموردون</h2>
+      <p class="muted small" style="margin:0 0 10px">سجل مورديك هنا — يظهرون قائمة منسدلة في فاتورة الوارد ونموذج الموديل، فتُسجَّل كل قطعة باسم من جاءت منه.</p>
+      <div class="stack" style="gap:10px">
+        <div class="row" style="gap:8px">
+          <input class="input" bind:value={newSup} placeholder="اسم المورد… مثال: هاي مول - أبو علي" onkeydown={(e) => { if (e.key === 'Enter') addSupplier(); }} />
+          <button class="btn primary" style="flex:none" onclick={addSupplier}><Icon name="plus" size={15} /> إضافة</button>
+        </div>
+        {#if suppliers.length}
+          <div class="row wrap" style="gap:6px">
+            {#each suppliers as s (s)}
+              <span class="chip on">
+                {s}
+                <button class="chip-x" aria-label="حذف {s}" onclick={() => rmSupplier(s)}><Icon name="x" size={11} /></button>
+              </span>
+            {/each}
+          </div>
+        {:else}
+          <p class="muted tiny">لا موردين بعد — أضيفي أول اسم وستظهر في القوائم فوراً.</p>
+        {/if}
+      </div>
     </Glass>
 
     <Glass class="rise" style="padding:16px; animation-delay:0.15s">

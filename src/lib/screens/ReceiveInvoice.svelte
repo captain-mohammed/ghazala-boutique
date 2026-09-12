@@ -3,7 +3,7 @@
   import Glass from '../components/Glass.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
-  import { receiveBatch, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3 } from '../db.js';
+  import { receiveBatch, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting } from '../db.js';
   import { fmtNum, fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, celebrateAt, invoicePreset } from '../store.js';
@@ -23,10 +23,14 @@
   const lineAutoName = (l) => [l.type, l.color].filter(Boolean).join(' ') || l.category || 'موديل';
 
   let supplier = $state('');
+  let suppliers = $state([]);
   let invoice = $state('');
   let note = $state('');
   let lines = $state([blank()]);
   let saving = $state(false);
+
+  /* سجل الموردين من الإعدادات — والاسم الجديد يُحفظ فيه تلقائياً عند الحفظ */
+  (async () => { suppliers = (await getSetting('suppliers', [])) || []; })();
 
   /* a restock suggestion / size-run hole may arrive pre-filled */
   $effect(() => {
@@ -71,7 +75,11 @@
 
   async function save() {
     if (saving) return;
-    if (!supplier.trim()) { toastErr('اكتب اسم المورد — «منين شريت؟» يجي يوم وتسألينه'); return; }
+    if (!supplier.trim()) { toastErr('اختاري المورد من القائمة — وضيفي الجدد من الإعدادات'); return; }
+    if (!suppliers.includes(supplier.trim())) {
+      suppliers = [...suppliers, supplier.trim()];
+      await setSetting('suppliers', [...suppliers]);
+    }
     const good = lines.filter((l) => linePieces(l) > 0);
     if (!good.length) { toastErr('سطر واحد على الأقل: مقاس بكمية'); return; }
     saving = true;
@@ -118,7 +126,15 @@
   <div class="row" style="gap:10px">
     <div class="field" style="flex:1.6">
       <label>المورد / منين شريتِ؟ <span class="req">*</span></label>
-      <input class="input" bind:value={supplier} placeholder="مثال: هاي مول — أبو علي" />
+      {#if suppliers.length}
+        <select class="input" bind:value={supplier} style="height:50px">
+          <option value="">اختاري المورد…</option>
+          {#each suppliers as sup (sup)}<option value={sup}>{sup}</option>{/each}
+        </select>
+      {:else}
+        <input class="input" bind:value={supplier} placeholder="مثال: هاي مول — أبو علي" />
+        <p class="muted tiny" style="margin:4px 2px 0">سجّلي مورديك من الإعدادات لتظهروا قائمة هنا.</p>
+      {/if}
     </div>
     <div class="field" style="flex:1">
       <label>رقم الفاتورة <span class="muted tiny">(اختياري)</span></label>

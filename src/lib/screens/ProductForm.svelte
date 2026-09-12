@@ -3,7 +3,7 @@
   import Glass from '../components/Glass.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
-  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3 } from '../db.js';
+  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting } from '../db.js';
   import { fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
   import { toastOk, toastErr, celebrateAt } from '../store.js';
 
@@ -30,6 +30,8 @@
   let cost = $state(product?.cost ?? '');
   let price = $state(product?.price ?? '');
   let notes = $state(product?.notes ?? '');
+  let supplier = $state(product?.supplier ?? '');
+  let suppliers = $state([]);
 
   /* multi-color × multi-size: one card per selected color */
   let selColors = $state([]); // color labels ('' stored as NOCOLOR)
@@ -37,6 +39,7 @@
   let siblings = $state([]);  // loaded existing variants (edit mode)
 
   let opts = $state({ categories: [], types: [], seasons: [], materials: [], colors: [], typeSubs: {} });
+  (async () => { suppliers = (await getSetting('suppliers', [])) || []; })();
   (async () => {
     opts = await modelOptions();
     if (product) {
@@ -153,6 +156,12 @@
       return;
     }
     try {
+      /* supplier typed without a registry? — register it so it appears in every dropdown next time */
+      const supName = (supplier || '').trim();
+      if (supName) {
+        const reg = (await getSetting('suppliers', [])) || [];
+        if (!reg.includes(supName)) await setSetting('suppliers', [...reg, supName]);
+      }
       /* the model number: edits and merges keep the model's existing id; a brand-new
          registration gets the next one — for the whole form (كل ألوانه ومقاساته معاً) */
       const all0 = await db.products.toArray();
@@ -173,6 +182,7 @@
         name: (product?.name || '').trim() || autoName, category, type, typeSub, typeSub2, typeSub3,
         brand: brand.trim(),
         season, material, cost: iqd(cost), price: iqd(price), photo: img, notes: notes.trim(),
+        supplier: (supplier || '').trim(),
         modelId: freshId
       };
       const all = all0;
@@ -201,6 +211,7 @@
                 typeSub3: twin.typeSub3 || base.typeSub3 || '',
                 season: twin.season || base.season,
                 material: twin.material || base.material, photo: twin.photo || base.photo,
+                supplier: base.supplier || twin.supplier || '',
                 modelId: twin.modelId || freshId
               });
             } else continue;
@@ -343,6 +354,19 @@
         <button type="button" class="chip" class:on={material === m} onclick={() => (material = material === m ? '' : m)}>{m}</button>
       {/each}
     </div>
+  </div>
+
+  <div class="field">
+    <label>المورد <span class="muted tiny">(منين شريتِ؟ — اختياري)</span></label>
+    {#if suppliers.length}
+      <select class="input" bind:value={supplier} style="height:50px">
+        <option value="">بدون</option>
+        {#each suppliers as sup (sup)}<option value={sup}>{sup}</option>{/each}
+      </select>
+    {:else}
+      <input class="input" bind:value={supplier} placeholder="مثال: هاي مول — أبو علي" />
+      <p class="muted tiny" style="margin:4px 2px 0">سجّلي مورديك من الإعدادات لتظهروا قائمة هنا.</p>
+    {/if}
   </div>
 
   <div class="row" style="gap:10px">

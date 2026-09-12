@@ -82,6 +82,7 @@ export const DEFAULT_SETTINGS = {
   modelColors: COLOR_SWATCHES,
   backupReminderAt: null,
   deliveryCompanies: [],
+  suppliers: [],       // سجل الموردين — تُدار من الإعدادات وتظهر قائمة في الفاتورة ونموذج الموديل
   waTemplate: null, // null → app default (see DEFAULT_WA_TEMPLATE in utils.js)
   dailyTarget: 0,      // قطع — daily goal ring on the dashboard (0 = off)
   vaultGoal: 500000,   // د.ع — the vault celebration threshold (0 = off)

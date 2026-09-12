@@ -43,7 +43,7 @@
 
 {#each groups as g, gi (g.title)}
   <div class="grp" style="animation-delay:{gi * 0.06}s">
-    <div class="grp-title"><Icon name="dots" size={12} color="var(--gold)" /> {g.title}</div>
+    <div class="grp-title">{g.title}</div>
     {#each g.items as it, i (it.id)}
       <Glass
         as="button"
@@ -84,14 +84,13 @@
   }
   .m-label { font-weight: 800; font-size: 15px; color: var(--ink); }
   .m-desc { padding-inline-start: 44px; }
-  .grp { display: flex; flex-direction: column; gap: 8px; animation: grp-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
+  .grp { display: flex; flex-direction: column; gap: 10px; animation: grp-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
   @keyframes grp-in {
     from { opacity: 0; transform: translateY(14px); }
     to { opacity: 1; transform: translateY(0); }
   }
   .grp-title {
-    display: flex; align-items: center; gap: 6px;
-    padding: 2px 4px 0;
+    padding: 6px 4px 0;
     font-size: 15px;
     font-weight: 900;
     color: var(--ink);
