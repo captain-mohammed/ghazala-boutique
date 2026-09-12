@@ -250,8 +250,10 @@ export const DEFAULT_WA_TEMPLATE =
 export function buildSalesMessage(sale, template = DEFAULT_WA_TEMPLATE) {
   const itemLines = (sale.items || [])
     .map((it) => {
+      const chain = [it.type, it.typeSub, it.typeSub2, it.typeSub3].filter(Boolean).join(' - ');
+      const title = chain || it.name || '';
       const v = [it.color, it.size ? `مقاس ${it.size}` : ''].filter(Boolean).join(' • ');
-      return `• ${it.name}${v ? ` (${v})` : ''} × ${fmtNum(it.qty)} — ${fmtIQD(it.price * it.qty)}`;
+      return `• ${title}${v ? ` (${v})` : ''} × ${fmtNum(it.qty)} — ${fmtIQD(it.price * it.qty)}`;
     })
     .join('\n');
   const map = {

@@ -137,6 +137,33 @@ export const subsOfType2 = (typeSubs2, type, sub) =>
 /* القائمة الرابعة تحت تفصيل أدق */
 export const subsOfType3 = (typeSubs3, type, sub, sub2) =>
   (type && sub && sub2 && typeSubs3?.[type]?.[sub]?.[sub2]) || [];
+
+/* ---- شجرة النوع: أدوات مشتركة يفهمها كل التطبيق ----
+   مسألة معروفة: نفس الاسم الفرعي ممكن يكون تحت نوعين مختلفين
+   (كعب عالي كنوع ومثل تفصيل تحت بوت) — لذلك كل فحص/عدّ/عرض
+   يجب أن يكون محصوراً بأبويه، لا عاملاً في التطبيق كله. */
+
+/* هل القطعة تطابق مستوى معيّن داخل الشجرة (محصور بأبويه)؟ */
+export function typeMatches(p, { type = '', typeSub = '', typeSub2 = '', typeSub3 = '' } = {}) {
+  if (type && p.type !== type) return false;
+  if (typeSub && p.typeSub !== typeSub) return false;
+  if (typeSub2 && p.typeSub2 !== typeSub2) return false;
+  if (typeSub3 && p.typeSub3 !== typeSub3) return false;
+  return true;
+}
+
+/* عدد القطع المتوفرة (أو الكل) تحت عقدة معينة في الشجرة */
+export function countUnderType(products, node, { inStockOnly = false } = {}) {
+  const { type = '', typeSub = '', typeSub2 = '', typeSub3 = '' } = node;
+  return products.filter((p) =>
+    typeMatches(p, { type, typeSub, typeSub2, typeSub3 }) &&
+    (!inStockOnly || p.qty > 0)
+  ).length;
+}
+
+/* سلسلة النوع الكاملة لقطعة أو موديل: «بوت - كعب عالي - جيب جانبي» */
+export const typeChain = (p) =>
+  [p?.type, p?.typeSub, p?.typeSub2, p?.typeSub3].filter(Boolean).join(' - ');
 /* resolve a color label to its hex dot (for cards and size-runs) */
 export const hexForColor = (label, colors) =>
   (colors || COLOR_SWATCHES).find((c) => (c.label || '').trim().toLowerCase() === String(label || '').trim().toLowerCase())?.hex || 'var(--taupe)';
@@ -246,6 +273,44 @@ export async function backfillModelIds() {
 /* delete a whole model (every color × size card of it) in one go */
 export async function deleteProducts(skus) {
   await db.products.bulkDelete(skus);
+}
+
+/* one-time migration: cards registered before the نوع sub-menus existed carry
+   empty typeSub/typeSub2/typeSub3 even when their auto-name contains the sub
+   (e.g. «بوت كعب عالي أسود»). Fill ONLY empty levels, deriving from the
+   auto-name parts matched against the configured trees — never overwrite
+   anything the user explicitly set. Idempotent; cheap at boot. */
+export async function backfillTypeTree() {
+  const all = await db.products.toArray();
+  const [typeSubs, typeSubs2, typeSubs3, types] = await Promise.all([
+    getSetting('typeSubs', {}), getSetting('typeSubs2', {}), getSetting('typeSubs3', {}), getSetting('types', [])
+  ]);
+  if (!Object.keys(typeSubs || {}).length) return;
+  let changed = 0;
+  for (const p of all) {
+    const patch = {};
+    if (!p.type && types?.length) {
+      const hit = types.find((t) => (p.name || '').includes(t));
+      if (hit) patch.type = hit;
+    }
+    if (!p.typeSub && p.type) {
+      const hit = (typeSubs[p.type] || []).find((s) => (p.name || '').includes(s));
+      if (hit) patch.typeSub = hit;
+    }
+    if (!p.typeSub2 && p.type && p.typeSub) {
+      const hit = ((typeSubs2?.[p.type] || [])[p.typeSub] || []).find((s) => (p.name || '').includes(s));
+      if (hit) patch.typeSub2 = hit;
+    }
+    if (!p.typeSub3 && p.type && p.typeSub && p.typeSub2) {
+      const hit = ((typeSubs3?.[p.type] || {})[p.typeSub] || [])[p.typeSub2]?.find?.((s) => (p.name || '').includes(s));
+      if (hit) patch.typeSub3 = hit;
+    }
+    if (Object.keys(patch).length) {
+      await db.products.update(p.sku, patch);
+      changed++;
+    }
+  }
+  return changed;
 }
 
 export async function logMovement({ sku, type, qty, note }) {

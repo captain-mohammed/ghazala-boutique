@@ -4,7 +4,7 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, stocktakeApply } from '../db.js';
+  import { db, stocktakeApply, typeChain } from '../db.js';
   import { fmtNum, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
 
@@ -108,6 +108,7 @@
       <Glass class="row {counted !== undefined ? 'mark' : ''}" style="padding:10px 12px; border-radius:var(--r-md); gap:10px">
         <span class="st-thumb">{#if p.photo}<img src={p.photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
         <div style="flex:1; min-width:0">
+          {#if p.type || p.typeSub || p.typeSub2 || p.typeSub3}<div class="bold small" style="margin-bottom:2px">{typeChain(p)}</div>{/if}
           <div class="muted small">
             <VariantBits dense variants={[{ color: p.color, size: p.size }]} />
           </div>

@@ -11,7 +11,7 @@
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
   import Pick from '../components/Pick.svelte';
-  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor } from '../db.js';
+  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType, typeChain } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters, filtersOpen } from '../store.js';
@@ -53,25 +53,26 @@
   });
   /* نوع ذو شجرة — نفس صفوف المخزون بالضبط (المستويان الفرعيان بمسافة بادئة) */
   const TYPE_SEP = '\u200b', TYPE_SEP2 = '\u200b\u200b', TYPE_SEP3 = '\u200b\u200b\u200b';
+  /* كل مستوى يُحسب داخل أبويه (نفس منطق المخزون) */
   const typeRows = $derived.by(() => {
     const rows = [];
     for (const t of opts.types) {
-      rows.push({ value: t, label: t, icon: 'list', count: products.filter((p) => p.type === t && p.qty > 0).length });
+      rows.push({ value: t, label: t, icon: 'list', count: countUnderType(products, { type: t }, { inStockOnly: true }) });
       for (const st of subsOfType(opts.typeSubs, t)) {
-        rows.push({ value: TYPE_SEP + st, label: '↳ ' + st, icon: 'list', count: products.filter((p) => p.typeSub === st && p.qty > 0).length });
+        rows.push({ value: TYPE_SEP + st, label: '↳ ' + st, icon: 'list', count: countUnderType(products, { type: t, typeSub: st }, { inStockOnly: true }) });
         for (const st2 of subsOfType2(opts.typeSubs2, t, st)) {
-          rows.push({ value: TYPE_SEP2 + st2, label: '↳ ' + st2, icon: 'list', count: products.filter((p) => p.typeSub2 === st2 && p.qty > 0).length });
+          rows.push({ value: TYPE_SEP2 + st2, label: '↳ ' + st2, icon: 'list', count: countUnderType(products, { type: t, typeSub: st, typeSub2: st2 }, { inStockOnly: true }) });
           for (const st3 of subsOfType3(opts.typeSubs3, t, st, st2))
-            rows.push({ value: TYPE_SEP3 + st3, label: '↳ ' + st3, icon: 'list', count: products.filter((p) => p.typeSub3 === st3 && p.qty > 0).length });
+            rows.push({ value: TYPE_SEP3 + st3, label: '↳ ' + st3, icon: 'list', count: countUnderType(products, { type: t, typeSub: st, typeSub2: st2, typeSub3: st3 }, { inStockOnly: true }) });
         }
       }
     }
     return rows;
   });
   const matchType = (p, tv) => {
-    if (String(tv).startsWith(TYPE_SEP3)) return p.typeSub3 === tv.slice(3);
-    if (String(tv).startsWith(TYPE_SEP2)) return p.typeSub2 === tv.slice(2);
-    if (String(tv).startsWith(TYPE_SEP)) return p.typeSub === tv.slice(1);
+    if (String(tv).startsWith(TYPE_SEP3)) return p.typeSub3 === tv.slice(3) && !!p.typeSub2;
+    if (String(tv).startsWith(TYPE_SEP2)) return p.typeSub2 === tv.slice(2) && !!p.typeSub;
+    if (String(tv).startsWith(TYPE_SEP)) return p.typeSub === tv.slice(1) && !!p.type;
     return p.type === tv;
   };
   const types = $derived.by(() => [
@@ -115,13 +116,21 @@
     const map = new Map();
     for (const p of list) {
       const k = modelGroupKey(p);
-      if (!map.has(k)) map.set(k, p);
+      if (!map.has(k)) map.set(k, { rep: p, subs: new Set(), subs2: new Set(), subs3: new Set() });
       else {
         const cur = map.get(k);
-        if (new Date(p.createdAt) > new Date(cur.createdAt)) map.set(k, p); // أحدث بطاقة تمثل الموديل
+        if (new Date(p.createdAt) > new Date(cur.rep.createdAt)) cur.rep = p; // أحدث بطاقة تمثل الموديل
       }
+      const g = map.get(k);
+      if (p.typeSub) g.subs.add(p.typeSub);
+      if (p.typeSub2) g.subs2.add(p.typeSub2);
+      if (p.typeSub3) g.subs3.add(p.typeSub3);
     }
-    const sorted = [...map.values()];
+    /* سلسلة النوع من كل شجرة الموديل: النوع الرئيسي + كل التفاصيل الموجودة فيه */
+    for (const g of map.values()) {
+      g.typeChain = [g.rep.type, ...g.subs, ...g.subs2, ...g.subs3].filter(Boolean).join(' - ');
+    }
+    const sorted = [...map.values()].map((g) => ({ ...g.rep, modelChain: g.typeChain }));
     if (f.sort === 'new') sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     if (f.sort === 'price') sorted.sort((a, b) => (b.price || 0) - (a.price || 0));
     if (f.sort === 'qty') sorted.sort((a, b) => a.qty - b.qty);
@@ -259,7 +268,7 @@
     if (p.qty <= 0) { toastErr('هذا الموديل نفد من المخزون'); return; }
     /* multi-variant model → she picks اللون/المقاس at إتمام البيع; single variant adds straight away */
     if (variantsOf(p).length > 1) { openVariants(p); return; }
-    addLine({ sku: p.sku, name: p.name, price: p.price, cost: p.cost, category: p.category, color: p.color || '', size: String(p.size || '').trim() });
+    addLine({ sku: p.sku, name: p.name, price: p.price, cost: p.cost, category: p.category, type: p.type || '', typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '', color: p.color || '', size: String(p.size || '').trim() });
   }
 
   /* ---- Variant picker: colors × sizes chosen at checkout, only what's available ---- */
@@ -277,7 +286,7 @@
   let pk = $state({});      // vsKey → qty
 
   function openVariants(p) {
-    vpick = { name: p.name, price: p.price, cost: p.cost, category: p.category, variants: variantsOf(p) };
+    vpick = { name: p.name, price: p.price, cost: p.cost, category: p.category, type: p.type || '', typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '', variants: variantsOf(p) };
     pk = {};
     vOpen = true;
     buzz(10);
@@ -305,7 +314,7 @@
     const chosen = vpick.variants.filter((v) => pk[vsKey(v)] > 0);
     if (!chosen.length) { toastErr('اختاري لوناً أو مقاساً أولاً'); return; }
     for (const v of chosen) {
-      addLine({ sku: v.sku, name: vpick.name, price: vpick.price, cost: vpick.cost, category: vpick.category, color: v.color === NOCOLOR ? '' : v.color, size: v.size === '—' ? '' : v.size }, pk[vsKey(v)]);
+      addLine({ sku: v.sku, name: vpick.name, price: vpick.price, cost: vpick.cost, category: vpick.category, type: vpick.type, typeSub: vpick.typeSub, typeSub2: vpick.typeSub2, typeSub3: vpick.typeSub3, color: v.color === NOCOLOR ? '' : v.color, size: v.size === '—' ? '' : v.size }, pk[vsKey(v)]);
     }
     vOpen = false;
     vpick = null;
@@ -438,7 +447,7 @@
     saving = true;
     try {
       const sale = await recordSale({
-        items: cart.map((c) => ({ sku: c.sku, name: c.name, price: c.price, cost: c.cost, qty: c.qty, color: c.color || '', size: c.size || '' })),
+        items: cart.map((c) => ({ sku: c.sku, name: c.name, type: c.type || '', typeSub: c.typeSub || '', typeSub2: c.typeSub2 || '', typeSub3: c.typeSub3 || '', price: c.price, cost: c.cost, qty: c.qty, color: c.color || '', size: c.size || '' })),
         customerName: cname,
         customerPhone: cphone,
         province: cprovince,
@@ -553,7 +562,7 @@
           </div>
           <div class="pinfo">
             <!-- سلسلة النوع هي العنوان بجانب الصورة — واللون تحتها بدائرته -->
-            <div class="pname">{[p.type, p.typeSub, p.typeSub2, p.typeSub3].filter(Boolean).join(' - ') || p.name}</div>
+            <div class="pname">{p.modelChain || p.type || p.name}</div>
             <div class="pcolors">
               {#each modelColorsOf(p) as cc (cc.label)}
                 <span class="pc-color">

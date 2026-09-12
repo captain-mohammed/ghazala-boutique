@@ -3,7 +3,7 @@
   import Glass from '../components/Glass.svelte';
   import Pick from '../components/Pick.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, recordSale, piecesSoldToday } from '../db.js';
+  import { db, recordSale, piecesSoldToday, typeChain } from '../db.js';
   import { fmtIQD, fmtNum, parseOrderText, buzz } from '../utils.js';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor } from '../store.js';
 
@@ -149,6 +149,7 @@
         >
           <span class="p-thumb">{#if m.p.photo}<img src={m.p.photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
           <div class="pinfo">
+            {#if m.p.type || m.p.typeSub || m.p.typeSub2 || m.p.typeSub3}<div class="bold tiny" style="margin-bottom:2px">{typeChain(m.p)}</div>{/if}
             <VariantBits dense variants={[{ color: m.p.color, size: m.p.size }]} />
           </div>
           <span class="pprice">{fmtIQD(m.p.price)}</span>

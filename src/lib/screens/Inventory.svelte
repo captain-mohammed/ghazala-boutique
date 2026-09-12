@@ -7,7 +7,7 @@
   import Glass from '../components/Glass.svelte';
   import ProductForm from './ProductForm.svelte';
   import ItemDetail from './ItemDetail.svelte';
-  import { db, modelOptions, hexForColor, deleteProducts, modelGroupKey, subsOfType, subsOfType2, subsOfType3 } from '../db.js';
+  import { db, modelOptions, hexForColor, deleteProducts, modelGroupKey, subsOfType, subsOfType2, subsOfType3, countUnderType, typeChain } from '../db.js';
   import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl } from '../utils.js';
   import { toastErr, toastOk, askConfirm, invoicePreset, catalogFilters, filtersOpen } from '../store.js';
   import { get } from 'svelte/store';
@@ -41,25 +41,26 @@
   /* نوع ذو شجرة: بوت ← كعب عالي ← جيب جانبي… — كل مستوى بصف مستأنف في القائمة */
   /* بادئة صامتة لكل مستوى (محارف صفرية العرض) — الفحص دائماً الأطول أولاً */
   const TYPE_SEP = '\u200b', TYPE_SEP2 = '\u200b\u200b', TYPE_SEP3 = '\u200b\u200b\u200b';
+  /* كل مستوى يُحسب **داخل أبويه** — «كعب عالي» تحت بوت لا تلقط أصناف نوع «كعب عالي» الرئيسي */
   const typeRows = $derived.by(() => {
     const rows = [];
     for (const t of opts.types) {
-      rows.push({ value: t, label: t, icon: 'list', count: products.filter((p) => p.type === t).length });
+      rows.push({ value: t, label: t, icon: 'list', count: countUnderType(products, { type: t }) });
       for (const st of subsOfType(opts.typeSubs, t)) {
-        rows.push({ value: TYPE_SEP + st, label: '↳ ' + st, icon: 'list', count: products.filter((p) => p.typeSub === st).length });
+        rows.push({ value: TYPE_SEP + st, label: '↳ ' + st, icon: 'list', count: countUnderType(products, { type: t, typeSub: st }) });
         for (const st2 of subsOfType2(opts.typeSubs2, t, st)) {
-          rows.push({ value: TYPE_SEP2 + st2, label: '↳ ' + st2, icon: 'list', count: products.filter((p) => p.typeSub2 === st2).length });
+          rows.push({ value: TYPE_SEP2 + st2, label: '↳ ' + st2, icon: 'list', count: countUnderType(products, { type: t, typeSub: st, typeSub2: st2 }) });
           for (const st3 of subsOfType3(opts.typeSubs3, t, st, st2))
-            rows.push({ value: TYPE_SEP3 + st3, label: '↳ ' + st3, icon: 'list', count: products.filter((p) => p.typeSub3 === st3).length });
+            rows.push({ value: TYPE_SEP3 + st3, label: '↳ ' + st3, icon: 'list', count: countUnderType(products, { type: t, typeSub: st, typeSub2: st2, typeSub3: st3 }) });
         }
       }
     }
     return rows;
   });
   const matchType = (p, tv) => {
-    if (String(tv).startsWith(TYPE_SEP3)) return p.typeSub3 === tv.slice(3);
-    if (String(tv).startsWith(TYPE_SEP2)) return p.typeSub2 === tv.slice(2);
-    if (String(tv).startsWith(TYPE_SEP)) return p.typeSub === tv.slice(1);
+    if (String(tv).startsWith(TYPE_SEP3)) return p.typeSub3 === tv.slice(3) && !!p.typeSub2;
+    if (String(tv).startsWith(TYPE_SEP2)) return p.typeSub2 === tv.slice(2) && !!p.typeSub;
+    if (String(tv).startsWith(TYPE_SEP)) return p.typeSub === tv.slice(1) && !!p.type;
     return p.type === tv;
   };
   const cats = $derived.by(() => [
@@ -108,6 +109,10 @@
       const qty = items.reduce((a, x) => a + (x.qty || 0), 0);
       const price = Math.max(...items.map((x) => x.price || 0));
       const lead = items[0];
+      /* سلسلة النوع من كل قطع الموديل — قد تحمل القطع تفاصيل مختلفة */
+      const subsAll = [...new Set(items.map((x) => x.typeSub).filter(Boolean))];
+      const subs2All = [...new Set(items.map((x) => x.typeSub2).filter(Boolean))];
+      const subs3All = [...new Set(items.map((x) => x.typeSub3).filter(Boolean))];
       const colorMap = new Map();
       for (const p of items) {
         const c = (p.color || '').trim();
@@ -124,7 +129,9 @@
         key: modelGroupKey(lead),
         items, qty, price, lead,
         name: lead.name, category: lead.category,
-        type: lead.type, typeSub: lead.typeSub || '', typeSub2: lead.typeSub2 || '', typeSub3: lead.typeSub3 || '', season: lead.season, material: lead.material,
+        type: lead.type, typeSub: lead.typeSub || subsAll[0] || '', typeSub2: lead.typeSub2 || subs2All[0] || '', typeSub3: lead.typeSub3 || subs3All[0] || '',
+        subsAll, subs2All, subs3All,
+        season: lead.season, material: lead.material,
         photo: items.find((x) => x.photo)?.photo || null,
         createdAt: Math.max(...items.map((x) => new Date(x.createdAt || 0).getTime())),
         colorRows,
@@ -367,7 +374,7 @@
                   {/each}
                 </div>
                 <div class="card-info">
-                  {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, g.typeSub, g.typeSub2, g.typeSub3].filter(Boolean).join(' - ')}</div>{/if}
+                  {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, ...g.subsAll, ...g.subs2All, ...g.subs3All].filter(Boolean).join(' - ')}</div>{/if}
                   <div class="card-sizes muted">
                     <span class="sz-label">القياسات المتوفر:</span>
                     {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
@@ -375,7 +382,7 @@
                 </div>
               {:else}
                 <div class="card-info solo">
-                  {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, g.typeSub, g.typeSub2, g.typeSub3].filter(Boolean).join(' - ')}</div>{/if}
+                  {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, ...g.subsAll, ...g.subs2All, ...g.subs3All].filter(Boolean).join(' - ')}</div>{/if}
                   <div class="card-sizes muted">
                     <span class="sz-label">القياسات المتوفر:</span>
                     {g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)).join('، ') || '—'}
@@ -426,7 +433,7 @@
           {#if g.photo}<img src={g.photo} alt={g.type || g.category} />{:else}<Icon name="image" size={30} color="var(--taupe)" />{/if}
         </div>
         <div class="mv-info">
-          {#if g.type}<div class="mv-type">{g.type}</div>{/if}
+          {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="mv-type">{typeChain(g)}</div>{/if}
           <div class="muted small">{[g.category, g.season, g.material].filter(Boolean).join(' - ')}</div>
           <div class="mv-stats">
             <span class="money" style="color:var(--burgundy)">{fmtIQD(g.price)}</span>

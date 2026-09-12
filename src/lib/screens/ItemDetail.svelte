@@ -52,6 +52,7 @@
       supplier: p.supplier || '',
       lines: [{
         name: p.name, category: p.category, type: p.type || '',
+        typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '',
         color: p.color || '', cost: p.cost, price: p.price,
         sizes: Object.fromEntries(holes.map((h) => [h.size, 2])),
         photo: p.photo || null,
