@@ -9,7 +9,7 @@
   import SpeedDial from '../components/SpeedDial.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
-  import { longpress } from '../motion.js';
+  import { longpress, flyToCart, popBadge } from '../motion.js';
   import VariantBits from '../components/VariantBits.svelte';
   import Pick from '../components/Pick.svelte';
   import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType } from '../db.js';
@@ -246,6 +246,28 @@
     }
   });
 
+  /* نبض السلة: سلة فيها فلوس تنتظر — بعد 20 دقيقة سكون تُناده مرة واحدة بلطف،
+     ولا يتكرر الإلحاح حتى تُفرَّغ وتبدأ سلة جديدة. */
+  let cartReminded = $state(false);
+  $effect(() => {
+    const fingerprint = cart.map((c) => `${c.sku}:${c.qty}`).join('|');
+    if (!cart.length) { cartReminded = false; return; }
+    if (cartReminded) return;
+    const t = setTimeout(() => {
+      cartReminded = true;
+      buzz([15, 40, 15]);
+      toast('سلتك ما زالت بانتظارك 🛍');
+      const bar = document.querySelector('.cartbar');
+      if (bar) {
+        bar.classList.remove('nudge');
+        void bar.offsetWidth;
+        bar.classList.add('nudge');
+        setTimeout(() => bar.classList.remove('nudge'), 900);
+      }
+    }, 20 * 60 * 1000);
+    return () => clearTimeout(t);
+  });
+
   function archiveLast() {
     if (!cart.length) return;
     lastCart = { items: cart.map((c) => ({ ...c })), at: Date.now() };
@@ -265,18 +287,27 @@
     toastOk('أُعيدت آخر سلة — تفضل');
   }
 
-  function addToCart(p) {
+  function addToCart(p, el) {
     if (p.qty <= 0) { toastErr('هذا الموديل نفد من المخزون'); return; }
+    /* دُرّبة الغزالة: القطعة تغادر الرف — رقاقة صورتها تطير بقوس ذهبي إلى السلة.
+       بعد إطار واحد حتى تكون شارة السلة موجودة (السلة تظهر مع أول إضافة). */
+    const fly = () =>
+      requestAnimationFrame(() => {
+        const badge = document.querySelector('.cart-badge');
+        if (!el || !flyToCart(el, p.photo)) popBadge(badge);
+      });
     /* سرعة هي الجوهر: لمسة واحدة = +1 قطعة فوراً.
        موديل بعدة تفاصيل → تُضاف أول قطعة متوفرة (أول لون بمقاسه)، والتعديل من السلة أو بالضغط المطول. */
     const variants = variantsOf(p);
     if (variants.length > 1) {
       const v = variants[0];
       addLine({ sku: v.sku, name: p.name, price: p.price, cost: p.cost, category: p.category, type: p.type || '', typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '', color: v.color === NOCOLOR ? '' : v.color, size: v.size === '—' ? '' : v.size });
+      fly();
       toast(`${p.modelChain || p.type || p.name} — ${v.color === NOCOLOR ? '' : v.color + ' '}${v.size !== '—' ? 'مقاس ' + v.size : ''} × 1`);
       return;
     }
     addLine({ sku: p.sku, name: p.name, price: p.price, cost: p.cost, category: p.category, type: p.type || '', typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '', color: p.color || '', size: String(p.size || '').trim() });
+    fly();
   }
 
   /* ضغطة مطولة على بطاقة البيع → قاطع التفاصيل الكامل (ألوان × مقاسات) */
@@ -339,6 +370,8 @@
 
   /* one cart line per (sku, color, size) — same-kind pieces merge automatically */
   function addLine(v, qty = 1) {
+    /* خُطوة: نبض اللمس يقوى مع امتلاء السلة — يدك تحس باليوم وهو يكبر (6ms → 10ms) */
+    const step = 6 + Math.min(4, cartCount);
     const found = cart.find((c) => c.sku === v.sku && (c.color || '') === (v.color || '') && (c.size || '') === (v.size || ''));
     const max = products.find((x) => x.sku === v.sku)?.qty || 0;
     if (found) {
@@ -348,7 +381,7 @@
     } else {
       cart = [...cart, { ...v, qty, max, vsKey: `${v.sku}|${v.color || ''}|${v.size || ''}` }];
     }
-    buzz(8);
+    buzz(step);
     toast(`${v.name} أُضيف للسلة`);
   }
 
@@ -571,7 +604,7 @@
           class="pcard rise {gqty === 0 ? 'oos' : ''}"
           style="animation-delay:{Math.min(i * 0.04, 0.4)}s"
           onlongpress={(e) => openPickerFor(p)}
-          onclick={() => addToCart(p)}
+          onclick={(e) => addToCart(p, e?.currentTarget)}
         >
           <div class="pthumb">
             {#if p.photo}<img src={p.photo} alt={p.name} />{:else}<Icon name="box" size={24} color="var(--taupe)" />{/if}
@@ -605,7 +638,7 @@
   {#if cart.length}
     <div class="cartbar glass-strong">
       <button class="cart-info" onclick={() => { buzz(8); openCheckout(); }}>
-        <span class="cart-badge pop">{fmtNum(cartCount)}</span>
+        <span class="cart-badge pop alive">{fmtNum(cartCount)}</span>
         <div class="cart-txt">
           <div class="bold">متابعة البيع</div>
           <div class="muted small">{fmtNum(cart.length)} سطر — {fmtIQD(subtotal)}</div>
@@ -922,6 +955,27 @@
     font-weight: 800;
     font-size: 16px;
     box-shadow: 0 6px 16px rgba(181, 73, 91, 0.4);
+  }
+  /* نبض السلة: الشارة تتنفس بهدوء ما دامت فيها قطع — تبدأ بعد سكون الأربعين الثانية */
+  :global(.cart-badge.alive) {
+    animation:
+      pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both,
+      cart-breathe 2.6s ease-in-out 0.8s infinite;
+  }
+  @keyframes cart-breathe {
+    0%, 100% { transform: scale(1); box-shadow: 0 6px 16px rgba(181, 73, 91, 0.4); }
+    50% { transform: scale(1.05); box-shadow: 0 8px 22px rgba(181, 73, 91, 0.62); }
+  }
+  /* المناداة اللطيفة للسلة الناسية — مرة واحدة، لا إلحاح */
+  :global(.cartbar.nudge) { animation: cart-nudge 0.7s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  @keyframes cart-nudge {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-8px) rotate(-0.5deg); }
+    45% { transform: translateX(7px) rotate(0.4deg); }
+    70% { transform: translateX(-3px); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.cart-badge.alive), :global(.cartbar.nudge) { animation: none; }
   }
   .cart-txt { flex: 1; display: flex; flex-direction: column; align-items: flex-start; }
   .cart-badge.undo {

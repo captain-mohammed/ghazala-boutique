@@ -218,6 +218,88 @@ export function tilt(node, opts = {}) {
   };
 }
 
+/* ---------------- Fly-to-cart («دُرّبة الغزالة») ----------------
+   The piece leaves the shelf: a tiny photo chip flies from the tapped
+   card to the cart badge along a gold arc, dropping faint hoofprint
+   dots behind it; the badge catches it with a spring pop. Identity of
+   البيع السريع in one gesture — it belongs to no other tab.
+   Reduced motion → nothing flies; the caller falls back to the pop. */
+/* The badge catches the chip with a spring pop. WAAPI on purpose: it
+   composites over the badge's breathing CSS animation and hands back
+   control when done — no restart, no class juggling. */
+export function popBadge(badge) {
+  if (!badge) return;
+  try {
+    badge.animate(
+      [
+        { transform: 'scale(1)', boxShadow: '0 6px 16px rgba(181, 73, 91, 0.4)' },
+        { transform: 'scale(1.32)', boxShadow: '0 0 0 9px rgba(201, 161, 90, 0.28), 0 6px 18px rgba(181, 73, 91, 0.55)', offset: 0.4 },
+        { transform: 'scale(1)', boxShadow: '0 6px 16px rgba(181, 73, 91, 0.4)' }
+      ],
+      { duration: 550, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' }
+    );
+  } catch { /* very old WebView without WAAPI — the landing still reads */ }
+}
+
+export function flyToCart(fromEl, photo, badge = '.cart-badge') {
+  try {
+    if (!fromEl || reducedMotion()) return false;
+    const to = typeof badge === 'string' ? document.querySelector(badge) : badge;
+    if (!to) return false;
+    const r1 = fromEl.getBoundingClientRect();
+    const r2 = to.getBoundingClientRect();
+    if (!r1.width || !r2.width) return false;
+    const x1 = r1.left + r1.width / 2, y1 = r1.top + r1.height / 2;
+    const x2 = r2.left + r2.width / 2, y2 = r2.top + r2.height / 2;
+    const size = 30;
+    const chip = document.createElement('span');
+    chip.style.cssText =
+      `position:fixed;left:0;top:0;width:${size}px;height:${size}px;border-radius:50%;` +
+      'z-index:998;pointer-events:none;' +
+      (photo
+        ? `background-image:url(${photo});background-size:cover;background-position:center;`
+        : `background:linear-gradient(150deg,${SPARK_COLORS[0]},${SPARK_COLORS[4]});`) +
+      'border:2px solid rgba(201,161,90,.95);box-shadow:0 8px 20px rgba(58,26,32,.35);' +
+      `transform:translate(${x1 - size / 2}px,${y1 - size / 2}px);`;
+    document.body.appendChild(chip);
+    /* the arc: control point lifted well above the midpoint */
+    const cx = (x1 + x2) / 2;
+    const cy = Math.min(y1, y2) - 110;
+    const dur = 520;
+    const t0 = performance.now();
+    let lastDot = 0;
+    const tick = (now) => {
+      const t = Math.min(1, (now - t0) / dur);
+      const e = t * t * (3 - 2 * t); /* smoothstep — quick leave, soft landing */
+      const x = (1 - e) * (1 - e) * x1 + 2 * (1 - e) * e * cx + e * e * x2;
+      const y = (1 - e) * (1 - e) * y1 + 2 * (1 - e) * e * cy + e * e * y2;
+      chip.style.transform = `translate(${x - size / 2}px,${y - size / 2}px) scale(${1 - 0.4 * e})`;
+      chip.style.opacity = t > 0.88 ? String(Math.max(0, (1 - t) / 0.12)) : '1';
+      /* hoofprints: a faint gold dot dropped every ~90ms along the path */
+      if (now - lastDot > 90 && t < 0.85) {
+        lastDot = now;
+        const dot = document.createElement('span');
+        dot.style.cssText = `position:fixed;left:0;top:0;width:6px;height:6px;border-radius:50%;background:rgba(201,161,90,.7);z-index:997;pointer-events:none;transform:translate(${x}px,${y}px);`;
+        document.body.appendChild(dot);
+        const da = dot.animate(
+          [{ opacity: 0.7, transform: `translate(${x}px,${y}px) scale(1)` }, { opacity: 0, transform: `translate(${x}px,${y + 6}px) scale(0.3)` }],
+          { duration: 420, easing: 'ease-out' }
+        );
+        const kill = () => dot.remove();
+        da.onfinish = kill;
+        da.oncancel = kill;
+        setTimeout(kill, 700);
+      }
+      if (t < 1) requestAnimationFrame(tick);
+      else { chip.remove(); popBadge(to); }
+    };
+    requestAnimationFrame(tick);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /* ---------------- Custom spring transitions ---------------- */
 
 /* Screen change: content slides in FROM the tapped tab's direction,
