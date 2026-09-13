@@ -7,9 +7,9 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
-  import { db } from '../db.js';
+  import { db, getSetting, setSetting } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz, copyText, sendWhatsApp } from '../utils.js';
-  import { toastOk } from '../store.js';
+  import { toastOk, toastErr } from '../store.js';
 
   let products = $state([]);
   let openPost = $state(null); // الموديل المفتوح حالياً
@@ -72,6 +72,83 @@
     if (opened) toastOk('فُتح واتساب — ارسليها لنفسك ثم انسخيها 💬');
   }
   const openInsta = () => window.open('https://www.instagram.com/', '_blank');
+
+  /* ---------- بطاقة غزالة + هوية البوتيك ----------
+     بيانات الاتصال تُعدّل هنا وتُحفظ في الإعدادات، والبطاقة تُرسم على canvas
+     وتُحمَّل كصورة — أول رسالة أنيقة لكل زبونة جديدة. */
+  let bPhone = $state('');
+  let bInsta = $state('');
+  let bHours = $state('');
+  let bLoc = $state('');
+  let brandLoaded = $state(false);
+  (async () => {
+    const s = await getSetting('brand', {});
+    bPhone = s.phone || ''; bInsta = s.insta || ''; bHours = s.hours || ''; bLoc = s.loc || '';
+    brandLoaded = true;
+  })();
+  async function saveBrand() {
+    await setSetting('brand', { phone: bPhone.trim(), insta: bInsta.trim(), hours: bHours.trim(), loc: bLoc.trim() });
+    toastOk('حُفظت هوية البوتيك');
+    buzz([14, 30, 14]);
+  }
+  let cardOpen = $state(false);
+  let cardUrl = $state('');
+  async function makeCard() {
+    try {
+      const W = 1000, H = 1500;
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const x = c.getContext('2d');
+      /* الخلفية الكريمية + دوائر غازية خفيفة */
+      x.fillStyle = '#FBF3EE'; x.fillRect(0, 0, W, H);
+      x.strokeStyle = 'rgba(181, 73, 91, 0.08)'; x.lineWidth = 2;
+      for (const [cx, cy, r] of [[W - 120, 180, 260], [120, H - 220, 300], [W / 2, H / 2, 380]]) {
+        x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.stroke();
+      }
+      x.fillStyle = '#B5495B';
+      x.font = 'bold 72px "Noto Naskh Arabic", sans-serif';
+      x.textAlign = 'center';
+      x.fillText('بوتيك غزالة', W / 2, 220);
+      x.font = '34px "Noto Naskh Arabic", sans-serif';
+      x.fillStyle = '#9C7B6B';
+      x.fillText('أناقة تمشي بخطى واثقة', W / 2, 285);
+      /* الشعار (إن وُجد) أو غزالة */
+      const logoData = await getSetting('logo', '');
+      const drawFallback = () => { x.font = '150px serif'; x.fillText('🦌', W / 2, H / 2 - 40); };
+      if (logoData) {
+        try {
+          const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = bad; i.src = logoData; });
+          const s = Math.min(420 / img.width, 420 / img.height);
+          x.drawImage(img, W / 2 - (img.width * s) / 2, H / 2 - 260, img.width * s, img.height * s);
+        } catch { drawFallback(); }
+      } else drawFallback();
+      /* بيانات الاتصال */
+      const lines = [
+        bPhone ? `واتساب: ${bPhone}` : '',
+        bInsta ? `إنستغرام: ${bInsta}` : '',
+        bHours ? `أوقات الدوام: ${bHours}` : '',
+        bLoc ? `العنوان: ${bLoc}` : ''
+      ].filter(Boolean);
+      x.font = '36px "Noto Naskh Arabic", sans-serif';
+      x.fillStyle = '#3A1A20';
+      let y = H - 360;
+      for (const l of lines) { x.fillText(l, W / 2, y); y += 64; }
+      x.font = '30px "Noto Naskh Arabic", sans-serif';
+      x.fillStyle = '#B5495B';
+      x.fillText('راسلينا على واتساب وطلبك يوصلك للباب 💛', W / 2, H - 90);
+      cardUrl = c.toDataURL('image/png');
+      cardOpen = true;
+    } catch (e) {
+      toastErr('تعذر رسم البطاقة');
+    }
+  }
+  function downloadCard() {
+    const a = document.createElement('a');
+    a.href = cardUrl;
+    a.download = 'ghazala-card.png';
+    a.click();
+    toastOk('حُمّلت البطاقة — أرسليها لأي زبونة جديدة 💌');
+  }
 </script>
 
 <div class="stack" style="gap:12px">
@@ -83,6 +160,20 @@
       </div>
       <span class="hero-ic"><Icon name="image" size={22} color="var(--burgundy)" /></span>
     </div>
+    {#if brandLoaded}
+      <div class="brand-grid">
+        <input class="input" bind:value={bPhone} dir="ltr" inputmode="tel" placeholder="واتساب البوتيك" />
+        <input class="input" bind:value={bInsta} dir="ltr" placeholder="حساب إنستغرام" />
+        <input class="input" bind:value={bHours} placeholder="أوقات الدوام" />
+        <input class="input" bind:value={bLoc} placeholder="العنوان" />
+      </div>
+      <div class="row" style="gap:8px; margin-top:8px">
+        <button class="btn ghost" style="flex:1; min-height:40px" onclick={saveBrand}>حفظ الهوية</button>
+        <button class="btn gold" style="flex:1; min-height:40px" onclick={makeCard}>
+          <Icon name="sparkle" size={14} /> بطاقة غزالة
+        </button>
+      </div>
+    {/if}
   </Glass>
 
   {#if loading}
@@ -149,7 +240,21 @@
   {/if}
 </Sheet>
 
+{#if cardOpen}
+  <Sheet open title="بطاقة غزالة" onclose={() => (cardOpen = false)}>
+    <div class="stack" style="gap:12px">
+      <img class="cardimg" src={cardUrl} alt="بطاقة غزالة" />
+      <button class="btn gold block" style="min-height:44px" onclick={downloadCard}>
+        <Icon name="download" size={15} /> تحميل البطاقة
+      </button>
+      <div class="muted tiny" style="text-align:center">أرسليها لكل زبونة جديدة — أول انطباع أناقة 💛</div>
+    </div>
+  </Sheet>
+{/if}
+
 <style>
+  .brand-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 12px; }
+  .cardimg { width: 100%; border-radius: 14px; border: 1px solid var(--line-2); display: block; }
   .hero-ic {
     width: 44px; height: 44px; border-radius: 14px; flex: none;
     display: flex; align-items: center; justify-content: center;

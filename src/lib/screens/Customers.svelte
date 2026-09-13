@@ -7,7 +7,7 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
-  import { db, upcomingOccasions } from '../db.js';
+  import { db, upcomingOccasions, addReferral, addTestimonial, referralStats } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, salePieces, daysAgoStart, buzz, sendWhatsApp, buildSalesMessage } from '../utils.js';
   import { toastOk } from '../store.js';
 
@@ -39,6 +39,7 @@
     for (const o of occasions) { const c = touch(o.customerName, o.customerPhone); if (c) c.occasions.push(o); }
 
     const weekAgo = daysAgoStart(6);
+    refStats = await referralStats();
     customers = [...map.values()].map((c) => {
       const sales = [...c.sales].sort((a, b) => new Date(b.date) - new Date(a.date));
       const active = sales.filter((s) => s.status !== 'returned');
@@ -68,6 +69,34 @@
     customers.filter((c) => c.daysSince !== null && c.daysSince >= 21).sort((a, b) => b.daysSince - a.daysSince)
   );
 
+  /* ---------- ما بعد البيع: الإحالة والشهادة ----------
+     من شيت الزبونة: «جتني من…» يُقيّد الفضل، و«رأيها» يُضيف شهادة للوحة المواسم. */
+  let refOpen = $state(false);
+  let refName = $state('');
+  let refPhone = $state('');
+  let refPick = $state(null); // زبونة مختارة من الدفتر
+  async function saveReferral(c) {
+    if (!refPick && !refName.trim()) return toastErr('اختاري أو اكتبي اسم الصديقة');
+    const r = await addReferral({ fromName: c.name, fromPhone: c.phone, toName: refPick?.name || refName, toPhone: refPick?.phone || refPhone });
+    if (!r.ok) return toastErr(r.dup ? 'مسجلة من قبل لصديقة أخرى' : 'تعذر الحفظ');
+    refOpen = false; refName = ''; refPhone = ''; refPick = null;
+    buzz([14, 30, 14]);
+    toastOk('قُيّد الفضل لها 💛 — يشوفه في شريطها');
+    load();
+  }
+  let tstOpen = $state(false);
+  let tstText = $state('');
+  let tstStars = $state(5);
+  async function saveTestimonial(c) {
+    if (!tstText.trim()) return toastErr('اكتبي رأيها أول');
+    const last = c.sales[0];
+    const lastItem = last?.items?.[0];
+    await addTestimonial({ customerName: c.name, customerPhone: c.phone, text: tstText, rating: tstStars, modelId: lastItem?.modelId || '' });
+    tstOpen = false; tstText = ''; tstStars = 5;
+    buzz([14, 30, 14]);
+    toastOk('أُضيفت شهادتها — تتألق في لوحة المواسم ⭐');
+  }
+
   async function waGoneQuiet(c) {
     const msg = `مرحباً ${c.name} 🌷\nشتقتنا! وصلت موديلات جديدة على ذوقك بالضبط 💛\nمعك بوتيك غزالة — وقت ما تمرين، الباب مفتوح 🦌`;
     const { opened } = await sendWhatsApp(msg, c.phone);
@@ -96,6 +125,7 @@
     detail = c;
   }
 
+  let refStats = $state([]);
   async function waCustomer(c) {
     const msg = `مرحباً ${c.name} 🌷\nمعك ${'بوتيك غزالة'} — نحب نبقيك على اطلاع بجديد الموديلات التي تناسب ذوقك 💛`;
     const { opened } = await sendWhatsApp(msg, c.phone);
@@ -211,6 +241,20 @@
             <Icon name="whatsapp" size={16} /> واتساب
           </button>
         {/if}
+        <div class="row" style="gap:8px">
+          <button class="btn" style="flex:1; min-height:40px" onclick={() => { refOpen = true; refName = ''; refPhone = ''; refPick = null; }}>
+            <Icon name="sparkle" size={14} /> جتني من…
+          </button>
+          <button class="btn" style="flex:1; min-height:40px" onclick={() => { tstOpen = true; tstText = ''; tstStars = 5; }}>
+            <Icon name="flame" size={14} /> أضيفي رأيها
+          </button>
+        </div>
+        {#if (refStats.find((x) => x.fromName === detail.name)?.friends?.length)}
+          <div class="ref-ribbon">
+            <Icon name="sparkle" size={13} color="#8a6a35" />
+            <span>جابت <b>{fmtNum(refStats.find((x) => x.fromName === detail.name).friends.length)}</b> صديقة {refStats.find((x) => x.fromName === detail.name).friends.map((f) => f.name).join('، ')}</span>
+          </div>
+        {/if}
         {#if detail.nextOcc}
           <div class="occ-line muted small">🎂 {detail.nextOcc.label} — بعد {fmtNum(detail.nextOcc.diff)} يوم</div>
         {/if}
@@ -224,12 +268,52 @@
             <span class="money small">{fmtIQD(s.subtotal)}</span>
           </div>
           <div class="muted tiny">{fmtNum(salePieces(s))} قطعة{s.status === 'returned' ? ' — راجع' : ''}{s.province ? ` - ${s.province}` : ''}</div>
-        </Glass>
-      {:else}
-        <div class="muted small">لا عمليات بعد</div>
-      {/each}
+        </Glass>  {:else}
+    <div class="muted small">لا عمليات بعد</div>
+  {/each}
     </div>
   {/if}
+</Sheet>
+
+<!-- التقاط الإحالة: اختاري من الدفتر أو اكتبي زبونة جديدة -->
+<Sheet open={refOpen} title="جتني من…" onclose={() => (refOpen = false)}>
+  <div class="stack" style="gap:10px">
+    <div class="muted small">من جابت صديقتها؟ الفضل يُسجَّل باسمها ويتجمع في شريطها الذهبي.</div>
+    {#if refPick}
+      <button class="btn gold block" style="min-height:42px" onclick={() => saveReferral(detail)}>
+        <Icon name="check" size={15} /> قيّديها: {detail?.name} جابت {refPick.name}
+      </button>
+    {:else}
+      <input class="input" bind:value={refName} placeholder="اسم الصديقة…" />
+      <input class="input" bind:value={refPhone} dir="ltr" inputmode="tel" placeholder="رقمها (اختياري)" style="text-align:right" />
+      <div class="row wrap" style="gap:6px">
+        {#each customers.filter((c) => c.name !== detail?.name).slice(0, 8) as c (c.name + '|' + c.phone)}
+          <button class="chip" onclick={() => { refPick = c; }}>{c.name}</button>
+        {/each}
+      </div>
+      {#if refName.trim()}
+        <button class="btn gold block" style="min-height:42px" onclick={() => saveReferral(detail)}>
+          <Icon name="check" size={15} /> قيّديها: {detail?.name} جابت {refName}
+        </button>
+      {/if}
+    {/if}
+  </div>
+</Sheet>
+
+<!-- التقاط الشهادة: نجوم + نص -->
+<Sheet open={tstOpen} title="رأي الزبونة" onclose={() => (tstOpen = false)}>
+  <div class="stack" style="gap:10px">
+    <div class="muted small">شهادتها تتألق في لوحة المواسم بالرئيسية — وكُلّيها بصدقها.</div>
+    <div class="stars">
+      {#each [1, 2, 3, 4, 5] as s (s)}
+        <button class="star" class:on={s <= tstStars} onclick={() => (tstStars = s)}>★</button>
+      {/each}
+    </div>
+    <textarea class="input" rows="3" bind:value={tstText} placeholder="«مقاسها مضبوط والتغليف تحفة…»"></textarea>
+    <button class="btn gold block" style="min-height:44px" onclick={() => saveTestimonial(detail)}>
+      <Icon name="check" size={15} /> أضيفي شهادتها
+    </button>
+  </div>
 </Sheet>
 
 <style>
@@ -294,6 +378,25 @@
     box-shadow: 0 1px 4px rgba(164, 128, 62, 0.4);
   }
   .st-x { font-size: 10px; font-weight: 800; color: #8a6a35; margin-inline-start: 4px; }
+  /* شريط الإحالة الذهبي داخل شيت الزبونة */
+  .ref-ribbon {
+    display: flex; align-items: center; gap: 6px;
+    margin-top: 10px; padding: 7px 11px;
+    background: linear-gradient(90deg, rgba(212, 175, 55, 0.14), rgba(212, 175, 55, 0.04));
+    border: 1px dashed rgba(164, 128, 62, 0.4);
+    border-radius: 10px;
+    font-size: 11.5px; color: var(--ink-2);
+  }
+  .ref-ribbon b { color: #8a6a35; }
+  /* نجوم الشهادة */
+  .stars { display: flex; gap: 4px; justify-content: center; }
+  .star {
+    background: none; border: none; font-size: 26px; cursor: pointer;
+    color: var(--line-2); padding: 0 3px; font-family: inherit;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), color 0.15s;
+  }
+  .star.on { color: var(--gold); text-shadow: 0 2px 8px rgba(212, 175, 55, 0.4); }
+  .star:active { transform: scale(1.3); }
   /* الزبونات الغايبات */
   .gone { border-inline-start: 3px solid rgba(156, 123, 107, 0.45); }
   .gone-ic { font-size: 15px; }

@@ -128,12 +128,113 @@
     if (o.inDays <= 7) return 'soon';
     return 'calm';
   }
+
+  /* ---------- عدّاد المناسبات الحي ----------
+     كل مناسبة قريبة (٧ أيام) تشتغل فيها حلقة عدّ تنازلي حية — كل ثانية
+     تُحدث أيام:ساعات:دقائق:ثواني، وتتصاعد نغمتها كلما اقترب اليوم. */
+  let now = $state(Date.now());
+  $effect(() => {
+    const t = setInterval(() => (now = Date.now()), 1000);
+    return () => clearInterval(t);
+  });
+  const liveParts = (o) => {
+    const y = new Date().getFullYear();
+    let next = new Date(y, o.month - 1, o.day);
+    if (next < new Date(y, new Date().getMonth(), new Date().getDate())) next = new Date(y + 1, o.month - 1, o.day);
+    next.setHours(9, 0, 0, 0); /* مناسبات المحل تصبح صباح اليوم */
+    let ms = next.getTime() - now;
+    if (ms < 0) ms = 0;
+    const d = Math.floor(ms / 86400000);
+    const h = Math.floor((ms % 86400000) / 3600000);
+    const m = Math.floor((ms % 3600000) / 60000);
+    const s = Math.floor((ms % 60000) / 1000);
+    const pad = (n) => String(n).padStart(2, '0');
+    return [
+      { v: String(d), l: 'يوم' },
+      { v: pad(h), l: 'ساعة' },
+      { v: pad(m), l: 'دقيقة' },
+      { v: pad(s), l: 'ثانية' }
+    ];
+  };
+  const liveOcc = $derived(occasions.filter((o) => o.inDays <= 7).slice(0, 2));
+  const liveNow = $derived(liveOcc.map((o) => liveParts(o)));
+
+  /* اختيار غزالة: ٣ موديلات على الرف تناسب المناسبة — يظهر تحت العدّاد */
+  let picks = $state([]);
+  let picksFor = $state('');
+  $effect(() => {
+    let alive = true;
+    const grab = async () => {
+      const [prods, sales] = await Promise.all([db.products.toArray(), db.sales.toArray()]);
+      if (!alive) return;
+      const models = new Map();
+      for (const p of prods) {
+        if (!models.has(p.modelId)) models.set(p.modelId, { modelId: p.modelId, chain: '', photo: null, price: 0, qty: 0 });
+        const m = models.get(p.modelId);
+        const chain = [p.type, p.typeSub, p.typeSub2, p.typeSub3].filter(Boolean).join(' - ');
+        if (chain && !m.chain) m.chain = chain;
+        if (p.photo && !m.photo) m.photo = p.photo;
+        if (p.price > m.price) m.price = p.price;
+        m.qty += p.qty || 0;
+      }
+      const shelf = [...models.values()].filter((m) => m.qty > 0);
+      /* الترتيب: الأحدث وصولاً أولاً — الجديد يليق بالمناسبات */
+      const byNew = [...shelf].sort((a, b) => {
+        const na = Math.max(...prods.filter((p) => p.modelId === a.modelId).map((p) => new Date(p.createdAt).getTime()));
+        const nb = Math.max(...prods.filter((p) => p.modelId === b.modelId).map((p) => new Date(p.createdAt).getTime()));
+        return nb - na;
+      }).slice(0, 3);
+      picksFor = shelf.length ? '' : 'empty';
+      picks = byNew;
+    };
+    grab();
+    const t = setInterval(grab, 8000);
+    return () => { alive = false; clearInterval(t); };
+  });
 </script>
 
 <div class="stack" style="gap:12px">
   <button class="btn gold block" onclick={() => { buzz(8); openAdd(); }}>
     <Icon name="calendar" size={18} /> إضافة مناسبة
   </button>
+
+  {#if liveOcc.length}
+    <div class="stack" style="gap:10px">
+      {#each liveOcc as o, oi (o.id)}
+        <Glass class="live rise {o.inDays === 0 ? 'today' : ''}" style="animation-delay:{oi * 0.06}s; padding:14px">
+          <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:10px">
+            <div class="row" style="gap:7px; align-items:center">
+              <span class="live-ic">{o.label === 'عيد ميلاد' ? '🎂' : o.label === 'ذكرى زواج' ? '💍' : '🎉'}</span>
+              <div>
+                <div class="bold small">{o.label} {o.customerName}</div>
+                <div class="muted tiny">{whenLabel(o)}</div>
+              </div>
+            </div>
+            <span class="live-dot" class:hot={o.inDays === 0}></span>
+          </div>
+          <div class="count" class:hot={o.inDays === 0} aria-label="العد التنازلي">
+            {#each liveNow[oi] as part, pi (part.l)}
+              <div class="c-unit" style="animation-delay:{pi * 0.07}s">
+                <b>{part.v}</b>
+                <span>{part.l}</span>
+              </div>
+            {/each}
+          </div>
+          {#if picks.length}
+            <div class="muted tiny" style="margin:10px 0 6px">اختيار غزالة للمناسبة:</div>
+            <div class="pick-strip">
+              {#each picks as m (m.modelId)}
+                <div class="pick-t">
+                  {#if m.photo}<img src={m.photo} alt="" loading="lazy" />{:else}<span class="noimg"><Icon name="image" size={16} color="var(--taupe)" /></span>{/if}
+                  <span class="p-price">{fmtNum(m.price / 1000)}K</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+        </Glass>
+      {/each}
+    </div>
+  {/if}
 
   {#if occasions.length === 0 && later.length === 0}
     <EmptyState
@@ -229,6 +330,44 @@
 </Sheet>
 
 <style>
+  /* عدّاد المناسبات الحي */
+  .live { border-inline-start: 3px solid var(--gold); }
+  .live.today { border-inline-start-color: var(--burgundy); }
+  .live-ic { font-size: 22px; }
+  .live-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--gold); flex: none; animation: pulse 1.6s ease-in-out infinite; }
+  .live-dot.hot { background: var(--burgundy); animation-duration: 0.8s; }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.6); opacity: 0.45; }
+  }
+  .count { display: flex; gap: 7px; justify-content: center; }
+  .c-unit {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid var(--line-2);
+    border-radius: 10px;
+    padding: 6px 10px;
+    min-width: 52px;
+    animation: c-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+  .c-unit b { font-size: 19px; font-variant-numeric: tabular-nums; color: var(--ink); }
+  .c-unit span { font-size: 9px; color: var(--taupe); font-weight: 700; }
+  @keyframes c-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.9); }
+  }
+  .count.hot .c-unit b { color: var(--burgundy); }
+  .pick-strip { display: flex; gap: 8px; }
+  .pick-t {
+    position: relative; width: 64px; height: 64px; border-radius: 12px;
+    overflow: hidden; border: 1px solid var(--line-2); flex: none;
+    background: rgba(255, 255, 255, 0.5);
+  }
+  .pick-t img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pick-t .noimg { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+  .p-price {
+    position: absolute; bottom: 2px; inset-inline: 0; text-align: center;
+    font-size: 8.5px; font-weight: 800; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+  }
   :global(.orow) {
     display: flex;
     align-items: center;

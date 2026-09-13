@@ -50,7 +50,9 @@ db.version(5).stores({
   reservations: '++id, sku, createdAt, expiresAt, status',
   occasions: '++id, customerName, customerPhone, month, day, date',
   vault: '++id, date, saleId, kind',
-  waitlists: 'key, status, modelId, sku, createdAt'
+  waitlists: 'key, status, modelId, sku, createdAt',
+  referrals: '++id, fromKey, toKey, date',
+  testimonials: '++id, customerName, customerPhone, date, modelId'
 });
 
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
@@ -270,6 +272,48 @@ export async function firstdibsCampaign({ modelId = '', chain = 'موديل جد
     contacts = all.sort((a, b) => new Date(b.last || 0) - new Date(a.last || 0)).slice(0, 8);
   }
   return { kind: 'firstdibs', model: { modelId, chain, colors, sizes, price }, contacts };
+}
+
+/* ---------------- الإحالة والشهادات ولوحة المواسم ---------------- */
+
+/* شريط الإحالة: «جتني من فلانة» — الفضل يُقيَّد لمن جابت صديقتها.
+   المفتاحان يمنعان الازدواج: الصديقة الواحدة تُحتسب لمُحيلة واحدة فقط. */
+const custKey = (n, p) => `${(n || '').trim().toLowerCase()}|${(p || '').trim()}`;
+
+export async function addReferral({ fromName, fromPhone, toName, toPhone, note = '' }) {
+  if (!(fromName || '').trim() || !(toName || '').trim()) return { ok: false };
+  const toKey = custKey(toName, toPhone);
+  const all = await db.referrals.toArray();
+  if (all.some((r) => r.toKey === toKey)) return { ok: false, dup: true };
+  await db.referrals.add({
+    fromName: fromName.trim(), fromPhone: (fromPhone || '').trim(), fromKey: custKey(fromName, fromPhone),
+    toName: toName.trim(), toPhone: (toPhone || '').trim(), toKey,
+    note: (note || '').trim(), date: new Date().toISOString()
+  });
+  return { ok: true };
+}
+
+/* إحصاء الإحالات: لكل مُحيلة كم صديقة جابت — لشريط التقدير في دفتر الزبونات
+   ولصفحة شريط الإحالة. */
+export async function referralStats() {
+  const all = await db.referrals.toArray();
+  const map = new Map();
+  for (const r of all) {
+    if (!map.has(r.fromKey)) map.set(r.fromKey, { fromName: r.fromName, fromPhone: r.fromPhone, friends: [] });
+    map.get(r.fromKey).friends.push({ name: r.toName, phone: r.toPhone, date: r.date });
+  }
+  return [...map.values()].map((x) => ({ ...x, count: x.friends.length })).sort((a, b) => b.count - a.count);
+}
+
+/* شهادات الزبونات: رأيها بعد البيع — نجوم + نص، وتظهر في لوحة المواسم */
+export async function addTestimonial({ customerName, customerPhone, text, rating = 5, modelId = '', sku = '' }) {
+  if (!(customerName || '').trim()) return { ok: false };
+  await db.testimonials.add({
+    customerName: customerName.trim(), customerPhone: (customerPhone || '').trim(),
+    text: (text || '').trim(), rating: Math.min(5, Math.max(1, Math.round(Number(rating) || 5))),
+    modelId: modelId || '', sku: sku || '', date: new Date().toISOString()
+  });
+  return { ok: true };
 }
 
 export async function addProduct(data, { moveNote } = {}) {

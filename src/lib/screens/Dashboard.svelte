@@ -299,6 +299,96 @@
     <h1 class="h1">بوتيك غزالة</h1>
   </header>
 
+  {#if bestDay || streak >= 3 || bkKind === 'warn' || bkKind === 'bad' || bkKind === 'none'}
+    <div class="medals">
+      {#if bestDay}
+        <button class="medal gold-medal" onclick={() => { buzz(6); goto('reports'); }} title="أحسن يوم هذا الشهر">
+          <Icon name="sparkle" size={13} /> أحسن يوم: {fmtNum(bestDay.v)} قطعة — {dayLabelFromKey(bestDay.k)}
+        </button>
+      {/if}
+      {#if streak >= 3}
+        <span class="medal" title="أيام متتالية فيها بيع">
+          <Icon name="flame" size={13} /> سلسلة {fmtNum(streak)} يوم
+        </span>
+      {/if}
+      <button class="medal bk-{bkKind}" onclick={() => { buzz(6); goto('backup'); }} title="صحة النسخ الاحتياطي">
+        <Icon name="shield" size={13} />
+        {bkKind === 'none' ? 'لا نسخة بعد' : bkKind === 'bad' ? `نسخة منذ ${fmtNum(bkDays)} يوم` : bkKind === 'warn' ? `نسخة منذ ${fmtNum(bkDays)} يوم` : 'نسخة حديثة'}
+      </button>
+    </div>
+  {/if}
+
+  <section class="alerts">
+    {#if smartOn}
+      <Glass class="smart rise" style="animation-delay:0.05s">
+        <h3 class="sm-head"><span class="sm-ic"><Icon name="sparkle" size={14} color="#fff" /></span> اقتراحات غزالة الذكية</h3>
+        {#each restock as item (item.p.sku)}
+          <div class="sm-row">
+            <div class="a-body">
+              <div class="bold small">{item.p.name}{item.p.size ? ` — مقاس ${item.p.size}` : ''}</div>
+              <div class="muted tiny">نفد - بيع منه {fmtNum(item.sold)} قطعة هالأسبوع — فاضل تستلمين أكثر؟</div>
+            </div>
+            <button class="btn gold" style="min-height:38px; padding:0 12px; font-size:12.5px; flex:none" onclick={() => goRestock(item)}>
+              <Icon name="upload" size={14} /> استلام
+            </button>
+          </div>
+        {/each}
+        {#each deadInfo.slice(0, 2) as d (d.p.sku)}
+          <div class="sm-row">
+            <div class="a-body">
+              <div class="bold small">{d.p.name} — راكد {fmtNum(d.days)} يوم</div>
+              <div class="muted tiny">{fmtNum(d.p.qty)} قطعة على الرف - اعرضيها بخصم، أفضل من رف ساكن</div>
+            </div>
+            <button class="btn" style="min-height:38px; padding:0 12px; font-size:12.5px; flex:none" onclick={() => goShowOff(d.p)}>
+              <Icon name="cart" size={14} /> اعرضيها
+            </button>
+          </div>
+        {/each}
+      </Glass>
+    {/if}
+    {#if stock.out > 0 && !smartOn}
+      <Glass
+        as="button"
+        class="alert rise"
+        style="animation-delay:0.05s; border-radius:var(--r-md)"
+        action={tiltAlert}
+        onclick={() => goto('inventory')}
+      >
+        <span class="a-ic warn"><Icon name="alert" size={20} /></span>
+        <div class="a-body">
+          <div class="bold">{stock.out} موديل نفد من المخزون</div>
+          <div class="muted small">اضغطي لمراجعة المخزون</div>
+        </div>
+        <Icon name="back" size={18} color="var(--taupe)" />
+      </Glass>
+    {/if}
+    {#if dead.length > 0 && !smartOn}
+      <Glass
+        as="button"
+        class="alert rise"
+        style="animation-delay:0.08s; border-radius:var(--r-md)"
+        action={tiltAlert}
+        onclick={() => goto('reports')}
+      >
+        <span class="a-ic dead"><Icon name="clock" size={20} /></span>
+        <div class="a-body">
+          <div class="bold">{dead.length} موديل بلا حركة منذ {settings?.deadStockDays ?? 30} يوم</div>
+          <div class="muted small">شوفي تقرير المخزون الراكد</div>
+        </div>
+        <Icon name="back" size={18} color="var(--taupe)" />
+      </Glass>
+    {/if}
+    {#if !smartOn && stock.out === 0 && dead.length === 0 && loaded && products.length > 0}
+      <Glass class="alert rise" style="animation-delay:0.05s; border-radius:var(--r-md)">
+        <span class="a-ic ok"><Icon name="check" size={20} /></span>
+        <div class="a-body">
+          <div class="bold">كل شيء تحت السيطرة</div>
+          <div class="muted small">لا تنبيهات حالياً — ممتاز!</div>
+        </div>
+      </Glass>
+    {/if}
+  </section>
+
   {#if loaded && briefing.length}
     <Glass class="brief rise" style="animation-delay:0.045s" onclick={() => { buzz(6); goto('reports'); }} role="button" tabindex="0">
       <span class="b-ic"><Icon name="sparkle" size={16} color="#fff" /></span>
@@ -384,96 +474,6 @@
       <Icon name="back" size={16} color="var(--taupe)" />
     </Glass>
   {/if}
-
-  {#if bestDay || streak >= 3 || bkKind === 'warn' || bkKind === 'bad' || bkKind === 'none'}
-    <div class="medals">
-      {#if bestDay}
-        <button class="medal gold-medal" onclick={() => { buzz(6); goto('reports'); }} title="أحسن يوم هذا الشهر">
-          <Icon name="sparkle" size={13} /> أحسن يوم: {fmtNum(bestDay.v)} قطعة — {dayLabelFromKey(bestDay.k)}
-        </button>
-      {/if}
-      {#if streak >= 3}
-        <span class="medal" title="أيام متتالية فيها بيع">
-          <Icon name="flame" size={13} /> سلسلة {fmtNum(streak)} يوم
-        </span>
-      {/if}
-      <button class="medal bk-{bkKind}" onclick={() => { buzz(6); goto('backup'); }} title="صحة النسخ الاحتياطي">
-        <Icon name="shield" size={13} />
-        {bkKind === 'none' ? 'لا نسخة بعد' : bkKind === 'bad' ? `نسخة منذ ${fmtNum(bkDays)} يوم` : bkKind === 'warn' ? `نسخة منذ ${fmtNum(bkDays)} يوم` : 'نسخة حديثة'}
-      </button>
-    </div>
-  {/if}
-
-  <section class="alerts">
-    {#if smartOn}
-      <Glass class="smart rise" style="animation-delay:0.08s">
-        <h3 class="sm-head"><span class="sm-ic"><Icon name="sparkle" size={14} color="#fff" /></span> اقتراحات غزالة الذكية</h3>
-        {#each restock as item (item.p.sku)}
-          <div class="sm-row">
-            <div class="a-body">
-              <div class="bold small">{item.p.name}{item.p.size ? ` — مقاس ${item.p.size}` : ''}</div>
-              <div class="muted tiny">نفد - بيع منه {fmtNum(item.sold)} قطعة هالأسبوع — فاضل تستلمين أكثر؟</div>
-            </div>
-            <button class="btn gold" style="min-height:38px; padding:0 12px; font-size:12.5px; flex:none" onclick={() => goRestock(item)}>
-              <Icon name="upload" size={14} /> استلام
-            </button>
-          </div>
-        {/each}
-        {#each deadInfo.slice(0, 2) as d (d.p.sku)}
-          <div class="sm-row">
-            <div class="a-body">
-              <div class="bold small">{d.p.name} — راكد {fmtNum(d.days)} يوم</div>
-              <div class="muted tiny">{fmtNum(d.p.qty)} قطعة على الرف - اعرضيها بخصم، أفضل من رف ساكن</div>
-            </div>
-            <button class="btn" style="min-height:38px; padding:0 12px; font-size:12.5px; flex:none" onclick={() => goShowOff(d.p)}>
-              <Icon name="cart" size={14} /> اعرضيها
-            </button>
-          </div>
-        {/each}
-      </Glass>
-    {/if}
-    {#if stock.out > 0 && !smartOn}
-      <Glass
-        as="button"
-        class="alert rise"
-        style="animation-delay:0.08s; border-radius:var(--r-md)"
-        action={tiltAlert}
-        onclick={() => goto('inventory')}
-      >
-        <span class="a-ic warn"><Icon name="alert" size={20} /></span>
-        <div class="a-body">
-          <div class="bold">{stock.out} موديل نفد من المخزون</div>
-          <div class="muted small">اضغطي لمراجعة المخزون</div>
-        </div>
-        <Icon name="back" size={18} color="var(--taupe)" />
-      </Glass>
-    {/if}
-    {#if dead.length > 0 && !smartOn}
-      <Glass
-        as="button"
-        class="alert rise"
-        style="animation-delay:0.12s; border-radius:var(--r-md)"
-        action={tiltAlert}
-        onclick={() => goto('reports')}
-      >
-        <span class="a-ic dead"><Icon name="clock" size={20} /></span>
-        <div class="a-body">
-          <div class="bold">{dead.length} موديل بلا حركة منذ {settings?.deadStockDays ?? 30} يوم</div>
-          <div class="muted small">شوفي تقرير المخزون الراكد</div>
-        </div>
-        <Icon name="back" size={18} color="var(--taupe)" />
-      </Glass>
-    {/if}
-    {#if !smartOn && stock.out === 0 && dead.length === 0 && loaded && products.length > 0}
-      <Glass class="alert rise" style="animation-delay:0.08s; border-radius:var(--r-md)">
-        <span class="a-ic ok"><Icon name="check" size={20} /></span>
-        <div class="a-body">
-          <div class="bold">كل شيء تحت السيطرة</div>
-          <div class="muted small">لا تنبيهات حالياً — ممتاز!</div>
-        </div>
-      </Glass>
-    {/if}
-  </section>
 
   <!-- المدينة القديمة: موديلات نفدت من زمان — رف هادي بعيد عن التنبيهات -->
   {#if loaded && archived.length > 0}
@@ -570,7 +570,8 @@
   {/if}
 </Sheet>
 
-<style>  .brand {
+<style>
+  .brand {
     display: flex;
     align-items: center;
     justify-content: center; /* الشعار والاسم جنباً إلى جنب بمنتصف الصفحة */
