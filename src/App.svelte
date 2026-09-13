@@ -24,6 +24,8 @@
   import ReceiveInvoice from './lib/screens/ReceiveInvoice.svelte';
   import ModelOptions from './lib/screens/ModelOptions.svelte';
   import Occasions from './lib/screens/Occasions.svelte';
+  import Broadcast from './lib/screens/Broadcast.svelte';
+  import StoryStudio from './lib/screens/StoryStudio.svelte';
   import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays } from './lib/db.js';
 
   let locked = $state(true);
@@ -58,7 +60,9 @@
     pastesell: 'بيع من رسالة',
     receive: 'فاتورة وارد',
     modelopts: 'خيارات الموديلات',
-    occasions: 'المناسبات'
+    occasions: 'المناسبات',
+    broadcast: 'استوديو التسويق',
+    studio: 'استوديو القصص'
   };
 
   function goto(id) {
@@ -133,6 +137,8 @@
         {:else if screen === 'suppliers'}<Suppliers {goto} />
         {:else if screen === 'customers'}<Customers {goto} />
         {:else if screen === 'occasions'}<Occasions />
+        {:else if screen === 'broadcast'}<Broadcast {goto} />
+        {:else if screen === 'studio'}<StoryStudio />
         {/if}
       </div>
     {/key}

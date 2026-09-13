@@ -6,9 +6,9 @@
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf } from '../db.js';
   import { fmtIQD, buzz, iqd, fileToPhotoDataUrl, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
-  import { toastOk, toastErr, celebrateAt } from '../store.js';
+  import { toastOk, toastErr, celebrateAt, campaignContacts } from '../store.js';
 
-  let { product = null, photo = null, ondone = () => {} } = $props();
+  let { product = null, photo = null, ondone = () => {}, goto = () => {} } = $props();
 
   const editing = !!product;
   const NOCOLOR = 'بلا لون';
@@ -299,6 +299,16 @@
       if (updated) parts.push(`${updated} بطاقة ${editing ? 'محفوظة' : 'اندماجت'}`);
       if (created) parts.push(`${created} جديدة`);
       toastOk(`${editing ? 'تم الحفظ' : 'تمت الإضافة'} — ${totalPieces} قطعة (${parts.join(' - ')})`);
+      /* «قبل الجميع»: أول تسجيل لموديل واصل بكمية — كبار الزبونات أول من يعرف */
+      if (!editing && created > 0 && totalPieces > 0) {
+        try {
+          const { firstdibsCampaign } = await import('../db.js');
+          const chain = [type, typeSub, typeSub2, typeSub3].filter(Boolean).join(' - ') || category;
+          const colors = selColors.filter((c) => c && c !== 'بلا لون').join('، ') || '—';
+          const campaign = await firstdibsCampaign({ modelId: freshId, chain, colors, sizes: '—', price: iqd(price) });
+          if (campaign.contacts.length) { campaignContacts.set(campaign); ondone(); goto('broadcast'); return; }
+        } catch { /* لا تعطل الحفظ أبداً */ }
+      }
       ondone();
     } catch (e) {
       toastErr('حدث خطأ أثناء الحفظ');

@@ -438,7 +438,7 @@
 <SpeedDial actions={dialActions} onselect={onDial} label="إجراءات المخزون" />
 
 <Sheet open={showForm} title={editing ? 'تعديل موديل' : 'إضافة موديل جديد'} onclose={() => { showForm = false; editing = null; }}>
-  <ProductForm product={editing} photo={formPhoto} ondone={() => { showForm = false; editing = null; formPhoto = null; }} />
+  <ProductForm product={editing} photo={formPhoto} {goto} ondone={() => { showForm = false; editing = null; formPhoto = null; }} />
 </Sheet>
 
 <!-- Model sheet: everything about the model — colors × size-run → tap a size for its SKU -->

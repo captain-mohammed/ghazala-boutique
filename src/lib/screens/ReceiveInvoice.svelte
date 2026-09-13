@@ -4,10 +4,10 @@
   import Pick from '../components/Pick.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
-  import { receiveBatch, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting } from '../db.js';
+  import { receiveBatch, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, db, waitingForModel } from '../db.js';
   import { fmtNum, fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
   import { get } from 'svelte/store';
-  import { toastOk, toastErr, celebrateAt, invoicePreset } from '../store.js';
+  import { toastOk, toastErr, celebrateAt, invoicePreset, campaignContacts } from '../store.js';
 
   let { goto } = $props();
 
@@ -109,6 +109,41 @@
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.6, '📦');
       toastOk(`تم الاستلام — ${fmtNum(r.pieces)} قطعة (${fmtNum(r.added)} بطاقة جديدة${r.merged ? `، ${fmtNum(r.merged)} اندمجت` : ''})`);
+      /* التوريد = أقوى لحظة تسويق. الأولوية لقائمة الانتظار (بيع مضمون)،
+         وإلا ف«قبل الجميع» لكبار الزبونات. */
+      try {
+        const { firstdibsCampaign } = await import('../db.js');
+        /* ١) منتظرات وصلن قطعها؟ */
+        const matched = [];
+        for (const sku of r.touchedSkus || []) {
+          const p = await db.products.get(sku);
+          if (!p) continue;
+          for (const w of await waitingForModel({ modelId: p.modelId || '', sku, size: p.size || '', color: p.color || '' })) {
+            if (!matched.some((x) => x.key === w.key)) matched.push(w);
+          }
+        }
+        if (matched.length) {
+          const first = await db.products.get(r.touchedSkus[0]);
+          campaignContacts.set({
+            kind: 'waiting',
+            model: first ? { modelId: first.modelId, chain: [first.type, first.typeSub, first.typeSub2, first.typeSub3].filter(Boolean).join(' - ') || '—', colors: first.color || '—', sizes: String(first.size || ''), price: first.price } : null,
+            contacts: matched.map((w) => ({ name: w.customerName, phone: w.customerPhone }))
+          });
+          setTimeout(() => goto('broadcast'), 450);
+          return;
+        }
+        /* ٢) «قبل الجميع» */
+        const first = await db.products.get(r.touchedSkus?.[0]);
+        if (first) {
+          const chain = [first.type, first.typeSub, first.typeSub2, first.typeSub3].filter(Boolean).join(' - ') || first.category || 'موديل جديد';
+          const campaign = await firstdibsCampaign({ modelId: first.modelId, chain, colors: first.color || '—', sizes: '—', price: first.price || 0 });
+          if (campaign.contacts.length) {
+            campaignContacts.set(campaign);
+            setTimeout(() => goto('broadcast'), 450);
+            return;
+          }
+        }
+      } catch { /* لا تعطل الاستلام أبداً */ }
       setTimeout(() => goto('inventory'), 500);
     } catch (e) {
       console.error(e);

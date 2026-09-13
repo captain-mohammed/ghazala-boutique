@@ -3,7 +3,7 @@
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import { db, allSettings, setSetting, seedDemo, wipeAll } from '../db.js';
-  import { buzz, hashPin, WA_VARS, WA_STATUS_TEMPLATES } from '../utils.js';
+  import { buzz, hashPin, WA_VARS, WA_STATUS_TEMPLATES, MKT_TEMPLATES, MKT_VARS } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   let { goto = () => {} } = $props();
@@ -25,6 +25,15 @@
 
   const waCurrent = $derived(WA_STATUSES.find((s) => s.id === waStatus) || WA_STATUSES[0]);
 
+  /* رسائل التسويق — قالب لكل حملة (قبل الجميع / وصل انتظارك / إنقاذ الراكد / اشتقت لك) */
+  const MKT_LIST = Object.entries(MKT_TEMPLATES).map(([id, t]) => ({ id, ...t }));
+  let mkStatus = $state('firstdibs');
+  let mkText = $state('');
+  let mkTouched = $state(false);
+  let mkBox = $state(false);
+
+  const mkCurrent = $derived(MKT_LIST.find((s) => s.id === mkStatus) || MKT_LIST[0]);
+
   onMount(async () => {
     const s = await allSettings();
     deadDays = s.deadStockDays;
@@ -34,8 +43,45 @@
     suppliers = Array.isArray(s.suppliers) ? s.suppliers : [];
     waText = s[waCurrent.key] || waCurrent.def;
     waTouched = !!s[waCurrent.key];
+    mkText = s[mkCurrent.key] || mkCurrent.def;
+    mkTouched = !!s[mkCurrent.key];
     loaded = true;
   });
+
+  async function switchMk(id) {
+    mkStatus = id;
+    buzz(6);
+    await loadMk();
+  }
+  async function loadMk() {
+    const s = await allSettings();
+    mkText = s[mkCurrent.key] || mkCurrent.def;
+    mkTouched = !!s[mkCurrent.key];
+  }
+  function insertMkVar(token) {
+    mkText = (mkText || '') + token;
+    buzz(8);
+  }
+  async function saveMk() {
+    if (!mkText.trim()) { toastErr('القالب لا يمكن أن يكون فارغاً'); return; }
+    await setSetting(mkCurrent.key, mkText);
+    mkTouched = true;
+    toastOk(`تم حفظ قالب «${mkCurrent.label}»`);
+    buzz([14, 30, 14]);
+  }
+  async function resetMk() {
+    const ok = await askConfirm({
+      title: 'استعادة القالب الافتراضي؟',
+      body: `سيُستبدل نص قالب «${mkCurrent.label}» بالقالب الأصلي.`,
+      okLabel: 'استعادة'
+    });
+    if (!ok) return;
+    mkText = mkCurrent.def;
+    await setSetting(mkCurrent.key, mkText);
+    mkTouched = false;
+    toastOk('أُعيد القالب الافتراضي');
+    buzz(10);
+  }
 
   /* تبديل حالة القالب — النص والافتراضي يتبعانها */
   async function switchWaStatus(id) {
@@ -206,6 +252,38 @@
         <p class="muted small" style="margin-bottom:10px">نص الرسالة الجاهزة التي تُرسل للزبون عند البيع — عدّليه كما تحبين.</p>
         <button class="btn block" onclick={() => { waBox = true; buzz(8); }}>
           <Icon name="edit" size={16} /> تعديل نص الرسالة
+        </button>
+      {/if}
+    </Glass>
+
+    <Glass class="rise" style="padding:16px; animation-delay:0.13s">
+      <div class="row" style="justify-content:space-between; margin-bottom:12px">
+        <h2 class="h2"><Icon name="sparkle" size={17} color="var(--gold)" /> رسائل التسويق</h2>
+        {#if mkTouched}<span class="small muted">مخصصة</span>{/if}
+      </div>
+      <p class="muted small" style="margin:0 0 10px">قوالب حملات استوديو التسويق — {name} و{model} و{colors} و{sizes} تُصاغ لكل زبونة تلقائياً عند الإرسال.</p>
+      <div class="row wrap" style="gap:6px; margin-bottom:10px">
+        {#each MKT_LIST as t (t.id)}
+          <button type="button" class="chip" class:on={mkStatus === t.id} onclick={() => switchMk(t.id)}>{t.label}</button>
+        {/each}
+      </div>
+      {#if mkBox}
+        <div class="stack" style="gap:10px">
+          <div class="row wrap" style="gap:6px">
+            {#each MKT_VARS as v (v.token)}
+              <button class="chip" onclick={() => insertMkVar(v.token)} title={v.label}>{v.token}</button>
+            {/each}
+          </div>
+          <textarea class="input wa-ta" bind:value={mkText} rows="7" dir="rtl"></textarea>
+          <div class="row" style="gap:8px">
+            <button class="btn ghost" style="flex:1" onclick={() => (mkBox = false)}>إغلاق</button>
+            <button class="btn" style="flex:1" onclick={resetMk}>الافتراضي</button>
+            <button class="btn primary" style="flex:1" onclick={saveMk}>حفظ</button>
+          </div>
+        </div>
+      {:else}
+        <button class="btn block" onclick={() => { mkBox = true; buzz(8); }}>
+          <Icon name="edit" size={16} /> تعديل قالب «{mkCurrent.label}»
         </button>
       {/if}
     </Glass>

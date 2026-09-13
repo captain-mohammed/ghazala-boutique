@@ -322,6 +322,58 @@ export function buildSalesMessage(sale, template = DEFAULT_WA_TEMPLATE) {
   return out;
 }
 
+/* ---------- Marketing studio templates ----------
+   كل رسالة تسويق قالب في الإعدادات (استوديو التسويق) ومتغيراته تُصاغ لكل
+   زبونة على حِدة — نفس محرك رسائل الطلبات: renderTpl يتعامل مع المجهول.
+   القالب يُقرأ حياً من الإعدادات عند كل إرسال — لا نسخة قديمة. */
+export const MKT_VARS = [
+  { token: '{name}', label: 'اسم الزبونة' },
+  { token: '{model}', label: 'اسم الموديل' },
+  { token: '{colors}', label: 'الألوان المتوفرة' },
+  { token: '{sizes}', label: 'المقاسات المتوفرة' },
+  { token: '{price}', label: 'السعر' },
+  { token: '{shop}', label: 'اسم البوتيك' }
+];
+
+export const DEFAULT_MKT_FIRSTDIBS =
+  '{name} 🌸\n' +
+  'وصلنا الآن 👇\n{model}\nالألوان: {colors}\nالمقاسات: {sizes}\n' +
+  'جاي للأولات فقط — قبل ما ينفد 🏃‍♀️\n' +
+  '{price}\n{shop} 🦌';
+
+export const DEFAULT_MKT_WAITING =
+  '{name} 🌷\n' +
+  'المقطع اللي كنتِ تنتظرينه وصل!\n{model} — {colors}\nالمقاس: {sizes}\n' +
+  'حجزناه لك 💛 قلّينا إذا تبينه\n{shop} 🦌';
+
+export const DEFAULT_MKT_RESCUE =
+  '{name} 🌙\n' +
+  'عرض خاص لياليكم فقط:\n{model} — {colors}\nبسعر {price}\n' +
+  'الكمية محدودة — من الأولين يفوز 🎁\n{shop} 🦌';
+
+export const DEFAULT_MKT_QUIET =
+  'مرحباً {name} 🌷\n' +
+  'شتقنا لك! وصلت موديلات جديدة على ذوقك بالضبط 💛\n' +
+  'لكل زبونة عزيزة عرض ترحيبي — مريّنا بالبوتيك\n{shop} 🦌';
+
+/* مفاتيح الإعدادات + قوالبها — استوديو التسويق يعدّلها، الإرسال يقرأ الحيّة */
+export const MKT_TEMPLATES = {
+  firstdibs: { key: 'mktFirstdibs', def: DEFAULT_MKT_FIRSTDIBS, label: 'قبل الجميع' },
+  waiting: { key: 'mktWaiting', def: DEFAULT_MKT_WAITING, label: 'وصل انتظارك' },
+  rescue: { key: 'mktRescue', def: DEFAULT_MKT_RESCUE, label: 'إنقاذ الراكد' },
+  quiet: { key: 'mktQuiet', def: DEFAULT_MKT_QUIET, label: 'اشتقت لك' }
+};
+
+/* محرك صياغة موحّد — المتغيرات المجهولة تصير '—' بدل أن تبقى رموزاً خاماً.
+   جميع رسائل التسويق تمرّ من هنا: قالب + قاموس = نص نهائي جاهز. */
+export function renderTpl(template, vars = {}) {
+  let out = String(template || '');
+  for (const [k, v] of Object.entries(vars)) out = out.split(k).join(v ?? '—');
+  /* أي رمز {…} ما وصل له قيمة — ينظف بدل ما يظهر للمستلمة */
+  out = out.replace(/\{[a-zA-Z_]+\}/g, '—');
+  return out;
+}
+
 /* Normalize an Iraqi phone number for wa.me: keep digits only, and
    07XXXXXXXXX (11 digits) becomes the Iraq country code 964 + the 10-digit
    local number (7XXXXXXXX). Returns null when there's no usable number. */

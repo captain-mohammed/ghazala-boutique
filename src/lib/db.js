@@ -39,6 +39,20 @@ db.version(4).stores({
   vault: '++id, date, saleId, kind'
 });
 
+/* v5: + waitlists (قائمة الانتظار — زبونات ينتظرن مقاساً نافداً، وينادَين عند
+   التوريد) — قلب منظومة التسويق: نفد → انتظار → وصل → بيع مؤكد. */
+db.version(5).stores({
+  products: 'sku, name, category, brand, color, size, qty, updatedAt',
+  sales: '++id, date, status, customerName, customerPhone, barcode, deliveryCompany, settledAt, fromReservation',
+  movements: '++id, sku, date, type',
+  settings: 'key',
+  expenses: '++id, date, category',
+  reservations: '++id, sku, createdAt, expiresAt, status',
+  occasions: '++id, customerName, customerPhone, month, day, date',
+  vault: '++id, date, saleId, kind',
+  waitlists: 'key, status, modelId, sku, createdAt'
+});
+
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
 export const WOMENS_TYPES = ['بوت', 'سلامبر', 'موال', 'كعب عالي'];
 
@@ -190,6 +204,72 @@ export async function nextModelId() {
   const n = (await getSetting('modelIdSeq', 0)) + 1;
   await setSetting('modelIdSeq', n);
   return 'M-' + String(n).padStart(4, '0');
+}
+
+/* ---------------- Marketing suite (منظومة التسويق) ----------------
+   الحملات، قبل الجميع، قائمة الانتظار، إنقاذ الراكد — كلها تشتغل على بيانات
+   موجودة أصلاً: الزبونات، المبيعات، الموديلات. لا إدخال يدوي ولا سكيما جديدة
+   على السجلات القديمة. */
+
+/* قطعة على قائمة الانتظار — المفتاح المركّب يمنع التكرار لنفس الزبونة على
+   نفس الموديل والمقاس، وإعادة الإضافة بعد الشراء تعيد تنشيطها. */
+export async function addWaitlistEntry({ customerName, customerPhone, sku, modelId, size = '', color = '', note = '' }) {
+  if (!(customerName || '').trim() && !(customerPhone || '').trim()) return { ok: false };
+  const key = `${modelId || sku}|${(size || '').trim()}|${(customerPhone || '').trim() || (customerName || '').trim()}`;
+  const existing = await db.waitlists.get(key);
+  if (existing && existing.status === 'waiting') return { ok: false, dup: true };
+  await db.waitlists.put({
+    key,
+    customerName: (customerName || '').trim() || 'زبونة',
+    customerPhone: (customerPhone || '').trim(),
+    sku: sku || '', modelId: modelId || '',
+    size: (size || '').trim(), color: (color || '').trim(),
+    note: (note || '').trim(),
+    status: 'waiting', createdAt: new Date().toISOString(), notifiedAt: null
+  });
+  return { ok: true };
+}
+
+/* من ينتظر هذا الموديل؟ — تُنادى عند استلام توريد يطابق الموديل، واللون
+   والمقاس يُطبّقان فقط إن قُيّدا في الانتظار ووُجدا في التوريد. */
+export async function waitingForModel({ modelId = '', sku = '', size = '', color = '' } = {}) {
+  const all = await db.waitlists.where('status').equals('waiting').toArray();
+  return all.filter((w) => {
+    const sameModel = modelId ? w.modelId === modelId : sku ? w.sku === sku : false;
+    if (!sameModel) return false;
+    if (size && w.size && String(w.size) !== String(size)) return false;
+    if (color && w.color && w.color !== color) return false;
+    return true;
+  });
+}
+
+export async function markWaitNotified(key, { bought = false } = {}) {
+  const w = await db.waitlists.get(key);
+  if (!w) return;
+  await db.waitlists.put({ ...w, status: bought ? 'bought' : 'notified', notifiedAt: new Date().toISOString() });
+}
+
+/* حملة «قبل الجميع» — تُبنى تلقائياً بعد تسجيل موديل واصل:
+   كبار الزبونات (VIP) أولاً، وإن لم يوجدوا فأحدث الزبونات. */
+export async function firstdibsCampaign({ modelId = '', chain = 'موديل جديد', colors = '—', sizes = '—', price = 0 }) {
+  const sales = await db.sales.toArray();
+  const map = new Map();
+  for (const s of sales) {
+    if (s.status === 'returned') continue;
+    const k = `${(s.customerName || '').trim()}|${(s.customerPhone || '').trim()}`;
+    if (k === '|') continue;
+    if (!map.has(k)) map.set(k, { name: (s.customerName || '').trim() || 'زبونة', phone: (s.customerPhone || '').trim(), spent: 0, orders: 0, last: null });
+    const c = map.get(k);
+    c.spent += s.subtotal || 0;
+    c.orders += 1;
+    if (!c.last || new Date(s.date) > new Date(c.last)) c.last = s.date;
+  }
+  const all = [...map.values()];
+  let contacts = all.filter((c) => c.spent >= 150000 || c.orders >= 3); /* كبار الزبونات أولاً */
+  if (!contacts.length) {
+    contacts = all.sort((a, b) => new Date(b.last || 0) - new Date(a.last || 0)).slice(0, 8);
+  }
+  return { kind: 'firstdibs', model: { modelId, chain, colors, sizes, price }, contacts };
 }
 
 export async function addProduct(data, { moveNote } = {}) {

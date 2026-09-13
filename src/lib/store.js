@@ -77,5 +77,9 @@ export const catalogFilters = writable({
    when needed; the filter VALUES above are never touched by this */
 export const filtersOpen = writable(false);
 
+/* جهات اتصال محددة مسبقاً للاستوديو — من «قبل الجميع» أو «إنقاذ الراكد»
+   تُمرّر زبونات جاهزات، والاستوديو يفتح عليها مباشرة */
+export const campaignContacts = writable(null); // null | { contacts: [..], template: string }
+
 /* ---------- Misc ui ---------- */
 export const uiFlags = writable({ sawReportsTip: false });

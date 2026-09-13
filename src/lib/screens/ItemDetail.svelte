@@ -3,7 +3,7 @@
   import Sheet from '../components/Sheet.svelte';
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, adjustQty, deleteProduct, createReservation, RESERVATION_HOURS } from '../db.js';
+  import { db, adjustQty, deleteProduct, createReservation, RESERVATION_HOURS, addWaitlistEntry, waitingForModel } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt, invoicePreset } from '../store.js';
 
@@ -12,6 +12,23 @@
   let reserving = $state(false);
   let rName = $state('');
   let rPhone = $state('');
+
+  /* قائمة الانتظار: زبونة سألت عن مقاس نافد — سجّليها هنا، ونادِ عليها عند التوريد */
+  let wName = $state('');
+  let wPhone = $state('');
+  let waits = $state([]);
+  async function loadWaits() {
+    waits = await waitingForModel({ modelId: product?.modelId || '', sku: product?.sku || '' });
+  }
+  async function saveWait() {
+    if (!wName.trim() && !wPhone.trim()) return toastErr('الاسم أو الرقم مطلوب');
+    const r = await addWaitlistEntry({ customerName: wName, customerPhone: wPhone, sku: p.sku, modelId: p.modelId || '', size: p.size || '', color: p.color || '' });
+    if (!r.ok) return toastErr(r.dup ? 'هي موجودة بالانتظار أصلاً' : 'تعذر الحفظ');
+    wName = ''; wPhone = '';
+    toastOk('سُجّلت في قائمة الانتظار — ينادى عليها عند التوريد 🌷');
+    loadWaits();
+  }
+  async function dropWait(key) { await db.waitlists.delete(key); loadWaits(); }
 
   let p = $state(product);
   let moves = $state([]);
@@ -31,6 +48,7 @@
     if (sku) {
       db.movements.where('sku').equals(sku).reverse().toArray().then((m) => (moves = m.slice(0, 12)));
       db.products.toArray().then((ps) => (siblings = ps.filter((x) => sameModel(x, product))));
+      loadWaits();
     }
   });
 
@@ -176,6 +194,31 @@
       <Icon name="clock" size={16} /> حجز لزبونة
     </button>
   </div>
+
+  {#if p.qty <= 0}
+    <Glass class="run" radius="var(--r-md)">
+      <div class="run-head">
+        <span class="bold small" style="display:inline-flex; align-items:center; gap:6px"><Icon name="clock" size={14} color="var(--burgundy)" /> قائمة الانتظار</span>
+        {#if waits.length}<span class="muted tiny">{fmtNum(waits.length)} منتظرة</span>{/if}
+      </div>
+      <div class="muted tiny" style="margin-bottom:8px">نفد هذا المقاس؟ سجلي من تسأل عنه — وعند التوريد يصير إشعارها جاهزاً بضغطة.</div>
+      {#if waits.length}
+        <div class="stack" style="gap:5px; margin-bottom:9px">
+          {#each waits as w (w.key)}
+            <div class="row" style="justify-content:space-between; align-items:center">
+              <span class="small"><b>{w.customerName}</b>{w.color ? ` — ${w.color}` : ''}{w.size ? ` — مقاس ${w.size}` : ''}</span>
+              <button class="iconbtn" aria-label="حذف" onclick={() => dropWait(w.key)}><Icon name="x" size={12} /></button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+      <div class="row" style="gap:6px">
+        <input class="input" style="flex:1.2" bind:value={wName} placeholder="اسم الزبونة" />
+        <input class="input" style="flex:1; text-align:right" bind:value={wPhone} inputmode="tel" dir="ltr" placeholder="07xx…" />
+        <button class="btn gold" style="min-height:40px; padding-inline:14px" onclick={saveWait}><Icon name="plus" size={14} /></button>
+      </div>
+    </Glass>
+  {/if}
   <div class="row" style="gap:10px">
     <button class="btn primary" style="flex:1" onclick={() => { buzz(8); onedit(p); }}>
       <Icon name="edit" size={16} /> تعديل
