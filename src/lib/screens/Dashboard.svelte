@@ -8,7 +8,7 @@
   import VariantBits from '../components/VariantBits.svelte';
   import TargetRing from '../components/TargetRing.svelte';
   import { db, allSettings, upcomingOccasions, vaultState, vaultManual, archivedModels } from '../db.js';
-  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey, stockArrival, shelfAgeDays, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
+  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey, stockArrival, shelfAgeDays, baghdadLocalInput, isoFromBaghdadLocal, baghdadHour } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
   import Sheet from '../components/Sheet.svelte';
   import { invoicePreset, sellPrefill, toastOk, toastErr, celebrateAt } from '../store.js';
@@ -189,7 +189,7 @@
 
   /* ---- Daily briefing: one friendly morning line, parts assembled by importance ---- */
   const greeting = $derived.by(() => {
-    const h = new Date().getHours();
+    const h = baghdadHour(); /* توقيت بغداد — الساعة المحلية خدّاعة للسفر */
     if (h < 12) return 'صباح الخير 🌸';
     if (h < 17) return 'مساء الخير 🌷';
     return 'مساء الخير 🌙';

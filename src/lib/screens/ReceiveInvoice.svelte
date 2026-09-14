@@ -4,7 +4,7 @@
   import Pick from '../components/Pick.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
-  import { receiveBatch, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, db, waitingForModel } from '../db.js';
+  import { receiveBatch, nextModelId, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, db, waitingForModel } from '../db.js';
   import { fmtNum, fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, celebrateAt, invoicePreset, campaignContacts } from '../store.js';
@@ -29,6 +29,10 @@
   let note = $state('');
   let lines = $state([blank()]);
   let saving = $state(false);
+  /* عائلة «لون آخر لنفس الموديل»: كل الأسطر المنسوخة من بعضها تحمل family
+     واحداً — يُحوَّل لرقم موديل واحد (M-…) عند الحفظ، فتتجمّع ألوان الفاتورة
+     على بطاقة واحدة بدل أن تنشأ كموديلات منفصلة */
+  let familySeq = 0;
 
   /* سجل الموردين من الإعدادات — والاسم الجديد يُحفظ فيه تلقائياً عند الحفظ.
      أول مورد مُختار سلفاً — لا تُترك القائمة فارغة */
@@ -59,9 +63,16 @@
   function addSameModelLine() {
     const last = lines[lines.length - 1];
     if (!last) { addLine(); return; }
+    const shared =
+      (typeof last.modelId === 'string' && last.modelId.startsWith('M-')) ? last.modelId
+      : last.family ? last.family
+      : (familySeq += 1, 'F' + familySeq); /* عائلة جديدة — الأسطر تُرقَّم معاً عند الحفظ */
+    if (shared.startsWith('F')) last.family = shared;
     lines = [...lines, blank({
       category: last.category, type: last.type, typeSub: last.typeSub || '', typeSub2: last.typeSub2 || '', typeSub3: last.typeSub3 || '', season: last.season, material: last.material,
-      color: '', cost: last.cost, price: last.price, photo: last.photo, modelId: last.modelId || ++uid /* placeholder؛ يُثبَّت عند الحفظ */
+      color: '', cost: last.cost, price: last.price, photo: last.photo,
+      modelId: shared.startsWith('M-') ? shared : undefined,
+      family: shared.startsWith('F') ? shared : null
     })];
     buzz(8);
   }
@@ -89,21 +100,19 @@
     if (!good.length) { toastErr('سطر واحد على الأقل: مقاس بكمية'); return; }
     saving = true;
     try {
-      /* كل الأسطر التي تحمل نفس modelId (من «لون آخر لنفس الموديل») = موديل واحد */
-      const modelIds = new Map();
-      const idOf = (l) => {
-        if (l.modelId) return l.modelId;
-        const k = JSON.stringify([l.type, l.color, l.category, l.photo?.slice(0, 64) || '']);
-        if (!modelIds.has(k)) modelIds.set(k, undefined);
-        return undefined;
-      };
+      /* كل الأسطر التي تحمل نفس modelId أو نفس family = موديل واحد */
+      const familyIds = new Map();
+      for (const l of good) {
+        if (typeof l.modelId === 'string' && l.modelId.startsWith('M-')) continue;
+        if (l.family && !familyIds.has(l.family)) familyIds.set(l.family, await nextModelId());
+      }
       const r = await receiveBatch({
         supplier, invoice, note,
         lines: good.map((l) => ({
           name: lineAutoName(l), category: l.category, type: l.type, typeSub: l.typeSub || '', typeSub2: l.typeSub2 || '', typeSub3: l.typeSub3 || '', season: l.season, material: l.material, color: l.color,
           cost: iqd(l.cost), price: iqd(l.price),
           sizes: l.sizes, photo: l.photo,
-          modelId: typeof l.modelId === 'string' && l.modelId.startsWith('M-') ? l.modelId : undefined
+          modelId: (typeof l.modelId === 'string' && l.modelId.startsWith('M-')) ? l.modelId : familyIds.get(l.family)
         }))
       });
       buzz([30, 60, 30, 60, 30]);

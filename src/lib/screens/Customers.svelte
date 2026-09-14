@@ -398,7 +398,8 @@
   .star.on { color: var(--gold); text-shadow: 0 2px 8px rgba(212, 175, 55, 0.4); }
   .star:active { transform: scale(1.3); }
   /* الزبونات الغايبات */
-  .gone { border-inline-start: 3px solid rgba(156, 123, 107, 0.45); }
+  /* Glass host — scoped CSS never reaches it, so it must be global */
+  :global(.gone) { border-inline-start: 3px solid rgba(156, 123, 107, 0.45); }
   .gone-ic { font-size: 15px; }
   .g-name { font-weight: 800; font-size: 12.5px; color: var(--ink); }
   .g-wa {

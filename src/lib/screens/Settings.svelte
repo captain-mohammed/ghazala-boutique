@@ -261,7 +261,7 @@
         <h2 class="h2"><Icon name="sparkle" size={17} color="var(--gold)" /> رسائل التسويق</h2>
         {#if mkTouched}<span class="small muted">مخصصة</span>{/if}
       </div>
-      <p class="muted small" style="margin:0 0 10px">قوالب حملات استوديو التسويق — {name} و{model} و{colors} و{sizes} تُصاغ لكل زبونة تلقائياً عند الإرسال.</p>
+      <p class="muted small" style="margin:0 0 10px">&#123;name&#125; و&#123;model&#125; و&#123;colors&#125; و&#123;sizes&#125; و&#123;price&#125; — الرموز تُصاغ لكل زبونة تلقائياً عند الإرسال.</p>
       <div class="row wrap" style="gap:6px; margin-bottom:10px">
         {#each MKT_LIST as t (t.id)}
           <button type="button" class="chip" class:on={mkStatus === t.id} onclick={() => switchMk(t.id)}>{t.label}</button>

@@ -42,6 +42,9 @@
   const MAIN_TABS = new Set(NAV_TABS.map((t) => t.id));
   /* sub-pages (كل ما يفتح من «المزيد») get the bespoke back button in their header */
   const isSub = (id) => id !== 'home' && !MAIN_TABS.has(id);
+  /* screens with their own hero title — the header shows only the back button,
+     otherwise the title appears twice (and customers/suppliers had an empty one) */
+  const HERO_SCREENS = new Set(['suppliers', 'customers', 'broadcast', 'studio']);
 
   const SUBTITLES = {
     home: 'بوتيك غزالة',
@@ -62,7 +65,9 @@
     modelopts: 'خيارات الموديلات',
     occasions: 'المناسبات',
     broadcast: 'استوديو التسويق',
-    studio: 'استوديو القصص'
+    studio: 'استوديو القصص',
+    suppliers: 'دفتر الموردين',
+    customers: 'دفتر الزبونات'
   };
 
   function goto(id) {
@@ -115,7 +120,9 @@
             {#if isSub(screen)}
               <div class="head-back"><BackBtn onback={() => goto('more')} /></div>
             {/if}
-            <h1 class="h1">{SUBTITLES[screen] || ''}</h1>
+            {#if !HERO_SCREENS.has(screen)}
+              <h1 class="h1">{SUBTITLES[screen] || ''}</h1>
+            {/if}
           </header>
         {/if}
         {#if screen === 'home'}<Dashboard {goto} />

@@ -5,7 +5,7 @@
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf } from '../db.js';
-  import { fmtIQD, buzz, iqd, fileToPhotoDataUrl, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
+  import { fmtIQD, fmtNum, buzz, iqd, fileToPhotoDataUrl, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, celebrateAt, campaignContacts } from '../store.js';
 
   let { product = null, photo = null, ondone = () => {}, goto = () => {} } = $props();
@@ -14,12 +14,9 @@
   const NOCOLOR = 'بلا لون';
 
   /* الصورة هي الهوية — لا اسم موديل. يُشتق اسم داخلي من النوع واللون فقط
-     لغرض تجميع بطاقات نفس الموديل (الألوان × المقاسات) ودمج الاستلامات. */
-  const autoName = $derived(
-    [type, typeSub, typeSub2, typeSub3, selColors[0] && selColors[0] !== NOCOLOR ? selColors[0] : ''].filter(Boolean).join(' ') ||
-    category ||
-    'موديل'
-  );
+     لغرض تجميع بطاقات نفس الموديل (الألوان × المقاسات) ودمج الاستلامات.
+     ملاحظة: الاشتقاق هنا لأن التصنيف يُعبّأ من الموديل إن ترك فارغاً —
+     لا يتأثر بحالة «إلغاء تحديد النوع» أثناء التعديل. */
   let category = $state(product?.category ?? '');
   let type = $state(product?.type ?? '');
   let typeSub = $state(product?.typeSub ?? ''); // القائمة الثانية تحت النوع
@@ -65,8 +62,10 @@
   let opts = $state({ categories: [], types: [], seasons: [], materials: [], colors: [], typeSubs: {} });
   (async () => {
     suppliers = (await getSetting('suppliers', [])) || [];
-    /* أول مورد جاهز مُختار سلفاً — لا «بدون» في التطبيق */
-    if (!supplier && suppliers.length) supplier = suppliers[0];
+    /* أول مورد جاهز مُختار سلفاً — لا «بدون» في التطبيق.
+       في التعديل لا تعبئة تلقائية: الموديل القديم بلا مورد يبقى كما هو —
+       التعبئة كانت تعيد كتابة مورد كل بطاقات الموديل عند الحفظ */
+    if (!editing && !supplier && suppliers.length) supplier = suppliers[0];
   })();
   (async () => {
     opts = await modelOptions();
@@ -146,6 +145,14 @@
     buzz(6);
   }
 
+  /* الاسم الداخلي المشتق — تعريفه هنا فقط لأنه يقرأ الحالات بعد تعريفها كلها
+     (نسخة سابقة عرّفته قبل التصنيف: ReferenceError خفي عند أول تنفيذ) */
+  const autoName = $derived(
+    [type, typeSub, typeSub2, typeSub3, selColors[0] && selColors[0] !== NOCOLOR ? selColors[0] : ''].filter(Boolean).join(' ') ||
+    category ||
+    'موديل'
+  );
+
   /* القائمة الفرعية تتغير مع النوع — والقيمة القديمة تُمسح إذا خرجت عن القائمة */
   const subsNow = $derived(subsOfType(opts.typeSubs, type));
   $effect(() => { if (typeSub && !subsNow.includes(typeSub)) typeSub = ''; });
@@ -158,6 +165,26 @@
   const colorPieces = (c) => Object.values(byColor[c] || {}).reduce((a, n) => a + (Number(n) || 0), 0);
   const totalPieces = $derived(selColors.reduce((a, c) => a + colorPieces(c), 0));
   const totalSizes = $derived(selColors.reduce((a, c) => a + Object.values(byColor[c] || {}).filter((n) => n > 0).length, 0));
+
+  /* نص زر الحفظ يقرأ اختيارات المستخدمة فعلاً — القطع بالصيغة الصحيحة،
+     وأسماء الألوان والمقاسات المختارة، لا مجرد أرقام مجهولة */
+  const piecesWord = (n) =>
+    n === 1 ? 'قطعة واحدة' : n === 2 ? 'قطعتين' : n <= 10 ? `${fmtNum(n)} قطع` : `${fmtNum(n)} قطعة`;
+  const selColorsOn = $derived(selColors.filter((c) => colorPieces(c) > 0));
+  const selSizesOn = $derived(
+    [...new Set(selColors.flatMap((c) => Object.entries(byColor[c] || {}).filter(([, n]) => Number(n) > 0).map(([s]) => s)))]
+      .sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0))
+  );
+  const saveSummary = $derived.by(() => {
+    const parts = [];
+    const names = selColorsOn.map((c) => (c === NOCOLOR ? 'بلا لون' : c));
+    if (names.length === 1) parts.push(names[0]);
+    else if (names.length === 2) parts.push(names.join(' + '));
+    else if (names.length > 2) parts.push(`${fmtNum(names.length)} ألوان`);
+    if (selSizesOn.length === 1) parts.push(`مقاس ${selSizesOn[0]}`);
+    else if (selSizesOn.length > 1) parts.push(`${fmtNum(selSizesOn.length)} مقاسات`);
+    return parts.join(' - ');
+  });
 
   const profit = $derived(Math.max(0, iqd(price) - iqd(cost)));
   const margin = $derived(iqd(price) > 0 ? Math.round((profit / iqd(price)) * 100) : 0);
@@ -505,7 +532,11 @@
 
   <button class="btn primary lg block" onclick={save}>
     <Icon name="check" size={20} />
-    {editing ? 'حفظ التعديلات' : totalPieces > 0 ? `حفظ ${totalPieces} قطعة (${selColors.length} لون - ${totalSizes} مقاس)` : 'إضافة الموديل'}
+    {editing
+      ? `حفظ التعديلات${totalPieces > 0 ? ` — ${piecesWord(totalPieces)}` : ''}`
+      : totalPieces > 0
+        ? `حفظ ${piecesWord(totalPieces)}${saveSummary ? ` — ${saveSummary}` : ''}`
+        : 'إضافة الموديل'}
   </button>
 </div>
 

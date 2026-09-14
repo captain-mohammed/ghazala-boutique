@@ -6,6 +6,7 @@
   let {
     title = 'لا توجد بيانات',
     subtitle = 'يبدو أنك لم تضف شيئاً بعد.',
+    body = null, /* alias — several screens pass body=…; without it their text silently vanishes */
     actionLabel = null,
     onaction = () => {},
     icon = 'box'
@@ -35,7 +36,7 @@
   </div>
 
   <h2 class="h2">{title}</h2>
-  <p class="muted center sub">{subtitle}</p>
+  <p class="muted center sub">{subtitle || body}</p>
 
   {#if actionLabel}
     <button class="btn primary act" onclick={() => { buzz(10); onaction(); }}>

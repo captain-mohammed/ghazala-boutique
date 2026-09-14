@@ -407,7 +407,7 @@
             <div class="brow">
               <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
               <div class="a-body">
-                <div class="small bold">{s.customer || 'بدون اسم'}{s.phone ? ` - ${s.phone}` : ''}</div>
+                <div class="small bold">{s.customerName || 'بدون اسم'}{s.customerPhone ? ` - ${s.customerPhone}` : ''}</div>
                 <div class="muted tiny">{fmtDate(s.date)} - {fmtNum(salePieces(s))} قطعة</div>
               </div>
               <span class="money">{fmtIQD(s.subtotal)}</span>

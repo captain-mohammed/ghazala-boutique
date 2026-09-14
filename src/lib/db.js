@@ -317,6 +317,9 @@ export async function addTestimonial({ customerName, customerPhone, text, rating
 }
 
 export async function addProduct(data, { moveNote } = {}) {
+  /* Svelte $state proxies (seasons، sizes grids، سطور الفاتورة) لا تُستنسخ
+     إلى IndexedDB — نفس فخ setSetting: جولة JSON تُجرّدها قبل أي put */
+  data = JSON.parse(JSON.stringify(data ?? {}));
   const sku = data.sku || (await nextSku());
   const now = new Date().toISOString();
   /* وقت الوصول المخصص (نموذج الإضافة): يُحترم إذا جاء صالحاً وغير مستقبلي —
@@ -340,6 +343,8 @@ export async function addProduct(data, { moveNote } = {}) {
 export async function updateProduct(sku, changes, moveNote) {
   const before = await db.products.get(sku);
   if (!before) throw new Error('المنتج غير موجود');
+  /* نفس تطهير الـ$state proxies — التعديل من النموذج يحمل مصفوفات حيّة */
+  changes = JSON.parse(JSON.stringify(changes ?? {}));
   const now = new Date().toISOString();
   const p = { ...before, ...changes, sku, updatedAt: now };
   const diff = (Number(changes.qty ?? before.qty) || 0) - before.qty;
@@ -377,9 +382,12 @@ export async function deleteProduct(sku) {
   await db.products.delete(sku);
 }
 
-/* One-time convergence: every visual model (same name+category) shares ONE
-   internal modelId — legacy cards adopt the first id found in their group,
-   and groups without any id get a fresh one. Idempotent; cheap at boot. */
+/* One-time convergence: every visual model shares ONE internal modelId —
+   legacy cards adopt the first id found in their group, and groups without
+   any id get a fresh one. Idempotent; cheap at boot.
+   آمنة دائماً: لا تلمس بطاقة تحمل رقماً موجوداً — لو اشتق موديلان مستحدثان
+   اسماً متطابقاً (بوت أسود ×2 بتكلفة مختلفة) فلكلٍّ رقمه، ولا يُدمج أحدهما
+   في الآخر إثر اسم مشترك. */
 export async function backfillModelIds() {
   const all = await db.products.toArray();
   const groups = new Map();
@@ -389,10 +397,11 @@ export async function backfillModelIds() {
     groups.get(k).push(p);
   }
   for (const members of groups.values()) {
-    const existing = members.find((m) => m.modelId)?.modelId;
-    const mid = existing || (await nextModelId());
+    const ids = [...new Set(members.map((m) => m.modelId).filter(Boolean))];
+    const mid = ids.length === 1 ? ids[0] : ids.length ? null : await nextModelId();
+    if (!mid) continue; /* أرقام متضاربة بالمجموعة — تُترك كما هي، لا دمج إجباري */
     for (const m of members) {
-      if (m.modelId !== mid) await db.products.update(m.sku, { modelId: mid });
+      if (!m.modelId && m.modelId !== mid) await db.products.update(m.sku, { modelId: mid });
     }
   }
 }
@@ -876,21 +885,23 @@ export async function stocktakeApply(corrections) {
 /* ---------------- Backup / Restore ---------------- */
 
 export async function backupJSON() {
-  const [products, sales, movements, settings, expenses, reservations, occasions, vault] = await Promise.all([
+  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials] = await Promise.all([
     db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray(),
-    db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.vault.toArray()
+    db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.vault.toArray(),
+    db.waitlists.toArray(), db.referrals.toArray(), db.testimonials.toArray()
   ]);
   return {
-    app: 'ghazala-boutique', version: 4, exportedAt: new Date().toISOString(),
-    products, sales, movements, settings, expenses, reservations, occasions, vault
+    app: 'ghazala-boutique', version: 5, exportedAt: new Date().toISOString(),
+    products, sales, movements, settings, expenses, reservations, occasions, vault,
+    waitlists, referrals, testimonials
   };
 }
 
 export async function restoreJSON(data, { merge = false } = {}) {
   if (!data || data.app !== 'ghazala-boutique') throw new Error('ملف النسخة غير صالح');
   if (!merge) {
-    await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, async () => {
-      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear()]);
+    await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, async () => {
+      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear()]);
     });
   }
   await db.products.bulkPut(data.products || []);
@@ -903,11 +914,15 @@ export async function restoreJSON(data, { merge = false } = {}) {
   if (Array.isArray(data.reservations)) await db.reservations.bulkPut(data.reservations);
   if (Array.isArray(data.occasions)) await db.occasions.bulkPut(data.occasions);
   if (Array.isArray(data.vault)) await db.vault.bulkPut(data.vault);
+  /* v5 tables — older backups simply lack them */
+  if (Array.isArray(data.waitlists)) await db.waitlists.bulkPut(data.waitlists);
+  if (Array.isArray(data.referrals)) await db.referrals.bulkPut(data.referrals);
+  if (Array.isArray(data.testimonials)) await db.testimonials.bulkPut(data.testimonials);
 }
 
 export async function wipeAll() {
-  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, async () => {
-    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear()]);
+  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, async () => {
+    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear()]);
   });
 }
 
