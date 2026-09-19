@@ -208,6 +208,24 @@
   let formPhoto = $state(null);
   let wraps = $state([]); // card host elements — for pinning the long-press menu below its card
 
+  /* ---- windowing: only a slice of the (potentially huge) grouped list is in the DOM.
+     Scrolling to the bottom grows the slice via an IntersectionObserver sentinel, so a
+     1000-model catalogue no longer mounts 20k nodes at once (was blocking the main thread
+     ~950ms on scroll). invVisible resets whenever the data/filter/sort changes. ---- */
+  const INV_CAP = 48;
+  const INV_STEP = 48;
+  let invVisible = $state(INV_CAP);
+  let invSentinel = $state(null);
+  const invShown = $derived(sorted.slice(0, invVisible));
+  $effect(() => { sorted; invVisible = INV_CAP; });
+  $effect(() => {
+    const el = invSentinel;
+    if (!el) return;
+    const io = new IntersectionObserver(() => { invVisible += INV_STEP; }, { rootMargin: '800px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  });
+
   /* جدار الصور: تصفح الصور أولاً — ثلاث بطاقات بالصف، النوع والسعر رقاقة */
   let wall = $state(localStorage.getItem('ghazala.inv.wall') === '1');
   function toggleWall() {
@@ -370,7 +388,7 @@
     />
   {:else}
     <div class="grid" class:wall={wall}>
-      {#each sorted as g, i (g.key + g.items.length)}
+      {#each invShown as g, i (g.key + g.items.length)}
         <div class="cardwrap" class:lit={quickOps && quickOps.g.key === g.key} bind:this={wraps[i]}>
           <Glass
             as="button"
@@ -431,6 +449,14 @@
         </div>
       {/each}
     </div>
+    {#if invVisible < sorted.length}
+      <div class="more-row">
+        <button type="button" class="chip" onclick={() => (invVisible += INV_STEP)}>
+          عرض المزيد ({fmtNum(sorted.length - invVisible)} موديل)
+        </button>
+        <div bind:this={invSentinel} class="more-sentinel" aria-hidden="true"></div>
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -529,6 +555,8 @@
   .f-row { display: flex; gap: 8px; flex-wrap: wrap; }
   .f-row > :global(.dd) { flex: 1 1 calc(50% - 8px); min-width: 0; }
   .sort-note { margin-top: -4px; }
+  .more-row { display: flex; justify-content: center; padding: 18px 0 28px; }
+  .more-sentinel { height: 1px; width: 100%; }
   .grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr); /* بطاقتان جنباً إلى جنب دائماً */

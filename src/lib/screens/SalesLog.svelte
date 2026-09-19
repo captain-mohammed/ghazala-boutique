@@ -16,6 +16,7 @@
   ];
 
   let sales = $state([]);
+  let lastSalesSig = '';
   let filter = $state('all');
   let detail = $state(null);
   /* تعديل وقت العملية — يسري على الخزنة والحركات والتقارير */
@@ -32,12 +33,22 @@
     toastOk('حُرر وقت العملية — الخزنة والحركات والتقارير كلها تبعته');
   }
   let waTemplates = $state({}); // { pending, delivered, returned } — قالب لكل حالة
-
   $effect(() => {
     let alive = true;
     const grab = async () => {
       const s = await db.sales.toArray();
-      if (alive) sales = s.sort((a, b) => new Date(b.date) - new Date(a.date));
+      if (!alive) return;
+      /* بصمة رخيصة: لا نعيد رسم القائمة كل ٤ ثوانٍ إلا إذا تغيّرت فعلاً */
+      let sig = s.length + ':';
+      let m = 0;
+      for (let i = 0; i < s.length; i++) {
+        const t = Date.parse(s[i].updatedAt || s[i].date || 0);
+        if (t > m) m = t;
+      }
+      sig += m;
+      if (sig === lastSalesSig) return;
+      lastSalesSig = sig;
+      sales = s.sort((a, b) => new Date(b.date) - new Date(a.date));
     };
     grab();
     const t = setInterval(grab, 4000);
@@ -62,6 +73,23 @@
   });
 
   const filtered = $derived(filter === 'all' ? sales : sales.filter((s) => s.status === filter));
+
+  /* ---- windowing: only a slice of the (potentially huge) sales list is in the DOM.
+     Scrolling grows the slice via an IntersectionObserver sentinel. Avoids mounting
+     thousands of swipe-enabled rows at once. ---- */
+  const LOG_CAP = 40;
+  const LOG_STEP = 40;
+  let logVisible = $state(LOG_CAP);
+  let logSentinel = $state(null);
+  const logShown = $derived(filtered.slice(0, logVisible));
+  $effect(() => { filtered; logVisible = LOG_CAP; });
+  $effect(() => {
+    const el = logSentinel;
+    if (!el) return;
+    const io = new IntersectionObserver(() => { logVisible += LOG_STEP; }, { rootMargin: '800px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  });
 
   /* صور القطع — الصورة هي الهوية، تُجلب للتفاصيل */
   let photos = $state({});
@@ -192,7 +220,7 @@
     />
   {:else}
     <div class="stack" style="gap:10px">
-      {#each filtered as s, i (s.id)}
+      {#each logShown as s, i (s.id)}
         <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="swipe-wrap"
@@ -253,6 +281,14 @@
           </Glass>
         </div>
       {/each}
+      {#if logVisible < filtered.length}
+        <div class="more-row">
+          <button type="button" class="chip" onclick={() => (logVisible += LOG_STEP)}>
+            عرض المزيد ({fmtNum(filtered.length - logVisible)} عملية)
+          </button>
+          <div bind:this={logSentinel} class="more-sentinel" aria-hidden="true"></div>
+        </div>
+      {/if}
     </div>
   {/if}
 </div>
@@ -342,6 +378,8 @@
 </Sheet>
 
 <style>
+  .more-row { display: flex; justify-content: center; padding: 18px 0 28px; }
+  .more-sentinel { height: 1px; width: 100%; }
   .swipe-wrap {
     position: relative;
     border-radius: var(--r-lg);

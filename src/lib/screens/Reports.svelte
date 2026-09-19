@@ -266,7 +266,7 @@
     <Glass class="rise" style="animation-delay:0.15s; padding:16px">
       <h2 class="h2" style="margin-bottom:10px"><Icon name="flame" size={17} color="var(--burgundy)" /> الأكثر مبيعاً</h2>
       <div class="stack" style="gap:8px">
-        {#each best as b, i (b.sku)}
+        {#each best.slice(0, 20) as b, i (b.sku)}
           {@const ph = prodBySku.get(b.sku)?.photo}
           {@const bp = prodBySku.get(b.sku)}
           <div class="brow pop" style="animation-delay:{0.2 + i * 0.05}s">
@@ -316,7 +316,7 @@
       <p class="muted small" style="margin:0 0 10px">كم٪ من كل موديل انباع خلال {periodLabel} — مقياس التاجر الحقيقي. غيّري الفترة من الأعلى.</p>
       {#if movingFast.length}
         <div class="st-head good">يدور بسرعة — ما يلبث على الرف</div>
-        {#each movingFast as x (x.key)}
+        {#each movingFast.slice(0, 15) as x (x.key)}
           {@const ph = photoByModel.get(x.key)}
           {@const xp = firstByModel.get(x.key)}
           <div class="brow" style="margin-bottom:6px">
@@ -334,7 +334,7 @@
       {/if}
       {#if movingSlow.length}
         <div class="st-head slow">يتثاقل — فكّري بعرض أو تصفية</div>
-        {#each movingSlow as x (x.key)}
+        {#each movingSlow.slice(0, 15) as x (x.key)}
           {@const ph = photoByModel.get(x.key)}
           {@const xp = firstByModel.get(x.key)}
           <div class="brow" style="margin-bottom:6px">
@@ -378,7 +378,7 @@
       <h2 class="h2" style="margin-bottom:10px"><Icon name="alert" size={17} color="var(--warn)" /> نفد من المخزون ({holes.length})</h2>
       <p class="muted small" style="margin:0 0 10px">موديلات خلصت كل قطعها — حان وقت الاستلام.</p>
       <div class="stack" style="gap:8px">
-        {#each holes as h (h.key)}
+        {#each holes.slice(0, 20) as h (h.key)}
           <div class="brow">
             <span class="r-thumb">{#if h.items.find((p) => p.photo)}<img src={h.items.find((p) => p.photo).photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <div class="a-body">
@@ -426,7 +426,7 @@
       </button>
       {#if showReturned}
         <div class="stack" style="gap:8px; margin-top:10px">
-          {#each returnedSales as s (s.id)}
+          {#each returnedSales.slice(0, 20) as s (s.id)}
             {@const ph = prodBySku.get(s.items?.[0]?.sku)?.photo}
             <div class="brow">
               <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>

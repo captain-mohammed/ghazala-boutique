@@ -120,6 +120,22 @@
     return customers.filter((c) => `${c.name} ${c.phone}`.toLowerCase().includes(s));
   });
 
+  /* ---- windowing: فقط شريحة من قائمة الزبائن (قد تتجاوز الألف) داخل الـDOM.
+     التمرير يكبّر الشريحة عبر مراقب تقاطع. ---- */
+  const CUST_CAP = 40;
+  const CUST_STEP = 40;
+  let custVisible = $state(CUST_CAP);
+  let custSentinel = $state(null);
+  const custShown = $derived(filtered.slice(0, custVisible));
+  $effect(() => { filtered; custVisible = CUST_CAP; });
+  $effect(() => {
+    const el = custSentinel;
+    if (!el) return;
+    const io = new IntersectionObserver(() => { custVisible += CUST_STEP; }, { rootMargin: '800px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  });
+
   function openDetail(c) {
     buzz(6);
     detail = c;
@@ -179,7 +195,7 @@
       </Glass>
     {/if}
 
-    {#each filtered as c, i (c.name + '|' + c.phone)}
+    {#each custShown as c, i (c.name + '|' + c.phone)}
       <Glass class="rise" style="animation-delay:{Math.min(i * 0.04, 0.3)}s; padding:13px 14px">
         <button class="cust" onclick={() => openDetail(c)}>
           <span class="avatar" class:vip={c.vip}>{c.name.trim().charAt(0)}</span>
@@ -208,6 +224,14 @@
         </button>
       </Glass>
     {/each}
+    {#if custVisible < filtered.length}
+      <div class="more-row">
+        <button type="button" class="chip" onclick={() => (custVisible += CUST_STEP)}>
+          عرض المزيد ({fmtNum(filtered.length - custVisible)} زبونة)
+        </button>
+        <div bind:this={custSentinel} class="more-sentinel" aria-hidden="true"></div>
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -317,6 +341,8 @@
 </Sheet>
 
 <style>
+  .more-row { display: flex; justify-content: center; padding: 18px 0 28px; }
+  .more-sentinel { height: 1px; width: 100%; }
   .hero-ic {
     width: 44px; height: 44px; border-radius: 14px; flex: none;
     display: flex; align-items: center; justify-content: center;

@@ -147,6 +147,23 @@
     return sorted;
   });
 
+  /* ---- windowing: فقط شريحة من الكاتالوج (قد يكون ١٠٠٠+ موديل) داخل الـDOM.
+     التمرير لأسفل يكبّر الشريحة عبر مراقب تقاطع — كان فتح ١٠٠٠ بطاقة دفعة واحدة
+     يجمّد الخيط الرئيسي. ---- */
+  const SELL_CAP = 48;
+  const SELL_STEP = 48;
+  let sellVisible = $state(SELL_CAP);
+  let sellSentinel = $state(null);
+  const sellShown = $derived(filtered.slice(0, sellVisible));
+  $effect(() => { filtered; sellVisible = SELL_CAP; });
+  $effect(() => {
+    const el = sellSentinel;
+    if (!el) return;
+    const io = new IntersectionObserver(() => { sellVisible += SELL_STEP; }, { rootMargin: '800px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  });
+
   /* المقاسات المتوفرة للموديل كله — نفس مصدر الـpicker بالضبط */
   const modelSizes = $derived.by(() => {
     const m = new Map();
@@ -724,7 +741,7 @@
     />
   {:else}
     <div class="grid">
-      {#each filtered as p, i (p.sku)}
+      {#each sellShown as p, i (p.sku)}
         {@const gqty = modelQty.get(modelGroupKey(p)) || 0}
         <Glass
           as="button"
@@ -757,6 +774,14 @@
         </Glass>
       {/each}
     </div>
+    {#if sellVisible < filtered.length}
+      <div class="more-row">
+        <button type="button" class="chip" onclick={() => (sellVisible += SELL_STEP)}>
+          عرض المزيد ({fmtNum(filtered.length - sellVisible)} موديل)
+        </button>
+        <div bind:this={sellSentinel} class="more-sentinel" aria-hidden="true"></div>
+      </div>
+    {/if}
   {/if}
 </div>
 
@@ -1062,6 +1087,8 @@
   .f-row { display: flex; gap: 8px; }
   .f-row > :global(.dd) { flex: 1; min-width: 0; }
   .sort-note { margin-top: -4px; }
+  .more-row { display: flex; justify-content: center; padding: 18px 0 28px; }
+  .more-sentinel { height: 1px; width: 100%; }
 
   .grid { display: flex; flex-direction: column; gap: 10px; padding-bottom: 150px; }
   .pdot {
