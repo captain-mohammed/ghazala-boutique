@@ -19,7 +19,14 @@ export default defineConfig({
         fn(warning);
       }
     }),
-    legacy({ targets: ['chrome >= 87', 'safari >= 14'], modernPolyfills: true }),
+    /* modernPolyfills is intentionally OFF. It injected a ~132 kB core-js chunk
+       (50 kB gzip) into the MODERN critical path for structuredClone / hasOwn /
+       findLast — APIs this app never calls (verified: 0 hits in src/ and in the
+       shipped chunks). Legacy browsers still get polyfills-legacy through the
+       legacy build below, so switching it off costs no compatibility.
+       Re-enable only if a real ES2022+ API starts being used AND the browser
+       floor still includes Chrome < 98 / Safari < 15.4. */
+    legacy({ targets: ['chrome >= 87', 'safari >= 14'] }),
     VitePWA({
       registerType: 'prompt',
       injectRegister: 'script-defer',
