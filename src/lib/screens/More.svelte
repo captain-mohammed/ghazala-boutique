@@ -5,6 +5,14 @@
 
   let { goto } = $props();
 
+  /* «متجري» في الأعلى وحده — بلا أي قسم فوقه: هو ملخص المتجر كله */
+  const heroItem = {
+    id: 'store',
+    icon: 'store',
+    label: 'متجري',
+    desc: 'ملخص كل شيء — من أول سجل إلى اليوم: الأرباح والموديلات وآخر بيعة'
+  };
+
   /* الأدوات مجمعة بحسب عملها — كل قسم بعنوانه */
   const groups = [
     {
@@ -51,14 +59,30 @@
   ];
 </script>
 
+<!-- «متجري» — أول شيء في الصفحة، بلا عنوان قسم فوقه -->
+<div class="grp" style="animation-delay:0s">
+  <Glass
+    as="button"
+    class="menu hero-menu rise"
+    style="animation-delay:0.02s"
+    onclick={() => { buzz(10); goto(heroItem.id); }}
+  >
+    <span class="m-top">
+      <span class="m-ic"><Icon name={heroItem.icon} size={20} color="var(--burgundy)" /></span>
+      <span class="m-label">{heroItem.label}</span>
+    </span>
+    <span class="m-desc muted small">{heroItem.desc}</span>
+  </Glass>
+</div>
+
 {#each groups as g, gi (g.title)}
-  <div class="grp" style="animation-delay:{gi * 0.06}s">
+  <div class="grp" style="animation-delay:{(gi + 1) * 0.06}s">
     <div class="grp-title">{g.title}</div>
     {#each g.items as it, i (it.id)}
       <Glass
         as="button"
         class="menu rise"
-        style="animation-delay:{0.05 + gi * 0.06 + i * 0.04}s"
+        style="animation-delay:{0.05 + (gi + 1) * 0.06 + i * 0.04}s"
         onclick={() => { buzz(8); goto(it.id); }}
       >
         <span class="m-top">
@@ -94,6 +118,15 @@
   }
   .m-label { font-weight: 800; font-size: 15px; color: var(--ink); }
   .m-desc { padding-inline-start: 44px; }
+  /* «متجري» — أكبر وأبرز قليلاً من بقية الأدوات */
+  :global(.hero-menu) {
+    padding: 15px 16px;
+    border-color: rgba(181, 73, 91, 0.3);
+    background: linear-gradient(140deg, rgba(255, 255, 255, 0.72), rgba(181, 73, 91, 0.07));
+  }
+  :global(.hero-menu) .m-ic { width: 40px; height: 40px; border-radius: 13px; }
+  :global(.hero-menu) .m-label { font-size: 16.5px; }
+  :global(.hero-menu) .m-desc { padding-inline-start: 50px; }
   .grp { display: flex; flex-direction: column; gap: 10px; animation: grp-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; }
   @keyframes grp-in {
     from { opacity: 0; transform: translateY(14px); }

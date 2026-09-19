@@ -4,7 +4,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
   import Pick from '../components/Pick.svelte';
-  import { db, settleSale, moneyInTransit, setSetting, getSetting, addCompanyPayment, deleteCompanyPayment, companyCredits } from '../db.js';
+  import { db, settleSale, moneyInTransit, setSetting, getSetting, addCompanyPayment, deleteCompanyPayment, companyCredits, historicalPayments } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz, copyText, sendWhatsApp, iqd, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
@@ -24,6 +24,12 @@
   let payDate = $state(baghdadLocalInput().slice(0, 10)); /* تاريخ بغداد */
   let payNote = $state('');
   let saving = $state(false);
+  /* «دفعة قديمة» = أرشيف: تُسجَّل ولا تلمس الرصيد الحالي */
+  let payHistorical = $state(false);
+  let showPay = $state(false);
+  let showCos = $state(false);
+  let showArchive = $state(false);
+  let archived = $state([]);
 
   /* خيارات الشركة: سجل الشركات + أي اسم ظهر في مبيعات أو دفعات سابقة —
      حتى تُسجَّل فاتورة شركة لم تُضَف إلى السجل بعد */
@@ -47,14 +53,19 @@
     try {
       /* الظهيرة بتوقيت بغداد: يضمن أن الدفعة تقع في اليوم المطلوب بالضبط */
       const iso = isoFromBaghdadLocal(`${payDate || baghdadLocalInput().slice(0, 10)}T12:00`);
-      const r = await addCompanyPayment({ company, amount: amt, date: iso, note: payNote });
+      const r = await addCompanyPayment({ company, amount: amt, date: iso, note: payNote, historical: payHistorical });
       if (!r.ok) { toastErr('تعذّر تسجيل الدفعة'); return; }
       buzz([20, 50, 20]);
-      const extra = r.credit > 0 ? ` — ${fmtIQD(r.credit)} رصيد دائن (فواتير أقدم من التطبيق)` : '';
-      toastOk(`سُجّلت دفعة ${fmtIQD(amt)} — سوّت ${fmtNum(r.settled)} عملية${extra}`);
+      if (r.historical) {
+        toastOk(`حُفظت في السجل القديم: ${fmtIQD(amt)} — دون لمس الرصيد الحالي`);
+      } else {
+        const extra = r.credit > 0 ? ` — ${fmtIQD(r.credit)} رصيد دائن (فواتير أقدم من التطبيق)` : '';
+        toastOk(`سُجّلت دفعة ${fmtIQD(amt)} — سوّت ${fmtNum(r.settled)} عملية${extra}`);
+      }
       payAmount = '';
       payNote = '';
       payCompany = '';
+      payHistorical = false;
       detail = null;
     } finally { saving = false; }
   }
@@ -104,15 +115,16 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [s, c, pays, cr] = await Promise.all([
+      const [s, c, pays, cr, arch] = await Promise.all([
         db.sales.toArray(), db.settings.get('deliveryCompanies'),
-        db.payments.toArray(), companyCredits()
+        db.payments.toArray(), companyCredits(), historicalPayments()
       ]);
       if (!alive) return;
       sales = s;
       companies = c?.value || [];
       payments = pays;
       credits = cr;
+      archived = arch;
     };
     grab();
     const t = setInterval(grab, 4000);
@@ -228,56 +240,119 @@
   <!-- تسجيل دفعة قديمة: مدخل دائم في أعلى الصفحة — لا يعتمد على وجود عمليات
        معلّقة، ففاتورة قديمة قد تصل قبل أن يسجّل التطبيق أي بيع -->
   <Glass class="rise pay-top" style="animation-delay:0.04s">
-    <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:6px">
-      <span class="bold small"><Icon name="wallet" size={16} color="var(--gold)" /> سجّلي دفعة مستلمة</span>
-      {#if creditTotal > 0}<span class="muted tiny">رصيد دائن {fmtIQD(creditTotal)}</span>{/if}
-    </div>
-    <p class="muted small" style="margin:0 0 10px">
-      وصلتك فاتورة من شركة التوصيل — قديمة كانت أو جديدة؟ اكتبي مبلغها وتاريخها هنا، فتُسجَّل كما هي وتُخصم من المستحق.
-    </p>
-    {#if companyOptions.length}
-      <Pick bind:value={payCompany} options={companyOptions} placeholder="اختاري الشركة…" />
-    {:else}
-      <input class="input" bind:value={payCompany} placeholder="اسم شركة التوصيل… مثال: شركة النور" />
-    {/if}
-    <div class="row" style="gap:8px; margin-top:8px">
-      <input class="input" style="flex:1" bind:value={payAmount} inputmode="decimal" placeholder="المبلغ (بالآلاف)" />
-      <input class="input" type="date" style="flex:none; width:148px" bind:value={payDate} />
-    </div>
-    <input class="input" style="margin-top:8px" bind:value={payNote} placeholder="ملاحظة (اختياري) — مثال: فاتورة آب" />
-    <button class="btn gold block" style="margin-top:8px" onclick={() => savePayment()} disabled={saving}>
-      <Icon name="check" size={17} /> سجّلي الدفعة
+    <button class="c-head" onclick={() => { buzz(6); showPay = !showPay; }}>
+      <span class="c-ic"><Icon name="wallet" size={18} color="var(--burgundy)" /></span>
+      <span class="c-txt">
+        <span class="c-t">سجّلي دفعة مستلمة</span>
+        <span class="muted tiny">
+          {creditTotal > 0 ? `رصيد دائن ${fmtIQD(creditTotal)}` : 'فاتورة من الشركة — جديدة أو قديمة'}
+        </span>
+      </span>
+      <span class="chev" class:flip={showPay}><Icon name="back" size={14} /></span>
     </button>
+
+    {#if showPay}
+      <div class="c-body">
+        {#if companyOptions.length}
+          <Pick bind:value={payCompany} options={companyOptions} placeholder="اختاري الشركة…" />
+        {:else}
+          <input class="input" bind:value={payCompany} placeholder="اسم شركة التوصيل… مثال: شركة النور" />
+        {/if}
+        <div class="row" style="gap:8px; margin-top:8px">
+          <input class="input" style="flex:1" bind:value={payAmount} inputmode="decimal" placeholder="المبلغ (بالآلاف)" />
+          <input class="input" type="date" style="flex:none; width:148px" bind:value={payDate} />
+        </div>
+        <input class="input" style="margin-top:8px" bind:value={payNote} placeholder="ملاحظة (اختياري) — مثال: فاتورة آب" />
+
+        <div class="seg" style="margin-top:10px">
+          <button type="button" class="seg-b" class:on={!payHistorical} onclick={() => (payHistorical = false)}>
+            دفعة حالية — تُخصم من المستحق
+          </button>
+          <button type="button" class="seg-b" class:on={payHistorical} onclick={() => (payHistorical = true)}>
+            دفعة قديمة (أرشيف)
+          </button>
+        </div>
+        <p class="muted tiny" style="margin:7px 2px 0">
+          {payHistorical
+            ? 'تُحفظ بتاريخها ومبلغها في «السجل القديم» دون أن تلمس رصيد «عند شركات التوصيل الآن» — مناسبة لفواتير سابقة للتطبيق أو لفترات أُغلقت.'
+            : 'تُسوّي أقدم العمليات غير المسدّدة لهذه الشركة، وأي زيادة تصير رصيداً دائناً.'}
+        </p>
+
+        <button class="btn gold block" style="margin-top:8px" onclick={() => savePayment()} disabled={saving}>
+          <Icon name="check" size={17} /> {payHistorical ? 'احفظيها في السجل القديم' : 'سجّلي الدفعة'}
+        </button>
+      </div>
+    {/if}
   </Glass>
+
+  {#if archived.length}
+    <Glass class="rise arch" style="animation-delay:0.05s">
+      <button class="c-head" onclick={() => { buzz(6); showArchive = !showArchive; }}>
+        <span class="c-ic"><Icon name="file" size={18} color="var(--burgundy)" /></span>
+        <span class="c-txt">
+          <span class="c-t">السجل القديم</span>
+          <span class="muted tiny">{fmtNum(archived.length)} دفعة — للذاكرة ولا تدخل الرصيد الحالي</span>
+        </span>
+        <span class="chev" class:flip={showArchive}><Icon name="back" size={14} /></span>
+      </button>
+      {#if showArchive}
+        <div class="c-body">
+          {#each archived as p (p.id)}
+            <div class="pay-row">
+              <div style="flex:1; min-width:0">
+                <div class="bold small">{fmtIQD(p.amount)}</div>
+                <div class="muted tiny">{p.company || 'بدون شركة'} — {fmtDate(p.date)}{p.note ? ` — ${p.note}` : ''}</div>
+              </div>
+              <button class="pay-x" aria-label="حذف" onclick={() => removePayment(p)}><Icon name="x" size={12} /></button>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    </Glass>
+  {/if}
 
   <!-- names & money in one place: the companies list is edited right here -->
   <Glass class="rise co-edit" style="animation-delay:0.045s">
-    <h2 class="h2" style="margin-bottom:4px"><Icon name="truck" size={17} color="var(--burgundy)" /> شركات التوصيل</h2>
-    <p class="muted small" style="margin:0 0 10px">ضيفي الشركات اللي تتعاملين معها — تظهر لكِ قائمة جاهزة عند إتمام البيع.</p>
-    <div class="row wrap" style="gap:8px; margin-bottom:10px">
-      {#each companies as c (c)}
-        <span class="chip on">
-          {c}
-          <button class="chip-x" onclick={() => rmCo(c)} aria-label="حذف {c}">
-            <Icon name="x" size={12} color="#fff" />
-          </button>
+    <button class="c-head" onclick={() => { buzz(6); showCos = !showCos; }}>
+      <span class="c-ic"><Icon name="truck" size={18} color="var(--burgundy)" /></span>
+      <span class="c-txt">
+        <span class="c-t">شركات التوصيل</span>
+        <span class="muted tiny">
+          {companies.length ? `${fmtNum(companies.length)} شركة — وأجور التوصيل` : 'ضيفي شركاتك وأجور التوصيل'}
         </span>
-      {/each}
-      {#if !companies.length}<span class="muted small">لا شركات بعد — ضيفي الأولى</span>{/if}
-    </div>
-    <div class="row" style="gap:8px">
-      <input class="input" style="flex:1" bind:value={newCo} placeholder="اسم الشركة…" onkeydown={(e) => e.key === 'Enter' && addCo()} />
-      <button class="btn" onclick={addCo}><Icon name="plus" size={16} /> إضافة</button>
-    </div>
-    <hr class="divider-gold" style="margin:12px 0 10px" />
-    <div class="field">
-      <label>أجور التوصيل الافتراضية (د.ع)</label>
-      <div class="row" style="gap:8px">
-        <input class="input" bind:value={fee} inputmode="decimal" style="flex:1" />
-        <button class="btn primary" onclick={saveFee}>حفظ</button>
+      </span>
+      <span class="chev" class:flip={showCos}><Icon name="back" size={14} /></span>
+    </button>
+
+    {#if showCos}
+      <div class="c-body">
+        <p class="muted small" style="margin:0 0 10px">ضيفي الشركات اللي تتعاملين معها — تظهر لكِ قائمة جاهزة عند إتمام البيع.</p>
+        <div class="row wrap" style="gap:8px; margin-bottom:10px">
+          {#each companies as c (c)}
+            <span class="chip on">
+              {c}
+              <button class="chip-x" onclick={() => rmCo(c)} aria-label="حذف {c}">
+                <Icon name="x" size={12} color="#fff" />
+              </button>
+            </span>
+          {/each}
+          {#if !companies.length}<span class="muted small">لا شركات بعد — ضيفي الأولى</span>{/if}
+        </div>
+        <div class="row" style="gap:8px">
+          <input class="input" style="flex:1" bind:value={newCo} placeholder="اسم الشركة…" onkeydown={(e) => e.key === 'Enter' && addCo()} />
+          <button class="btn" onclick={addCo}><Icon name="plus" size={16} /> إضافة</button>
+        </div>
+        <hr class="divider-gold" style="margin:12px 0 10px" />
+        <div class="field">
+          <label>أجور التوصيل الافتراضية (د.ع)</label>
+          <div class="row" style="gap:8px">
+            <input class="input" bind:value={fee} inputmode="decimal" style="flex:1" />
+            <button class="btn primary" onclick={saveFee}>حفظ</button>
+          </div>
+          <span class="muted tiny" style="display:block; margin-top:5px">تُقدَّم مسبقاً عند إتمام أي بيع — وتقدرين تغيرينها لكل عملية من نفس الشاشة.</span>
+        </div>
       </div>
-      <span class="muted tiny" style="display:block; margin-top:5px">تُقدَّم مسبقاً عند إتمام أي بيع — وتقدرين تغيرينها لكل عملية من نفس الشاشة.</span>
-    </div>
+    {/if}
   </Glass>
 
   {#if byCompany.length === 0}
@@ -489,4 +564,28 @@
     transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   .pay-x:active { transform: scale(0.9); }
+  :global(.arch) { padding: 13px 14px; }
+  .c-head {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    background: none; border: none; padding: 0; cursor: pointer;
+    font-family: inherit; text-align: start;
+  }
+  .c-ic {
+    flex: none; width: 36px; height: 36px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent-soft);
+  }
+  .c-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .c-t { font-weight: 800; font-size: 14.5px; color: var(--ink); }
+  .c-body { margin-top: 12px; }
+  .seg {
+    display: flex; gap: 6px; padding: 4px; border-radius: 14px;
+    background: rgba(122, 46, 58, 0.07); border: 1px solid var(--line-2);
+  }
+  .seg-b {
+    flex: 1; border: none; background: none; cursor: pointer; font-family: inherit;
+    padding: 8px 6px; border-radius: 10px; font-size: 12px; font-weight: 800;
+    color: var(--taupe); transition: background 0.18s, color 0.18s;
+  }
+  .seg-b.on { background: var(--burgundy); color: #fff; }
 </style>

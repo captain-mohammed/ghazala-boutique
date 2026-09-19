@@ -881,12 +881,24 @@ export async function settleSale(id) {
    قديمة قد تخصّ مبيعات لم تُسجَّل في التطبيق أصلاً.
    ⚠️ هذا قبض **إيراد** سُجّل ربحه في الخزنة عند البيع — فلا يضيف ربحاً
    جديداً ولا يمسّ الخزنة. */
-export async function addCompanyPayment({ company, amount, date, note = '' }) {
+export async function addCompanyPayment({ company, amount, date, note = '', historical = false }) {
   const amt = Math.max(0, Math.round(Number(amount) || 0));
   if (!amt) return { ok: false, settled: 0, credit: 0 };
   const co = (company || '').trim();
   const when = date ? new Date(date) : new Date();
   const iso = (Number.isFinite(when.getTime()) ? when : new Date()).toISOString();
+
+  /* دفعة **قديمة (أرشيف)**: تُسجَّل كما هي للذاكرة ولا تُسوّي أي عملية ولا تُنقص
+     رصيد «عند شركات التوصيل الآن» — لأنها تخصّ مبيعات سابقة للتطبيق أو فترات
+     أُغلقت، وخلطها بالجديدة يفسد الرقم الحالي. تبقى ظاهرة في سجلها المنفصل
+     بتاريخها ومبلغها. */
+  if (historical) {
+    const id = await db.payments.add({
+      company: co, amount: amt, date: iso, note: (note || '').trim(),
+      settledSaleIds: [], credit: 0, historical: true, createdAt: new Date().toISOString()
+    });
+    return { ok: true, id, settled: 0, credit: 0, historical: true };
+  }
 
   const all = await db.sales.toArray();
   const open = all
@@ -904,9 +916,15 @@ export async function addCompanyPayment({ company, amount, date, note = '' }) {
 
   const id = await db.payments.add({
     company: co, amount: amt, date: iso, note: (note || '').trim(),
-    settledSaleIds, credit: left, createdAt: new Date().toISOString()
+    settledSaleIds, credit: left, historical: false, createdAt: new Date().toISOString()
   });
-  return { ok: true, id, settled: settledSaleIds.length, credit: left };
+  return { ok: true, id, settled: settledSaleIds.length, credit: left, historical: false };
+}
+
+/* الدفعات القديمة (أرشيف) — للعرض والذاكرة فقط، لا تدخل أي حساب جارٍ */
+export async function historicalPayments() {
+  const rows = await db.payments.toArray();
+  return rows.filter((p) => p.historical).sort((a, b) => new Date(b.date) - new Date(a.date));
 }
 
 export async function deleteCompanyPayment(id) {
