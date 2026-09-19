@@ -77,7 +77,7 @@ export function initSparks() {
 /* Programmatic burst from a DOM element's center (or any coords) —
    used for sales/added celebrations so the burst starts at the button */
 export function sparkFromRect(el, count = 14) {
-  if (!el) return;
+  if (!el || typeof el.getBoundingClientRect !== 'function') return;
   const r = el.getBoundingClientRect();
   spawnSparks(r.left + r.width / 2, r.top + r.height / 2, count);
 }
