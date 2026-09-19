@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <title>بوتيك غزالة — GHAZALA BOUTIQUE</title>
+    <meta name="description" content="نظام إدارة مخزون ومبيعات بوتيك غزالة — يعمل بدون إنترنت" />
+    <meta name="theme-color" content="#FBF3EE" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <link rel="icon" type="image/png" href="./icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="preload" as="font" type="font/woff2" href="./fonts/NotoSansArabic-Arabic.woff2" crossorigin /><link rel="preload" as="font" type="font/woff2" href="./fonts/NotoSansArabic-Latin.woff2" crossorigin />
+    <style>
+      html, body { margin: 0; padding: 0; background: #FBF3EE; font-family: 'Noto Sans Arabic', sans-serif; }
+      #app { min-height: 100dvh; }
+      .boot-splash { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; background: #FBF3EE; z-index: 1; }
+      .boot-splash .logo { width: 130px; height: auto; filter: drop-shadow(0 14px 30px rgba(122,46,58,.25)); animation: bootpulse 1.6s ease-in-out infinite; }
+      .boot-splash .name { font-size: 20px; color: #7A2E3A; letter-spacing: 3px; font-weight: 700; }
+      .boot-splash .tag { font-size: 13px; color: #9C7B6B; }
+      @keyframes bootpulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+    </style>
+    <script type="module" crossorigin src="./assets/index-B7rqmWHw.js"></script>
+    <link rel="modulepreload" crossorigin href="./assets/dexie-DjuqnqR7.js">
+    <link rel="modulepreload" crossorigin href="./assets/xlsx-BzRsgw-L.js">
+    <link rel="stylesheet" crossorigin href="./assets/index-Dr7IlBT_.css">
+    <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();window.__vite_is_modern_browser=true</script>
+    <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
+  <link rel="manifest" href="./manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="./registerSW.js" defer></script></head>
+  <body>
+    <div id="app">
+      <div class="boot-splash">
+        <img class="logo" src="./brand/wordmark.png" alt="بوتيك غزالة" />
+        <div class="name">GHAZALA BOUTIQUE</div>
+        <div class="tag">بوتيك غزالة — أناقة تمشي بخطى واثقة</div>
+      </div>
+    </div>
+    <!-- Service worker registration is owned by vite-plugin-pwa (injectRegister)
+         plus the workbox-window call in App.svelte, which is what drives the
+         «يتوفر تحديث جديد» prompt. Do not hand-register sw.js here — a third
+         raw register() races the workbox listeners and can swallow the prompt. -->
+    <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
+    <script nomodule crossorigin id="vite-legacy-polyfill" src="./assets/polyfills-legacy-Dx-u7oOP.js"></script>
+    <script nomodule crossorigin id="vite-legacy-entry" data-src="./assets/index-legacy-keE4ablP.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  </body>
+</html>

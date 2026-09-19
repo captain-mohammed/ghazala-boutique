@@ -561,9 +561,8 @@ export async function splitModel(skus) {
     await db.products.update(sku, { modelId: mid, updatedAt: now });
     moved++;
   }
-  /* «نفد» يُحسب على الموديل كله — المجموعتان تغيّرتا معاً */
-  for (const sku of list) await syncModelOos(sku);
-  if (stays.length) await syncModelOos(stays[0]);
+  /* «نفد» يُحسب على الموديل كله — المجموعتان تغيّرتا معاً (جلب واحد) */
+  await syncModelsFor([...list, ...(stays.length ? [stays[0]] : [])]);
   return { ok: true, modelId: mid, moved };
 }
 
@@ -633,10 +632,8 @@ export async function joinModels(modelIds) {
       movedSkus.push(p.sku);
     }
   }
-  /* «نفد» يُحسب على الموديل كله — الطرفان تغيّرا معاً */
-  for (const sku of movedSkus) await syncModelOos(sku);
-  const baseCards = groups.get(base);
-  if (baseCards?.length) await syncModelOos(baseCards[0].sku);
+  /* «نفد» يُحسب على الموديل كله — الطرفان تغيّرا معاً (جلب واحد) */
+  await syncModelsFor([...movedSkus, ...(baseCards?.length ? [baseCards[0].sku] : [])]);
   return { ok: true, base, moved: movedSkus.length };
 }
 
@@ -851,13 +848,8 @@ export async function recordSale({ items, customerName, customerPhone, province,
     }
     await logMovement({ sku: it.sku, type: 'out', qty: it.qty, note: `بيع #${id}${fromReservation ? ' • من حجز' : ''}` });
   }
-  /* نفد على مستوى الموديل — مرة لكل موديل لمسته البيعة */
-  const synced = new Set();
-  for (const it of items) {
-    if (synced.has(it.sku)) continue;
-    synced.add(it.sku);
-    await syncModelOos(it.sku);
-  }
+  /* نفد على مستوى الموديل — جلب واحد لكل الموديلات التي مستها البيعة */
+  await syncModelsFor(items.map((it) => it.sku));
   await vaultDeposit({ amount: sale.profit, saleId: id, note: `بيع #${id}` });
   return { ...sale, id };
 }
@@ -958,10 +950,11 @@ export async function returnSale(id) {
     const p = await db.products.get(it.sku);
     if (p) {
       await db.products.update(it.sku, { qty: p.qty + it.qty, updatedAt: now });
-      await syncModelOos(it.sku); /* القطع رجعت للرف — النفد ينمحى إن كان كامل الموديل راجع */
     }
     await logMovement({ sku: it.sku, type: 'in', qty: it.qty, note: `إرجاع بيع #${id}` });
   }
+  /* القطع رجعت للرف — النفد ينمحى إن كان الموديل كامل راجع. مرة واحدة للكل */
+  await syncModelsFor(s.items.map((it) => it.sku));
   await db.sales.update(id, { status: 'returned' });
   /* the sale's profit leaves the vault — recorded, never hidden */
   await vaultWithdraw({ amount: s.profit, saleId: id, note: `إرجاع بيع #${id}` });
@@ -1069,6 +1062,40 @@ export function archivedModels(products, days) {
    تصبح كل بطاقات الموديل (كل الألوان والمقاسات) فارغة معاً، وأي قطعة
    ترجع للرف تمحوه من الجميع. مقاس واحد وصل صفر يبقى فقرة في شجرة
    المقاسات (واستلام الناقص)، لا نفد. */
+/* نفد على مستوى الموديل — لعدة بطاقات بجلب **واحد** بدل جلب لكل بطاقة.
+   كانت العمليات تستدعي syncModelOos لكل قطعة في الحلقة، فبيع بخمس قطع
+   يقرأ الجدول كله خمس مرات. الآن: جلب واحد، تجميع، ثم مرة لكل موديل. */
+export async function syncModelsFor(skus) {
+  const list = [...new Set((skus || []).filter(Boolean))];
+  if (!list.length) return;
+  const all = await db.products.toArray();
+  const groups = new Map();
+  const bySku = new Map();
+  for (const p of all) {
+    const k = modelGroupKey(p);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(p);
+    bySku.set(p.sku, p);
+  }
+  const touched = new Set();
+  for (const sku of list) {
+    const p = bySku.get(sku);
+    if (p) touched.add(modelGroupKey(p));
+  }
+  const now = new Date().toISOString();
+  for (const k of touched) {
+    const members = groups.get(k) || [];
+    if (!members.length) continue;
+    if (members.every((m) => (m.qty || 0) === 0)) {
+      if (!members.some((m) => m.oosSince)) {
+        for (const m of members) await db.products.update(m.sku, { oosSince: now });
+      }
+    } else {
+      for (const m of members) if (m.oosSince) await db.products.update(m.sku, { oosSince: null });
+    }
+  }
+}
+
 export async function syncModelOos(sku) {
   const p = await db.products.get(sku);
   if (!p) return;
@@ -1223,8 +1250,9 @@ export async function stocktakeApply(corrections) {
     if (diff !== 0) {
       await logMovement({ sku: c.sku, type: diff > 0 ? 'in' : 'out', qty: Math.abs(diff), note: 'جرد' });
     }
-    await syncModelOos(c.sku);
   }
+  /* مرة واحدة للكل بدل جلب لكل بطاقة — الجرد قد يمسّ مئات البطاقات */
+  await syncModelsFor(corrections.map((c) => c.sku));
 }
 
 /* ---------------- Backup / Restore ---------------- */
