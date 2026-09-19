@@ -7,7 +7,7 @@
   import { receiveBatch, nextModelId, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, db, waitingForModel } from '../db.js';
   import { fmtNum, fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
   import { get } from 'svelte/store';
-  import { toastOk, toastErr, celebrateAt, invoicePreset, campaignContacts } from '../store.js';
+  import { toastOk, toastErr, toast, celebrateAt, invoicePreset, campaignContacts } from '../store.js';
 
   let { goto } = $props();
 
@@ -118,6 +118,16 @@
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.6, '📦');
       toastOk(`تم الاستلام — ${fmtNum(r.pieces)} قطعة (${fmtNum(r.added)} بطاقة جديدة${r.merged ? `، ${fmtNum(r.merged)} اندمجت` : ''})`);
+      /* سطر غامض: أكثر من موديل بنفس النوع واللون — لم نخمّن أبداً، ونسجّله
+         منفصلاً ونُبلّغ. التنبيه يبقى مدة أطول لأنه يهم فعلاً. */
+      if (r.splitOff?.length) {
+        const f = r.splitOff[0];
+        toast(
+          `⚠️ ${fmtNum(r.splitOff.length)} سطر سُجّل كموديل منفصل: عندك ${fmtNum(f.existing)} موديلات باسم «${f.name}». راجعيهم من «إصلاح الموديلات».`,
+          'error',
+          9000
+        );
+      }
       /* التوريد = أقوى لحظة تسويق. الأولوية لقائمة الانتظار (بيع مضمون)،
          وإلا ف«قبل الجميع» لكبار الزبونات. */
       try {

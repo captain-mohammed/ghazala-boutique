@@ -619,19 +619,68 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
   const sup = supplier.trim();
   const invNote = sup ? `فاتورة وارد${invoice ? ` #${invoice.trim()}` : ''} — ${sup}` : 'فاتورة وارد';
   const all = await db.products.toArray();
-  const idx = new Map(all.map((p) => [modelKey(p), p]));
+  /* البحث صار **داخل كل موديل على حِدة**، لا خريطة واحدة للجدول كله.
+     منذ 0.21.3 صار ممكناً أن يتقاسَم موديلان المفتاح نفسه (بوت أسود ×2 بصورة
+     وسعر مختلفين)، فخريطة واحدة كانت تختار أحدهما — حسب ترتيب المصفوفة — وتودع
+     الكمية في الموديل الخطأ بصمت، ولو كان السطر يقول صراحةً إنه من موديل آخر. */
+  const byModel = new Map();   // modelId → Map(modelKey → card)
+  const byName = new Map();    // name|category → Set(modelId)
+  const isMid = (v) => typeof v === 'string' && v.startsWith('M-');
+  for (const p of all) {
+    const mid = modelGroupKey(p);
+    if (!byModel.has(mid)) byModel.set(mid, new Map());
+    byModel.get(mid).set(modelKey(p), p);
+    const nk = `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+    if (!byName.has(nk)) byName.set(nk, new Set());
+    byName.get(nk).add(mid);
+  }
+  /* مجموعة قديمة بلا رقم موديل → نمنحها رقماً ونُلحِق بطاقاتها به (نفس منطق
+     backfillModelIds، لكن عند الحاجة بدل الانتظار لإعادة التشغيل) */
+  async function numberGroup(key) {
+    const bucket = byModel.get(key);
+    if (!bucket) return null;
+    const fresh = await nextModelId();
+    for (const c of bucket.values()) {
+      await db.products.update(c.sku, { modelId: fresh });
+      c.modelId = fresh;
+    }
+    byModel.delete(key);
+    byModel.set(fresh, bucket);
+    for (const s of byName.values()) if (s.delete(key)) s.add(fresh);
+    return fresh;
+  }
+
   let added = 0, merged = 0, pieces = 0;
   const touchedSkus = [];
+  const splitOff = [];   /* أسطر غامضة: أكثر من موديل بنفس النوع واللون — لم نخمّن */
   for (const ln of lines) {
     const name = (ln.name || '').trim();
     if (!name) continue;
-    /* one modelId per invoice line — every size of the line is the same model */
-    const lineModelId = ln.modelId || (await nextModelId());
+    const cat = ln.category || 'نسائية';
+    const cands = [...(byName.get(`${name.toLowerCase()}|${cat}`) || [])];
+    /* أي موديل يستقبل هذا السطر؟
+       ١) السطر يقول صراحةً «أنا من موديل موجود» (لون آخر لنفس الموديل) → هو.
+       ٢) موديل واحد بهذا الاسم → هو — التوريد المعتاد يندمج مع بطاقاته.
+       ٣) ولا موديل → رقم جديد.
+       ٤) أكثر من موديل → **غامض: لا تخمين** — رقم جديد، ويُبلَّغ عنه ليظهر
+          للمستخدمة بدل أن تُودَع الكمية في موديل لا تقصده. */
+    let target;
+    if (isMid(ln.modelId) && byModel.has(ln.modelId)) {
+      target = ln.modelId;
+    } else if (cands.length === 1) {
+      target = isMid(cands[0]) ? cands[0] : await numberGroup(cands[0]);
+    } else {
+      target = isMid(ln.modelId) ? ln.modelId : await nextModelId();
+      if (cands.length > 1) splitOff.push({ name, category: cat, existing: cands.length });
+    }
+    if (!byModel.has(target)) byModel.set(target, new Map());
+    const bucket = byModel.get(target);
+
     for (const [size, rawQty] of Object.entries(ln.sizes || {})) {
       const qty = Math.max(0, Math.round(Number(rawQty) || 0));
       const sz = String(size).trim();
       if (!qty || !sz) continue;
-      const twin = idx.get(modelKey({ name, category: ln.category, size: sz, color: ln.color }));
+      const twin = bucket.get(modelKey({ name, category: cat, size: sz, color: ln.color }));
       if (twin) {
         await updateProduct(twin.sku, {
           qty: (twin.qty || 0) + qty,
@@ -646,30 +695,27 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
           material: ln.material || twin.material || '',
           supplier: sup || twin.supplier || '',
           supplierAt: new Date().toISOString(),
-          photo: twin.photo || ln.photo || null,
-          /* legacy card → adopt the line's model number so the model converges */
-          modelId: twin.modelId || lineModelId
+          photo: twin.photo || ln.photo || null
         }, invNote + (note ? ` — ${note}` : ''));
         twin.qty += qty;
-        if (!twin.modelId) { twin.modelId = lineModelId; idx.set(modelKey({ ...twin }), twin); }
         merged++; pieces += qty; touchedSkus.push(twin.sku);
       } else {
         const p = await addProduct({
-          name, category: ln.category || 'نسائية', type: ln.type || '',
+          name, category: cat, type: ln.type || '',
           typeSub: ln.typeSub || '', typeSub2: ln.typeSub2 || '', typeSub3: ln.typeSub3 || '',
           season: ln.season || '', material: ln.material || '',
           seasons: ln.season ? [ln.season] : [],
           color: (ln.color || '').trim(), size: sz,
           cost: Number(ln.cost) || 0, price: Number(ln.price) || 0, qty,
           photo: ln.photo || null, supplier: sup, supplierAt: new Date().toISOString(),
-          notes: note || '', modelId: lineModelId
+          notes: note || '', modelId: target
         }, { moveNote: invNote + (note ? ` — ${note}` : '') });
-        idx.set(modelKey(p), p);
+        bucket.set(modelKey(p), p);
         added++; pieces += qty; touchedSkus.push(p.sku);
       }
     }
   }
-  return { added, merged, pieces, touchedSkus };
+  return { added, merged, pieces, touchedSkus, splitOff };
 }
 
 /* ---------------- Sales ---------------- */
