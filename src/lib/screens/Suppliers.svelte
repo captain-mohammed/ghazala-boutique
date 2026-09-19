@@ -5,8 +5,9 @@
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
-  import { db, getSetting } from '../db.js';
+  import { db, getSetting, setSetting } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz } from '../utils.js';
+  import { toastOk, toastErr } from '../store.js';
 
   let { goto } = $props();
 
@@ -14,6 +15,30 @@
   let open = $state(null);   // supplier being expanded
   let loading = $state(true);
   let loadedOnce = false;
+
+  /* سجل الموردين — انتقل هنا من الإعدادات: مكانه الطبيعي مع حساباتهم.
+     يظهر قائمة منسدلة في فاتورة الوارد ونموذج الموديل، فتُسجَّل كل قطعة
+     باسم من جاءت منه. */
+  let suppliers = $state([]);
+  let newSup = $state('');
+  let showReg = $state(false);
+
+  async function addSupplier() {
+    const name = String(newSup || '').trim();
+    if (!name) return;
+    if (suppliers.includes(name)) { toastErr('المورد موجود مسبقاً'); return; }
+    suppliers = [...suppliers, name];
+    await setSetting('suppliers', [...suppliers]);
+    newSup = '';
+    toastOk('أُضيف المورد');
+    buzz(8);
+  }
+  async function rmSupplier(name) {
+    suppliers = suppliers.filter((x) => x !== name);
+    await setSetting('suppliers', [...suppliers]);
+    toastOk('حُذف المورد من السجل');
+    buzz(6);
+  }
 
   /* حيّ مثل باقي الشاشات — بيع جديد أو مورد سُجّل في الإعدادات يظهران دون مغادرة،
      وبوابة التحميل تظهر على أول جلب فقط حتى لا ترمش الصفحة كل ثوانٍ */
@@ -24,11 +49,12 @@
   });
   async function load() {
     if (!loadedOnce) loading = true;
-    const [products, sales, suppliers] = await Promise.all([
+    const [products, sales, supList] = await Promise.all([
       db.products.toArray(),
       db.sales.toArray(),
       getSetting('suppliers', [])
     ]);
+    suppliers = Array.isArray(supList) ? supList : [];
     const saleBySku = new Map();
     for (const s of sales) {
       if (s.status === 'returned') continue;
@@ -90,11 +116,47 @@
   <Glass class="hero rise" style="padding:16px">
     <div class="row" style="justify-content:space-between; align-items:center">
       <div>
-        <h1 class="h1">دخيل الموردين</h1>
+        <h1 class="h1">دخل الموردين</h1>
         <div class="muted small">منين تشترين — ووش صار من مبيعات كل مورد</div>
       </div>
       <span class="hero-ic"><Icon name="upload" size={22} color="var(--burgundy)" /></span>
     </div>
+  </Glass>
+
+  <Glass class="reg rise" style="padding:14px 15px; animation-delay:0.04s">
+    <button class="reg-head" onclick={() => { buzz(6); showReg = !showReg; }}>
+      <span class="reg-ic"><Icon name="plus" size={17} color="var(--burgundy)" /></span>
+      <span class="reg-txt">
+        <span class="reg-t">سجل الموردين</span>
+        <span class="muted tiny">
+          {suppliers.length
+            ? `${fmtNum(suppliers.length)} مورد — يظهرون قائمة في فاتورة الوارد ونموذج الموديل`
+            : 'أضيفي أول مورد ليظهر في القوائم'}
+        </span>
+      </span>
+      <span class="chev" class:flip={showReg}><Icon name="back" size={14} /></span>
+    </button>
+
+    {#if showReg}
+      <div class="stack" style="gap:10px; margin-top:12px">
+        <div class="row" style="gap:8px">
+          <input class="input" bind:value={newSup} placeholder="اسم المورد… مثال: هاي مول - أبو علي" onkeydown={(e) => { if (e.key === 'Enter') addSupplier(); }} />
+          <button class="btn primary" style="flex:none" onclick={addSupplier}><Icon name="plus" size={15} /> إضافة</button>
+        </div>
+        {#if suppliers.length}
+          <div class="row wrap" style="gap:6px">
+            {#each suppliers as s (s)}
+              <span class="chip on">
+                {s}
+                <button class="chip-x" aria-label="حذف {s}" onclick={() => rmSupplier(s)}><Icon name="x" size={11} /></button>
+              </span>
+            {/each}
+          </div>
+        {:else}
+          <p class="muted tiny">لا موردين بعد — أضيفي أول اسم وستظهر في القوائم فوراً.</p>
+        {/if}
+      </div>
+    {/if}
   </Glass>
 
   {#if loading}
@@ -102,7 +164,7 @@
   {:else if !rows.length}
     <EmptyState
       title="لا موردون بعد"
-      body="سجلي مورديك من الإعدادات، وحددي المورد عند استلام الفاتورة — وكل شيء يُحسب هنا تلقائياً"
+      body="سجّلي مورديك من «سجل الموردين» في الأعلى، وحددي المورد عند استلام الفاتورة — وكل شيء يُحسب هنا تلقائياً"
       icon="upload"
     />
   {:else}
@@ -179,6 +241,18 @@
     font-family: inherit; text-align: right;
   }
   .sup-name { font-weight: 800; font-size: 15px; color: var(--ink); }
+  .reg-head {
+    width: 100%; display: flex; align-items: center; gap: 10px;
+    background: none; border: none; padding: 0; cursor: pointer;
+    font-family: inherit; text-align: start;
+  }
+  .reg-ic {
+    flex: none; width: 34px; height: 34px; border-radius: 11px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent-soft);
+  }
+  .reg-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .reg-t { font-weight: 800; font-size: 14.5px; color: var(--ink); }
   .chev { color: var(--taupe); transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); transform: rotate(90deg); }
   .chev.flip { transform: rotate(-90deg); }
   .sup-detail { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line-2); display: flex; flex-direction: column; gap: 8px; }

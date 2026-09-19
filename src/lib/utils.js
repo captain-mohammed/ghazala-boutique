@@ -364,6 +364,15 @@ export const MKT_TEMPLATES = {
   quiet: { key: 'mktQuiet', def: DEFAULT_MKT_QUIET, label: 'اشتقت لك' }
 };
 
+/* كل مفاتيح قوالب الرسائل مجتمعة — مصدرها الوحيد الجداول أعلاه، فأي قالب
+   جديد يدخل هنا تلقائياً. تُستعمل لتحمي رسائل البوتيك المكتوبة يدوياً من أن
+   تمحها استعادة نسخة احتياطية قديمة (كان waTemplate وحده محمياً والبقية
+   تُدهس بصمت). */
+export const TEMPLATE_KEYS = new Set([
+  ...Object.values(WA_STATUS_TEMPLATES).map((t) => t.key),
+  ...Object.values(MKT_TEMPLATES).map((t) => t.key)
+]);
+
 /* محرك صياغة موحّد — المتغيرات المجهولة تصير '—' بدل أن تبقى رموزاً خاماً.
    جميع رسائل التسويق تمرّ من هنا: قالب + قاموس = نص نهائي جاهز. */
 export function renderTpl(template, vars = {}) {

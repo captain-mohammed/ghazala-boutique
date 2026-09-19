@@ -3,8 +3,8 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
-  import { db, settleSale, moneyInTransit, setSetting, getSetting } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, buzz, copyText, sendWhatsApp, iqd } from '../utils.js';
+  import { db, settleSale, moneyInTransit, setSetting, getSetting, addCompanyPayment, deleteCompanyPayment, companyCredits } from '../db.js';
+  import { fmtIQD, fmtNum, fmtDate, buzz, copyText, sendWhatsApp, iqd, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   let sales = $state([]);
@@ -14,6 +14,52 @@
   let defaultCompany = $state('');
   let detail = $state(null); // company being viewed/settled
   let showHistory = $state(false);
+
+  /* ---- دفعات الشركات: مبلغ + تاريخ يُدخلان يدوياً (فواتير قديمة مثلاً) ---- */
+  let payments = $state([]);
+  let credits = $state(new Map());
+  let payAmount = $state('');
+  let payDate = $state(baghdadLocalInput().slice(0, 10)); /* تاريخ بغداد */
+  let payNote = $state('');
+  let saving = $state(false);
+
+  const paysOf = (company) =>
+    payments
+      .filter((p) => (p.company || '').trim() === (company || '').trim())
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  async function savePayment(co) {
+    const amt = iqd(payAmount);
+    if (!(amt > 0)) { toastErr('اكتبي المبلغ المستلم'); return; }
+    if (!co) { toastErr('اختاري الشركة أولاً'); return; }
+    saving = true;
+    try {
+      /* الظهيرة بتوقيت بغداد: يضمن أن الدفعة تقع في اليوم المطلوب بالضبط */
+      const iso = isoFromBaghdadLocal(`${payDate || baghdadLocalInput().slice(0, 10)}T12:00`);
+      const r = await addCompanyPayment({ company: co, amount: amt, date: iso, note: payNote });
+      if (!r.ok) { toastErr('تعذّر تسجيل الدفعة'); return; }
+      buzz([20, 50, 20]);
+      const extra = r.credit > 0 ? ` — ${fmtIQD(r.credit)} رصيد دائن (فواتير أقدم من التطبيق)` : '';
+      toastOk(`سُجّلت دفعة ${fmtIQD(amt)} — سوّت ${fmtNum(r.settled)} عملية${extra}`);
+      payAmount = '';
+      payNote = '';
+      detail = null;
+    } finally { saving = false; }
+  }
+
+  async function removePayment(p) {
+    const ok = await askConfirm({
+      title: 'حذف الدفعة',
+      body: `${fmtIQD(p.amount)} بتاريخ ${fmtDate(p.date)} — تُعاد العمليات التي سوّتها إلى «غير مسدّدة».`,
+      okLabel: 'احذفي',
+      danger: true
+    });
+    if (!ok) return;
+    await deleteCompanyPayment(p.id);
+    buzz(10);
+    toastOk('حُذفت الدفعة');
+    detail = null;
+  }
 
   /* أجور التوصيل live here too — everything delivery-related in one place */
   (async () => { fee = String(await getSetting('deliveryFee', 5000)); })();
@@ -46,10 +92,15 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [s, c] = await Promise.all([db.sales.toArray(), db.settings.get('deliveryCompanies')]);
+      const [s, c, pays, cr] = await Promise.all([
+        db.sales.toArray(), db.settings.get('deliveryCompanies'),
+        db.payments.toArray(), companyCredits()
+      ]);
       if (!alive) return;
       sales = s;
       companies = c?.value || [];
+      payments = pays;
+      credits = cr;
     };
     grab();
     const t = setInterval(grab, 4000);
@@ -70,10 +121,20 @@
       cur.sales.push(s);
       m.set(key, cur);
     }
+    /* شركة سُوّيت بالكامل لكن لها دفعات مسجّلة تبقى ظاهرة — وإلا اختفت
+       دفعاتها ومستنداتها بمجرد تسوية آخر عملية، فلا يمكن مراجعتها أو حذفها */
+    for (const p of payments) {
+      const key = (p.company || '').trim() || 'بدون شركة';
+      if (!m.has(key)) m.set(key, { company: key, count: 0, amount: 0, sales: [] });
+    }
     return [...m.values()].sort((a, b) => b.amount - a.amount);
   });
 
-  const inTransit = $derived(byCompany.reduce((a, c) => a + c.amount, 0));
+  /* ما قُبض من الشركة يُسوّي عملياتها، وأي فائض يبقى رصيداً دائناً ينقص
+     الرصيد الكلي (فواتير قديمة تخصّ مبيعات لم تُسجَّل في التطبيق) */
+  const creditTotal = $derived([...credits.values()].reduce((a, v) => a + (Number(v) || 0), 0));
+  const owedGross = $derived(byCompany.reduce((a, c) => a + c.amount, 0));
+  const inTransit = $derived(owedGross - creditTotal);
   const inTransitCount = $derived(byCompany.reduce((a, c) => a + c.count, 0));
 
   const settled = $derived(
@@ -143,6 +204,11 @@
         <div class="muted small">عند شركات التوصيل الآن</div>
         <div class="t-amount"><span>{fmtIQD(inTransit)}</span></div>
         <div class="muted small">{fmtNum(inTransitCount)} قطعة لم تُستلم بعد</div>
+        {#if creditTotal > 0}
+          <div class="muted tiny" style="margin-top:4px">
+            بعد خصم {fmtIQD(creditTotal)} رصيد دائن — دفعات مقابل مبيعات أقدم من التطبيق
+          </div>
+        {/if}
       </div>
     </div>
   </Glass>
@@ -195,7 +261,11 @@
           <span class="co-ic"><Icon name="truck" size={19} color="var(--burgundy)" /></span>
           <div class="a-body">
             <div class="bold">{g.company}</div>
-            <div class="muted small">{g.count} قطعة - آخر عملية {fmtDate(g.sales[g.sales.length - 1].date)}</div>
+            <div class="muted small">
+              {g.count
+                ? `${fmtNum(g.count)} قطعة - آخر عملية ${fmtDate(g.sales[g.sales.length - 1].date)}`
+                : `${fmtNum(paysOf(g.company).length)} دفعة مسجّلة — لا عمليات معلّقة`}
+            </div>
           </div>
           <div class="col" style="align-items:flex-end; gap:2px">
             <div class="money">{fmtIQD(g.amount)}</div>
@@ -242,6 +312,45 @@
         </div>
       </Glass>
 
+      <Glass class="pay-box">
+        <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:8px">
+          <span class="bold small">دفعة مستلمة من الشركة</span>
+          {#if (credits.get((detail.company || '').trim()) || 0) > 0}
+            <span class="muted tiny">رصيد دائن {fmtIQD(credits.get((detail.company || '').trim()))}</span>
+          {/if}
+        </div>
+        <div class="row" style="gap:8px">
+          <input class="input" style="flex:1" bind:value={payAmount} inputmode="decimal" placeholder="المبلغ (بالآلاف)" />
+          <input class="input" type="date" style="flex:none; width:148px" bind:value={payDate} />
+        </div>
+        <input class="input" style="margin-top:8px" bind:value={payNote} placeholder="ملاحظة (اختياري) — مثال: فاتورة آب" />
+        <button class="btn gold block" style="margin-top:8px" onclick={() => savePayment(detail.company)} disabled={saving}>
+          <Icon name="check" size={17} /> سجّلي الدفعة
+        </button>
+        <p class="muted tiny" style="margin:7px 2px 0">
+          تُسوّي أقدم العمليات غير المسدّدة أولاً، وتُختم بتاريخ الدفعة نفسه. أي مبلغ زائد يبقى رصيداً دائناً.
+        </p>
+      </Glass>
+
+      {#if paysOf(detail.company).length}
+        <Glass class="pay-list">
+          <div class="bold small" style="margin-bottom:8px">دفعات هذه الشركة</div>
+          <div class="stack" style="gap:6px">
+            {#each paysOf(detail.company) as p (p.id)}
+              <div class="pay-row">
+                <div style="flex:1; min-width:0">
+                  <div class="bold small">{fmtIQD(p.amount)}</div>
+                  <div class="muted tiny">
+                    {fmtDate(p.date)}{p.note ? ` — ${p.note}` : ''}{p.credit > 0 ? ` — رصيد دائن ${fmtIQD(p.credit)}` : ''}
+                  </div>
+                </div>
+                <button class="pay-x" aria-label="حذف الدفعة" onclick={() => removePayment(p)}><Icon name="x" size={12} /></button>
+              </div>
+            {/each}
+          </div>
+        </Glass>
+      {/if}
+
       <div class="stack" style="gap:8px">
         {#each detail.sales as s (s.id)}
           <Glass class="row" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
@@ -254,18 +363,20 @@
         {/each}
       </div>
 
-      <div class="row" style="gap:8px">
-        <button class="btn" style="flex:1" onclick={() => copyManifest(detail)}>
-          <Icon name="file" size={17} /> نسخ الكشف
-        </button>
-        <button class="btn wa" style="flex:1" onclick={() => sendManifest(detail)}>
-          <Icon name="whatsapp" size={17} /> إرسال للسائق
-        </button>
-      </div>
+      {#if detail.count}
+        <div class="row" style="gap:8px">
+          <button class="btn" style="flex:1" onclick={() => copyManifest(detail)}>
+            <Icon name="file" size={17} /> نسخ الكشف
+          </button>
+          <button class="btn wa" style="flex:1" onclick={() => sendManifest(detail)}>
+            <Icon name="whatsapp" size={17} /> إرسال للسائق
+          </button>
+        </div>
 
-      <button class="btn primary lg block" onclick={() => settleGroup(detail)}>
-        <Icon name="check" size={20} /> تسوية — استلمت {fmtIQD(detail.amount)}
-      </button>
+        <button class="btn primary lg block" onclick={() => settleGroup(detail)}>
+          <Icon name="check" size={20} /> تسوية — استلمت {fmtIQD(detail.amount)}
+        </button>
+      {/if}
     </div>
   {/if}
 </Sheet>
@@ -324,4 +435,20 @@
     color: #fff; border: none;
     box-shadow: 0 4px 14px rgba(31, 175, 84, 0.25);
   }
+  :global(.pay-box) { padding: 13px 14px; }
+  :global(.pay-list) { padding: 13px 14px; }
+  .pay-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px; border-radius: 12px;
+    background: rgba(255, 255, 255, 0.45);
+    border: 1px solid var(--line-2);
+  }
+  .pay-x {
+    flex: none; width: 28px; height: 28px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.6);
+    color: var(--burgundy); cursor: pointer; font-family: inherit;
+    transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .pay-x:active { transform: scale(0.9); }
 </style>

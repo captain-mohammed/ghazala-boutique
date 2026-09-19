@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import { startOfToday, baghdadMonthKey, monthRange, salePieces } from './utils.js';
+import { startOfToday, baghdadMonthKey, monthRange, salePieces, TEMPLATE_KEYS } from './utils.js';
 
 export const db = new Dexie('ghazala_boutique');
 
@@ -53,6 +53,25 @@ db.version(5).stores({
   waitlists: 'key, status, modelId, sku, createdAt',
   referrals: '++id, fromKey, toKey, date',
   testimonials: '++id, customerName, customerPhone, date, modelId'
+});
+
+/* v6: + payments (دفعات شركات التوصيل) — الشركة تقبض من الزبونة وتسلّم البوتيك
+   دفعةً دفعة. تُسجَّل هنا بتاريخها ومبلغها، فيُنقص الرصيد المستحق عندها.
+   ملاحظة: هذه قبض إيراد سبق أن سُجّل ربحه في الخزنة عند البيع — فهي لا تضيف
+   ربحاً جديداً ولا تمسّ الخزنة. */
+db.version(6).stores({
+  products: 'sku, name, category, brand, color, size, qty, updatedAt',
+  sales: '++id, date, status, customerName, customerPhone, barcode, deliveryCompany, settledAt, fromReservation',
+  movements: '++id, sku, date, type',
+  settings: 'key',
+  expenses: '++id, date, category',
+  reservations: '++id, sku, createdAt, expiresAt, status',
+  occasions: '++id, customerName, customerPhone, month, day, date',
+  vault: '++id, date, saleId, kind',
+  waitlists: 'key, status, modelId, sku, createdAt',
+  referrals: '++id, fromKey, toKey, date',
+  testimonials: '++id, customerName, customerPhone, date, modelId',
+  payments: '++id, company, date'
 });
 
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
@@ -776,13 +795,74 @@ export async function settleSale(id) {
   await db.sales.update(id, { settledAt: new Date().toISOString() });
 }
 
-/* Money currently held by delivery companies (delivered but not yet settled).
+/* ---------------- دفعات شركات التوصيل ----------------
+   الشركة تقبض من الزبونة عند التسليم وتسلّم البوتيك دفعةً دفعة — وأحياناً
+   تكون فاتورة قديمة تحمل تاريخاً ومبلغاً. تُسجَّل هنا كما هي.
+   الدفعة تُسوّي **أقدم** عمليات تلك الشركة غير المسدّدة أولاً — كما في
+   الدفاتر الحقيقية — فيُختم عليها `settledAt` بتاريخ الدفعة نفسه لا بتاريخ
+   اليوم. أي مبلغ زائد عن عمليات التطبيق يبقى «رصيداً دائناً»، لأن فاتورة
+   قديمة قد تخصّ مبيعات لم تُسجَّل في التطبيق أصلاً.
+   ⚠️ هذا قبض **إيراد** سُجّل ربحه في الخزنة عند البيع — فلا يضيف ربحاً
+   جديداً ولا يمسّ الخزنة. */
+export async function addCompanyPayment({ company, amount, date, note = '' }) {
+  const amt = Math.max(0, Math.round(Number(amount) || 0));
+  if (!amt) return { ok: false, settled: 0, credit: 0 };
+  const co = (company || '').trim();
+  const when = date ? new Date(date) : new Date();
+  const iso = (Number.isFinite(when.getTime()) ? when : new Date()).toISOString();
+
+  const all = await db.sales.toArray();
+  const open = all
+    .filter((s) => s.status !== 'returned' && !s.settledAt && (s.deliveryCompany || '').trim() === co)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  let left = amt;
+  const settledSaleIds = [];
+  for (const s of open) {
+    const due = Number(s.subtotal) || 0;
+    if (due <= left) { settledSaleIds.push(s.id); left -= due; }
+    else break; /* لا نشقّ عملية نصفين — الباقي يبقى رصيداً دائناً */
+  }
+  for (const id of settledSaleIds) await db.sales.update(id, { settledAt: iso });
+
+  const id = await db.payments.add({
+    company: co, amount: amt, date: iso, note: (note || '').trim(),
+    settledSaleIds, credit: left, createdAt: new Date().toISOString()
+  });
+  return { ok: true, id, settled: settledSaleIds.length, credit: left };
+}
+
+export async function deleteCompanyPayment(id) {
+  const p = await db.payments.get(id);
+  if (!p) return;
+  /* نُعيد العمليات التي سوّتها هذه الدفعة إلى «غير مسدّدة» — الحذف قابل للتراجع */
+  for (const sid of p.settledSaleIds || []) await db.sales.update(sid, { settledAt: null });
+  await db.payments.delete(id);
+}
+
+/* الأرصدة الدائنة لكل شركة: مبالغ قُبضت وتخصّ مبيعات غير مسجّلة في التطبيق */
+export async function companyCredits() {
+  const rows = await db.payments.toArray();
+  const m = new Map();
+  for (const p of rows) {
+    const k = (p.company || '').trim();
+    m.set(k, (m.get(k) || 0) + (Number(p.credit) || 0));
+  }
+  return m;
+}
+
+/* المبالغ المتعلقة بشركات التوصيل: كل بيعة غير مرتجعة ولم تُسوَّ بعد — قيد
+   التوصيل وتم التسليم معاً — ناقصاً الأرصدة الدائنة. هذا يطابق نصّ شاشة
+   الحساب («عند شركات التوصيل الآن» / «لم تُستلم بعد»)، والبضاعة عند الشركة
+   في الحالتين. قد يكون الرصيد سالباً إن قُبض أكثر مما سُجّل من مبيعات.
    بضعة البوتيك فقط — أجرة التوصيل تجوزها الزبونة للشركة مباشرة */
 export async function moneyInTransit() {
-  const sales = await db.sales.toArray();
-  return sales
+  const [sales, payments] = await Promise.all([db.sales.toArray(), db.payments.toArray()]);
+  const owed = sales
     .filter((s) => s.status !== 'returned' && !s.settledAt)
     .reduce((a, s) => a + (Number(s.subtotal) || 0), 0);
+  const credit = payments.reduce((a, p) => a + (Number(p.credit) || 0), 0);
+  return owed - credit;
 }
 
 export async function returnSale(id) {
@@ -1065,30 +1145,33 @@ export async function stocktakeApply(corrections) {
 /* ---------------- Backup / Restore ---------------- */
 
 export async function backupJSON() {
-  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials] = await Promise.all([
+  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments] = await Promise.all([
     db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray(),
     db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.vault.toArray(),
-    db.waitlists.toArray(), db.referrals.toArray(), db.testimonials.toArray()
+    db.waitlists.toArray(), db.referrals.toArray(), db.testimonials.toArray(), db.payments.toArray()
   ]);
   return {
-    app: 'ghazala-boutique', version: 5, exportedAt: new Date().toISOString(),
+    app: 'ghazala-boutique', version: 6, exportedAt: new Date().toISOString(),
     products, sales, movements, settings, expenses, reservations, occasions, vault,
-    waitlists, referrals, testimonials
+    waitlists, referrals, testimonials, payments
   };
 }
 
 export async function restoreJSON(data, { merge = false } = {}) {
   if (!data || data.app !== 'ghazala-boutique') throw new Error('ملف النسخة غير صالح');
   if (!merge) {
-    await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, async () => {
-      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear()]);
+    await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, async () => {
+      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear()]);
     });
   }
   await db.products.bulkPut(data.products || []);
   await db.sales.bulkPut(data.sales || []);
   await db.movements.bulkPut(data.movements || []);
   if (Array.isArray(data.settings)) {
-    await db.settings.bulkPut(data.settings.filter((s) => s.key !== 'waTemplate'));
+    /* رسائل البوتيك (كل القوالب: الطلبات والتسليم والإرجاع والتسويق) لا
+       تُستعاد من نسخة قديمة — تبقى كما كتبتها صاحبة البوتيك. كان waTemplate
+       وحده محمياً وبقية الستة تُدهس بصمت. */
+    await db.settings.bulkPut(data.settings.filter((s) => !TEMPLATE_KEYS.has(s.key)));
   }
   if (Array.isArray(data.expenses)) await db.expenses.bulkPut(data.expenses);
   if (Array.isArray(data.reservations)) await db.reservations.bulkPut(data.reservations);
@@ -1098,11 +1181,13 @@ export async function restoreJSON(data, { merge = false } = {}) {
   if (Array.isArray(data.waitlists)) await db.waitlists.bulkPut(data.waitlists);
   if (Array.isArray(data.referrals)) await db.referrals.bulkPut(data.referrals);
   if (Array.isArray(data.testimonials)) await db.testimonials.bulkPut(data.testimonials);
+  /* v6 — النسخ الأقدم تخلو منها ببساطة */
+  if (Array.isArray(data.payments)) await db.payments.bulkPut(data.payments);
 }
 
 export async function wipeAll() {
-  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, async () => {
-    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear()]);
+  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, async () => {
+    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear()]);
   });
 }
 
