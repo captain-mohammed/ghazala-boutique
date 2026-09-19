@@ -11,11 +11,13 @@ Offline-first Arabic RTL PWA for a shoe boutique in Iraq: inventory, COD sales v
 ## Architecture
 
 - `src/App.svelte` — no router: a `screen` state variable + `{#key}` remount; screens remount on every tab switch. 6 dock tabs + sub-screens opened from «المزيد».
-- `src/lib/db.js` — **the entire data layer** (Dexie/IndexedDB, schema v4): products, sales, movements, reservations, occasions, expenses, append-only `vault` (profit ledger), settings key/value. All entities and migrations live here; screens never query raw tables for writes.
+- `src/lib/db.js` — **the entire data layer** (Dexie/IndexedDB, schema v5): products, sales, movements, reservations, occasions, expenses, append-only `vault` (profit ledger), settings key/value, plus the marketing tables — `waitlists` (قائمة الانتظار), `referrals` (الإحالات), `testimonials` (الشهادات). All entities and migrations live here; screens never query raw tables for writes. Migrations are versioned v2→v5 and every new table must also be added to `backupJSON` / `restoreJSON` / `wipeAll` — a table missing from those three is lost silently on restore.
 - `src/lib/utils.js` — Baghdad time (UTC+3, DST-proof helpers), `iqd()` money shorthand, WhatsApp message builders, `stockArrival/shelfAgeDays` (راكد clock). Never use device-local time; every "today" boundary is Baghdad.
 - `src/lib/store.js` — UI-only stores (toasts, confirm, cross-screen intents like `invoicePreset`, shared filters).
 - `src/lib/motion.js` — sparks/springs/longpress; everything must respect `reducedMotion()`.
-- Screens: `src/lib/screens/*.svelte` (Inventory, Sell, Dashboard, Reports, SalesLog, DeliveryLedger, Customers, Suppliers, ProductForm, ItemDetail, …). Screens poll the DB with `setInterval` (4–5s) inside `$effect`.
+- Screens: `src/lib/screens/*.svelte` (Inventory, Sell, Dashboard, Reports, SalesLog, DeliveryLedger, Customers, Suppliers, ProductForm, ItemDetail, …). Screens poll the DB with `setInterval` (4–5s) inside `$effect` — always return a cleanup that clears the interval **and** flip an `alive` flag so a late async write can't land on an unmounted screen.
+- Marketing screens (opened from «المزيد»): `Broadcast` (استوديو التسويق — first-dibs / gone-quiet / VIP / dead-stock rescue campaigns), `StoryStudio` (استوديو القصص — brand card + identity used by the Ghazala card), `Occasions` (المناسبات). Their message templates are settings-backed and read live at send time (`MKT_TEMPLATES` in `utils.js`).
+- **Service worker ownership**: registration is handled by `vite-plugin-pwa` (`injectRegister: 'script-defer'`) plus the `registerSW()` call in `App.svelte` that drives the «يتوفر تحديث جديد» prompt. Never hand-register `sw.js` in `index.html` — a third raw `register()` races the workbox-window listeners and can swallow the update prompt.
 
 ## Domain rules (do not break)
 

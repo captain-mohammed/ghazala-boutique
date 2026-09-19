@@ -32,12 +32,9 @@
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function () {
-          navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(function () {});
-        });
-      }
-    </script>
+    <!-- Service worker registration is owned by vite-plugin-pwa (injectRegister)
+         plus the workbox-window call in App.svelte, which is what drives the
+         «يتوفر تحديث جديد» prompt. Do not hand-register sw.js here — a third
+         raw register() races the workbox listeners and can swallow the prompt. -->
   </body>
 </html>
