@@ -4,6 +4,7 @@
   import Pick from '../components/Pick.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
+  import PhotoSourceSheet from '../components/PhotoSourceSheet.svelte';
   import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd, fileToPhotoDataUrl, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, celebrateAt, campaignContacts } from '../store.js';
@@ -116,6 +117,15 @@
 
   let img = $state(photo || product?.photo || null);
   let camInput;
+  let galInput;
+  let photoSrcOpen = $state(false);
+
+  /* اختيار مصدر الصورة: كاميرا أو معرض. الكاميرا وحدها كانت مفروضة بـ
+     capture="environment"، فلا سبيل لاختيار صورة موجودة في الهاتف. */
+  function pickPhotoSource(src) {
+    photoSrcOpen = false;
+    setTimeout(() => (src === 'gallery' ? galInput : camInput)?.click(), 180);
+  }
 
   async function onPhoto(e) {
     const f = e.target.files?.[0];
@@ -335,7 +345,7 @@
   <!-- الصورة أولاً: أوسع، بالمنتصف، هي هوية الموديل -->
   <div class="field photo-field">
     <div class="photo-wrap">
-      <button type="button" class="photo-tile" class:has={!!img} class:need={isMissing('الصورة')} onclick={() => camInput?.click()}>
+      <button type="button" class="photo-tile" class:has={!!img} class:need={isMissing('الصورة')} onclick={() => (photoSrcOpen = true)}>
         {#if img}
           <img src={img} alt="preview" />
           <span class="re-take"><Icon name="image" size={13} /> تغيير</span>
@@ -346,6 +356,7 @@
       </button>
       {#if img}<span class="ph-x-wrap"><button type="button" class="ph-x" aria-label="إزالة الصورة" onclick={() => { img = null; }}><Icon name="x" size={13} /></button></span>{/if}
       <input type="file" accept="image/*" capture="environment" style="display:none" bind:this={camInput} onchange={onPhoto} />
+      <input type="file" accept="image/*" style="display:none" bind:this={galInput} onchange={onPhoto} />
     </div>
     {#if isMissing('الصورة')}<span class="err-line">الصورة مطلوبة — صوّري الحذاء</span>{/if}
   </div>
@@ -526,6 +537,8 @@
         : 'إضافة الموديل'}
   </button>
 </div>
+
+<PhotoSourceSheet open={photoSrcOpen} onclose={() => (photoSrcOpen = false)} onpick={pickPhotoSource} />
 
 <style>
 

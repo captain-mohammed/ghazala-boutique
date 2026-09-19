@@ -812,10 +812,14 @@ export async function setSaleDate(id, iso) {
   await db.sales.update(id, { date: when });
   const vaultRows = await db.vault.where('saleId').equals(id).toArray();
   for (const v of vaultRows) await db.vault.update(v.id, { date: when });
-  const tags = [`بيع #${id}`, `إرجاع بيع #${id}`];
+  /* مطابقة دقيقة: «بيع #5» يجب ألا تطابق «بيع #50». كان includes() يفعل ذلك،
+     فتعديل وقت بيعة واحدة كان يعيد تأريخ حركات بيعات أخرى (50، 51… 500) —
+     فتظهر حركات في يوم لا يخصّها. الـ lookahead يمنع الرقم المكمّل فقط،
+     ويبقى يطابق «بيع #5 • من حجز» و«إرجاع بيع #5». */
+  const re = new RegExp(`بيع #${id}(?!\\d)`);
   const moves = await db.movements.toArray();
   for (const m of moves) {
-    if (tags.some((tag) => (m.note || '').includes(tag))) await db.movements.update(m.id, { date: when });
+    if (re.test(m.note || '')) await db.movements.update(m.id, { date: when });
   }
   return when;
 }

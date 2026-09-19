@@ -4,6 +4,7 @@
   import Pick from '../components/Pick.svelte';
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
+  import PhotoSourceSheet from '../components/PhotoSourceSheet.svelte';
   import { receiveBatch, nextModelId, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, db, waitingForModel } from '../db.js';
   import { fmtNum, fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
   import { get } from 'svelte/store';
@@ -87,6 +88,22 @@
     if (!f) return;
     try { l.photo = await fileToPhotoDataUrl(f, 640); buzz(10); }
     catch { toastErr('تعذّرت قراءة الصورة'); }
+  }
+
+  /* مصدر صورة السطر: كاميرا أو معرض. الحقول مشتركة بين الأسطر، والسطر
+     المستهدف يُحفظ في photoLine قبل فتح المحدِّد. */
+  let photoLine = $state(null);
+  let photoSrcOpen = $state(false);
+  let camInput;
+  let galInput;
+  function askPhotoSource(l) {
+    photoLine = l;
+    photoSrcOpen = true;
+    buzz(8);
+  }
+  function pickPhotoSource(src) {
+    photoSrcOpen = false;
+    setTimeout(() => (src === 'gallery' ? galInput : camInput)?.click(), 180);
   }
 
   async function save() {
@@ -212,10 +229,9 @@
         <div class="row" style="gap:10px; align-items:flex-start">
           <div class="field" style="flex:1">
             <label>صورة الموديل * <span class="muted tiny">— هي الهوية</span></label>
-            <label class="ln-photo ln-photo-lg" class:has={!!l.photo} title="صورة الموديل">
+            <button type="button" class="ln-photo ln-photo-lg" class:has={!!l.photo} title="صورة الموديل" onclick={() => askPhotoSource(l)}>
               {#if l.photo}<img src={l.photo} alt="" />{:else}<Icon name="image" size={22} color="var(--taupe)" /><span class="ph-hint">صوّري</span>{/if}
-              <input type="file" accept="image/*" capture="environment" style="display:none" onchange={(e) => onLinePhoto(l, e)} />
-            </label>
+            </button>
           </div>
         </div>
 
@@ -343,6 +359,11 @@
   </button>
 </div>
 
+<input type="file" accept="image/*" capture="environment" style="display:none" bind:this={camInput} onchange={(e) => onLinePhoto(photoLine, e)} />
+<input type="file" accept="image/*" style="display:none" bind:this={galInput} onchange={(e) => onLinePhoto(photoLine, e)} />
+
+<PhotoSourceSheet open={photoSrcOpen} onclose={() => (photoSrcOpen = false)} onpick={pickPhotoSource} />
+
 <style>
   :global(.head-card) { display: flex; align-items: center; gap: 12px; padding: 13px 15px; }
   .h-ic {
@@ -382,7 +403,11 @@
     background: rgba(255, 255, 255, 0.5);
     display: flex; align-items: center; justify-content: center;
     cursor: pointer; overflow: hidden; position: relative;
+    /* صار <button> بدل <label> — نصفّر افتراضيات الزر */
+    padding: 0; font-family: inherit; color: inherit;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+  .ln-photo:active { transform: scale(0.96); }
   .ln-photo-lg { width: 92px; height: 92px; flex-direction: column; gap: 4px; }
   .ph-hint { font-size: 10.5px; font-weight: 800; color: var(--taupe); }
   .ln-photo.has { border-style: solid; border-color: rgba(181, 73, 91, 0.4); }
