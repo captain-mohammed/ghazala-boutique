@@ -3,6 +3,7 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
+  import Pick from '../components/Pick.svelte';
   import { db, settleSale, moneyInTransit, setSetting, getSetting, addCompanyPayment, deleteCompanyPayment, companyCredits } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz, copyText, sendWhatsApp, iqd, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
@@ -18,31 +19,42 @@
   /* ---- دفعات الشركات: مبلغ + تاريخ يُدخلان يدوياً (فواتير قديمة مثلاً) ---- */
   let payments = $state([]);
   let credits = $state(new Map());
+  let payCompany = $state('');
   let payAmount = $state('');
   let payDate = $state(baghdadLocalInput().slice(0, 10)); /* تاريخ بغداد */
   let payNote = $state('');
   let saving = $state(false);
+
+  /* خيارات الشركة: سجل الشركات + أي اسم ظهر في مبيعات أو دفعات سابقة —
+     حتى تُسجَّل فاتورة شركة لم تُضَف إلى السجل بعد */
+  const companyOptions = $derived([...new Set([
+    ...companies,
+    ...sales.map((s) => (s.deliveryCompany || '').trim()),
+    ...payments.map((p) => (p.company || '').trim())
+  ].filter(Boolean))].sort());
 
   const paysOf = (company) =>
     payments
       .filter((p) => (p.company || '').trim() === (company || '').trim())
       .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  async function savePayment(co) {
+  async function savePayment(co = payCompany) {
     const amt = iqd(payAmount);
     if (!(amt > 0)) { toastErr('اكتبي المبلغ المستلم'); return; }
-    if (!co) { toastErr('اختاري الشركة أولاً'); return; }
+    const company = (co || '').trim();
+    if (!company) { toastErr('اختاري الشركة أولاً'); return; }
     saving = true;
     try {
       /* الظهيرة بتوقيت بغداد: يضمن أن الدفعة تقع في اليوم المطلوب بالضبط */
       const iso = isoFromBaghdadLocal(`${payDate || baghdadLocalInput().slice(0, 10)}T12:00`);
-      const r = await addCompanyPayment({ company: co, amount: amt, date: iso, note: payNote });
+      const r = await addCompanyPayment({ company, amount: amt, date: iso, note: payNote });
       if (!r.ok) { toastErr('تعذّر تسجيل الدفعة'); return; }
       buzz([20, 50, 20]);
       const extra = r.credit > 0 ? ` — ${fmtIQD(r.credit)} رصيد دائن (فواتير أقدم من التطبيق)` : '';
       toastOk(`سُجّلت دفعة ${fmtIQD(amt)} — سوّت ${fmtNum(r.settled)} عملية${extra}`);
       payAmount = '';
       payNote = '';
+      payCompany = '';
       detail = null;
     } finally { saving = false; }
   }
@@ -211,6 +223,31 @@
         {/if}
       </div>
     </div>
+  </Glass>
+
+  <!-- تسجيل دفعة قديمة: مدخل دائم في أعلى الصفحة — لا يعتمد على وجود عمليات
+       معلّقة، ففاتورة قديمة قد تصل قبل أن يسجّل التطبيق أي بيع -->
+  <Glass class="rise pay-top" style="animation-delay:0.04s">
+    <div class="row" style="justify-content:space-between; align-items:center; margin-bottom:6px">
+      <span class="bold small"><Icon name="wallet" size={16} color="var(--gold)" /> سجّلي دفعة مستلمة</span>
+      {#if creditTotal > 0}<span class="muted tiny">رصيد دائن {fmtIQD(creditTotal)}</span>{/if}
+    </div>
+    <p class="muted small" style="margin:0 0 10px">
+      وصلتك فاتورة من شركة التوصيل — قديمة كانت أو جديدة؟ اكتبي مبلغها وتاريخها هنا، فتُسجَّل كما هي وتُخصم من المستحق.
+    </p>
+    {#if companyOptions.length}
+      <Pick bind:value={payCompany} options={companyOptions} placeholder="اختاري الشركة…" />
+    {:else}
+      <input class="input" bind:value={payCompany} placeholder="اسم شركة التوصيل… مثال: شركة النور" />
+    {/if}
+    <div class="row" style="gap:8px; margin-top:8px">
+      <input class="input" style="flex:1" bind:value={payAmount} inputmode="decimal" placeholder="المبلغ (بالآلاف)" />
+      <input class="input" type="date" style="flex:none; width:148px" bind:value={payDate} />
+    </div>
+    <input class="input" style="margin-top:8px" bind:value={payNote} placeholder="ملاحظة (اختياري) — مثال: فاتورة آب" />
+    <button class="btn gold block" style="margin-top:8px" onclick={() => savePayment()} disabled={saving}>
+      <Icon name="check" size={17} /> سجّلي الدفعة
+    </button>
   </Glass>
 
   <!-- names & money in one place: the companies list is edited right here -->
@@ -435,6 +472,7 @@
     color: #fff; border: none;
     box-shadow: 0 4px 14px rgba(31, 175, 84, 0.25);
   }
+  :global(.pay-top) { padding: 14px 15px; }
   :global(.pay-box) { padding: 13px 14px; }
   :global(.pay-list) { padding: 13px 14px; }
   .pay-row {

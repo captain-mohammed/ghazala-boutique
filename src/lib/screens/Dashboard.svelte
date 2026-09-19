@@ -7,7 +7,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import VariantBits from '../components/VariantBits.svelte';
   import TargetRing from '../components/TargetRing.svelte';
-  import { db, allSettings, upcomingOccasions, vaultState, vaultManual, archivedModels } from '../db.js';
+  import { db, allSettings, upcomingOccasions, vaultState, vaultManual, archivedModels, moneyInTransit } from '../db.js';
   import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey, stockArrival, shelfAgeDays, baghdadLocalInput, isoFromBaghdadLocal, baghdadHour } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
   import Sheet from '../components/Sheet.svelte';
@@ -30,14 +30,18 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, s, r, v, st] = await Promise.all([
-        db.products.toArray(), db.sales.toArray(), db.reservations.toArray(), vaultState(), allSettings()
+      const [p, s, r, v, st, tr] = await Promise.all([
+        db.products.toArray(), db.sales.toArray(), db.reservations.toArray(), vaultState(), allSettings(),
+        moneyInTransit()
       ]);
       if (!alive) return;
       products = p;
       sales = s;
       reservations = r.filter((x) => x.status === 'active');
       vault = v;
+      /* المبلغ عند الشركات من نفس الدالة التي تستعملها شاشة الحساب — ناقصاً
+         الأرصدة الدائنة للدفعات المستلمة، فلا يختلف الرقمان أبداً */
+      transit = tr;
       /* الإعدادات حيّة مع كل جلب — الهدف والرکود والمدينة القديمة وصحة النسخة
          تتحدث لحظياً بدل أن تنتظر إعادة تشغيل */
       settings = st;
@@ -179,12 +183,10 @@
 
   const recent = $derived([...sales].sort((a, b) => new Date(b.date) - new Date(a.date)).slice(0, 4));
 
-  /* Money currently held by delivery companies (not yet settled) — بضعة البوتيك فقط */
-  const transit = $derived(
-    sales
-      .filter((s) => s.status !== 'returned' && !s.settledAt)
-      .reduce((a, s) => a + (Number(s.subtotal) || 0), 0)
-  );
+  /* Money currently held by delivery companies — **from the same source as the
+     ledger screen** (moneyInTransit), so payment credits are reflected here too
+     and the two screens can never disagree. بضعة البوتيك فقط */
+  let transit = $state(0);
   const transitCount = $derived(sales.filter((s) => s.status !== 'returned' && !s.settledAt).length);
 
   /* ---- Daily briefing: one friendly morning line, parts assembled by importance ---- */
