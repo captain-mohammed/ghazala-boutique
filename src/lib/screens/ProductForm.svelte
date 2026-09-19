@@ -242,22 +242,15 @@
         const reg = (await getSetting('suppliers', [])) || [];
         if (!reg.includes(supName)) await setSetting('suppliers', [...reg, supName]);
       }
-      /* the model number: edits and merges keep the model's existing id; a brand-new
-         registration gets the next one — for the whole form (كل ألوانه ومقاساته معاً) */
+      /* الرقم الداخلي: التعديل يحتفظ برقم الموديل، والتسجيل الجديد يأخذ رقماً جديداً
+         دائماً — لا يُستعار رقم موديل قديم أبداً.
+         الاسم الداخلي مشتق من النوع + أول لون فقط، فموديلان مختلفان فعلاً (صورة
+         وسعر وتكلفة مختلفة) يتقاسمان الاسم نفسه — وكانت الاستعارة تدمجهما في بطاقة
+         واحدة تخلط الصور والأسعار وتضخّم الكميات بصمت.
+         لإضافة لون آخر لنفس الموديل: افتحي الموديل ← «تعديل»، أو استعملي
+         «لون آخر لنفس الموديل» في فاتورة الوارد — كلاهما يشارك الرقم عن قصد. */
       const all0 = await db.products.toArray();
-      let freshId = product?.modelId || null;
-      if (!freshId) {
-        for (const c of selColors) {
-          const color = c === NOCOLOR ? '' : c;
-          const probe = all0.find(
-            (x) => x.name.trim().toLowerCase() === autoName.trim().toLowerCase() &&
-              x.category === category &&
-              (x.color || '').trim() === color
-          );
-          if (probe) { freshId = probe.modelId; break; }
-        }
-      }
-      if (!freshId) freshId = await nextModelId();
+      const freshId = product?.modelId || (await nextModelId());
       /* وقت الوصول: يُكتب فقط حين تُعدّله يدوياً — «الآن» يتركه لقاعدة البيانات */
       const arrivalIso = tsIsNow ? null : isoFromBaghdadLocal(ts);
       const withArrival = arrivalIso ? { createdAt: arrivalIso } : {};
@@ -268,8 +261,15 @@
         supplier: (supplier || '').trim(),
         modelId: freshId
       };
-      const all = all0;
-      const idx = new Map(all.map((p) => [modelKey(p), p]));
+      /* المطابقة مع بطاقة موجودة تكون مع بطاقات الموديل الذي نُعدّله وحده.
+         بعد منع الاستعارة صار ممكناً أن يتقاسَم موديلان مفتاحاً واحداً
+         (اسم+تصنيف+مقاس+لون)، فمطابقة غير مقيّدة كانت ستختطف بطاقة موديل آخر. */
+      const ownCards = !editing ? [] : (product.modelId
+        ? all0.filter((x) => x.modelId === product.modelId)
+        : all0.filter((x) =>
+            (x.name || '').trim().toLowerCase() === (product.name || '').trim().toLowerCase() &&
+            x.category === product.category));
+      const idx = new Map(ownCards.map((p) => [modelKey(p), p]));
       const touched = new Set();
       let updated = 0, created = 0;
 
@@ -279,31 +279,18 @@
           const q = Math.max(0, Math.round(Number(rawQty) || 0));
           const size = String(rawSize).trim();
           const sz = size === '—' ? '' : size;
+          /* idx فارغ في وضع الإضافة ⇒ لا «توأم» أبداً ⇒ كل تسجيل جديد يُنشئ
+             بطاقاته بكوده الخاص ولا يُدمج في موديل قائم. الدمج الصامت كان يضخّم
+             الكميات ويطمس التكلفة والسعر الحقيقيين (وقد حدث فعلاً). */
           const twin = idx.get(modelKey({ name: base.name, category: base.category, size: sz, color }));
           if (twin) {
-            if (editing) {
-              /* pieces kept/changed on the shelf don't reset the راكد clock —
-                 only a real restock (qty increase) does, and updateProduct handles that */
-              await updateProduct(twin.sku, { ...base, color, size: sz, qty: q, modelId: twin.modelId || freshId, ...withArrival });
-            } else if (q > 0) {
-              await updateProduct(twin.sku, {
-                qty: (twin.qty || 0) + q, cost: base.cost, price: base.price,
-                type: twin.type || base.type,
-                typeSub: twin.typeSub || base.typeSub || '',
-                typeSub2: twin.typeSub2 || base.typeSub2 || '',
-                typeSub3: twin.typeSub3 || base.typeSub3 || '',
-                season: twin.season || base.season,
-                seasons: [...new Set([...seasonsOf(twin), ...base.seasons])],
-                material: twin.material || base.material, photo: twin.photo || base.photo,
-                supplier: base.supplier || twin.supplier || '',
-                modelId: twin.modelId || freshId
-              });
-            } else continue;
+            /* مسار التعديل فقط: مقاس/لون داخل نفس الموديل. الكميات المحفوظة أو
+               المعدّلة على الرف لا تُصفّر ساعة الرکود — updateProduct يتولى ذلك */
+            await updateProduct(twin.sku, { ...base, color, size: sz, qty: q, modelId: twin.modelId || freshId, ...withArrival });
             touched.add(twin.sku);
             updated++;
           } else if (q > 0) {
             const p = await addProduct({ ...base, color, size: sz, qty: q, ...withArrival });
-            idx.set(modelKey(p), p);
             touched.add(p.sku);
             created++;
           }
@@ -323,7 +310,7 @@
       buzz([20, 50, 20]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.5, '👠');
       const parts = [];
-      if (updated) parts.push(`${updated} بطاقة ${editing ? 'محفوظة' : 'اندماجت'}`);
+      if (updated) parts.push(`${updated} بطاقة محفوظة`);
       if (created) parts.push(`${created} جديدة`);
       toastOk(`${editing ? 'تم الحفظ' : 'تمت الإضافة'} — ${totalPieces} قطعة (${parts.join(' - ')})`);
       /* «قبل الجميع»: أول تسجيل لموديل واصل بكمية — كبار الزبونات أول من يعرف */

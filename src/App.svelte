@@ -26,6 +26,7 @@
   import Occasions from './lib/screens/Occasions.svelte';
   import Broadcast from './lib/screens/Broadcast.svelte';
   import StoryStudio from './lib/screens/StoryStudio.svelte';
+  import ModelRepair from './lib/screens/ModelRepair.svelte';
   import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays } from './lib/db.js';
 
   let locked = $state(true);
@@ -67,7 +68,8 @@
     broadcast: 'استوديو التسويق',
     studio: 'استوديو القصص',
     suppliers: 'دفتر الموردين',
-    customers: 'دفتر الزبونات'
+    customers: 'دفتر الزبونات',
+    repair: 'إصلاح الموديلات'
   };
 
   function goto(id) {
@@ -146,6 +148,7 @@
         {:else if screen === 'occasions'}<Occasions />
         {:else if screen === 'broadcast'}<Broadcast {goto} />
         {:else if screen === 'studio'}<StoryStudio />
+        {:else if screen === 'repair'}<ModelRepair />
         {/if}
       </div>
     {/key}

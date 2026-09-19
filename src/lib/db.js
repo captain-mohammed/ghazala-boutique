@@ -382,12 +382,12 @@ export async function deleteProduct(sku) {
   await db.products.delete(sku);
 }
 
-/* One-time convergence: every visual model shares ONE internal modelId —
-   legacy cards adopt the first id found in their group, and groups without
-   any id get a fresh one. Idempotent; cheap at boot.
-   آمنة دائماً: لا تلمس بطاقة تحمل رقماً موجوداً — لو اشتق موديلان مستحدثان
-   اسماً متطابقاً (بوت أسود ×2 بتكلفة مختلفة) فلكلٍّ رقمه، ولا يُدمج أحدهما
-   في الآخر إثر اسم مشترك. */
+/* One-time convergence: legacy cards that carry NO model number at all get one
+   shared number per visual group. Idempotent; cheap at boot.
+   ⚠️ لا تُلحَق بطاقة بلا رقم بموديل مرقّم موجود: المجموعة التي فيها رقم تُترك
+   كما هي. الإلحاق كان دمجاً صامتاً — لو صادف موديلان مستحدثان اسماً مشتقاً
+   متطابقاً (بوت أسود ×2 بصورة وسعر مختلفين) لانضم أحدهما للآخر بلا أن يظهر
+   ذلك في أي مكان. الانفصال المرئي أهون بكثير من دمج خاطئ. */
 export async function backfillModelIds() {
   const all = await db.products.toArray();
   const groups = new Map();
@@ -397,13 +397,70 @@ export async function backfillModelIds() {
     groups.get(k).push(p);
   }
   for (const members of groups.values()) {
-    const ids = [...new Set(members.map((m) => m.modelId).filter(Boolean))];
-    const mid = ids.length === 1 ? ids[0] : ids.length ? null : await nextModelId();
-    if (!mid) continue; /* أرقام متضاربة بالمجموعة — تُترك كما هي، لا دمج إجباري */
-    for (const m of members) {
-      if (!m.modelId && m.modelId !== mid) await db.products.update(m.sku, { modelId: mid });
-    }
+    /* رقم واحد موجود داخل المجموعة ⇒ لا نلمس شيئاً */
+    if (members.some((m) => m.modelId)) continue;
+    const mid = await nextModelId();
+    for (const m of members) await db.products.update(m.sku, { modelId: mid });
   }
+}
+
+/* ---------------- إصلاح الموديلات المدمجة ----------------
+   الدمج الخاطئ يترك بصمة واضحة: بطاقات تحت رقم موديل واحد تختلف في التكلفة أو
+   سعر البيع أو الصورة. الموديل الحقيقي الواحد (نفس الحذاء بألوانه ومقاساته)
+   تشترك بطاقاته في كل ذلك — فاختلافها دليل دمج. الفحص للقراءة فقط. */
+export async function findMergedModels() {
+  const all = await db.products.toArray();
+  const groups = new Map();
+  for (const p of all) {
+    const k = modelGroupKey(p);
+    if (!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(p);
+  }
+  const out = [];
+  for (const [key, items] of groups) {
+    if (items.length < 2) continue;
+    const costs = [...new Set(items.map((x) => Number(x.cost) || 0))];
+    const prices = [...new Set(items.map((x) => Number(x.price) || 0))];
+    const photos = [...new Set(items.map((x) => x.photo || '').filter(Boolean))];
+    const reasons = [];
+    if (costs.length > 1) reasons.push(`تكلفة مختلفة (${costs.length})`);
+    if (prices.length > 1) reasons.push(`سعر مختلف (${prices.length})`);
+    if (photos.length > 1) reasons.push(`صور مختلفة (${photos.length})`);
+    if (!reasons.length) continue;
+    out.push({ key, items, reasons, costs, prices, photoCount: photos.length });
+  }
+  /* الأكبر أولاً — أسوأ الحالات في الأعلى */
+  return out.sort((a, b) => b.items.length - a.items.length || b.reasons.length - a.reasons.length);
+}
+
+/* فصل بطاقات مختارة إلى موديل جديد برقم جديد.
+   المبيعات والحركات مرتبطة بالكود (sku) لا بالرقم الداخلي، فتاريخ كل بطاقة
+   يتبعها تلقائياً — لا يُفقد شيء. */
+export async function splitModel(skus) {
+  const list = [...new Set((skus || []).filter(Boolean))];
+  if (!list.length) return { ok: false, modelId: null, moved: 0 };
+  const all = await db.products.toArray();
+  const bySku = new Map(all.map((p) => [p.sku, p]));
+  const first = bySku.get(list[0]);
+  if (!first) return { ok: false, modelId: null, moved: 0 };
+  const chosen = new Set(list);
+  const oldKey = modelGroupKey(first);
+  /* بطاقة تبقى في الموديل القديم — لنعيد حساب «نفد» للطرفين */
+  const stays = all
+    .filter((x) => modelGroupKey(x) === oldKey && !chosen.has(x.sku))
+    .map((x) => x.sku);
+  const mid = await nextModelId();
+  const now = new Date().toISOString();
+  let moved = 0;
+  for (const sku of list) {
+    if (!bySku.has(sku)) continue;
+    await db.products.update(sku, { modelId: mid, updatedAt: now });
+    moved++;
+  }
+  /* «نفد» يُحسب على الموديل كله — المجموعتان تغيّرتا معاً */
+  for (const sku of list) await syncModelOos(sku);
+  if (stays.length) await syncModelOos(stays[0]);
+  return { ok: true, modelId: mid, moved };
 }
 
 /* delete a whole model (every color × size card of it) in one go */
