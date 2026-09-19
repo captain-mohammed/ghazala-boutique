@@ -183,7 +183,7 @@
           <Glass class="stat">
             <span class="s-ic"><Icon name={st.icon} size={16} color="var(--burgundy)" /></span>
             <span class="muted tiny">{st.label}</span>
-            <span class="s-v" class:gold={st.tone === 'gold'} class:good={st.tone === 'good'}>
+            <span class="s-v" class:gold={st.tone === 'gold'} class:good={st.tone === 'good'} data-val={st.value}>
               <Ticker value={st.value} />
               <span class="cur">د.ع</span>
             </span>
@@ -192,7 +192,7 @@
       </div>
       <Glass class="vault-row">
         <span class="muted small">الخزنة (الربح المتراكم)</span>
-        <span class="s-v gold"><Ticker value={vaultBal} /> <span class="cur">د.ع</span></span>
+        <span class="s-v gold" data-val={vaultBal}><Ticker value={vaultBal} /> <span class="cur">د.ع</span></span>
       </Glass>
     </section>
 
@@ -203,7 +203,7 @@
           <Glass class="stat">
             <span class="s-ic"><Icon name={st.icon} size={16} color="var(--burgundy)" /></span>
             <span class="muted tiny">{st.label}</span>
-            <span class="s-v">
+            <span class="s-v" data-val={st.value}>
               {#if st.num}<Ticker value={st.value} />{:else}<Ticker value={st.value} /> <span class="cur">د.ع</span>{/if}
             </span>
           </Glass>
@@ -217,7 +217,7 @@
               <div class="bold small">#{lastSale.id} — {lastSale.customerName || 'زبونة'}</div>
               <div class="muted tiny">{fmtDate(lastSale.date)}</div>
             </div>
-            <span class="s-v gold"><Ticker value={lastSale.total} /> <span class="cur">د.ع</span></span>
+            <span class="s-v gold" data-val={lastSale.total}><Ticker value={lastSale.total} /> <span class="cur">د.ع</span></span>
           </div>
         </Glass>
       {/if}
@@ -230,7 +230,7 @@
           <Glass class="stat">
             <span class="s-ic"><Icon name={st.icon} size={16} color="var(--burgundy)" /></span>
             <span class="muted tiny">{st.label}</span>
-            <span class="s-v" class:gold={st.tone === 'gold'}>
+            <span class="s-v" class:gold={st.tone === 'gold'} data-val={st.value}>
               {#if st.num}<Ticker value={st.value} />{:else}<Ticker value={st.value} /> <span class="cur">د.ع</span>{/if}
             </span>
           </Glass>
@@ -248,7 +248,7 @@
           <Glass class="stat">
             <span class="s-ic"><Icon name={st.icon} size={16} color="var(--burgundy)" /></span>
             <span class="muted tiny">{st.label}</span>
-            <span class="s-v">
+            <span class="s-v" data-val={st.value}>
               {#if st.num}<Ticker value={st.value} />{:else}<Ticker value={st.value} /> <span class="cur">د.ع</span>{/if}
             </span>
           </Glass>
@@ -257,7 +257,7 @@
       {#if archiveTotal > 0}
         <Glass class="arch-row">
           <span class="muted small">السجل القديم (دفعات مؤرشفة)</span>
-          <span class="s-v"><Ticker value={archiveTotal} /> <span class="cur">د.ع</span></span>
+          <span class="s-v" data-val={archiveTotal}><Ticker value={archiveTotal} /> <span class="cur">د.ع</span></span>
         </Glass>
       {/if}
     </section>
@@ -271,7 +271,7 @@
               <span class="s-ic"><Icon name="sparkle" size={16} color="var(--burgundy)" /></span>
               <span class="muted tiny">أعلى نوع ربحاً</span>
               <span class="bold">{topType.name}</span>
-              <span class="s-v gold"><Ticker value={topType.profit} /> <span class="cur">د.ع</span></span>
+              <span class="s-v gold" data-val={topType.profit}><Ticker value={topType.profit} /> <span class="cur">د.ع</span></span>
               <span class="muted tiny">{fmtNum(topType.qty)} قطعة مباعة</span>
             </Glass>
           {/if}
@@ -280,7 +280,7 @@
               <span class="s-ic"><Icon name="upload" size={16} color="var(--burgundy)" /></span>
               <span class="muted tiny">أكبر مورد</span>
               <span class="bold">{topSupplier.name}</span>
-              <span class="s-v"><Ticker value={topSupplier.cost} /> <span class="cur">د.ع</span></span>
+              <span class="s-v" data-val={topSupplier.cost}><Ticker value={topSupplier.cost} /> <span class="cur">د.ع</span></span>
               <span class="muted tiny">{fmtNum(topSupplier.models.size)} موديل — {fmtNum(topSupplier.qty)} قطعة</span>
             </Glass>
           {/if}
