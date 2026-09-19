@@ -1,9 +1,9 @@
 <script>
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
-  import { setSetting, modelOptions, subsOfType, subsOfType2, subsOfType3 } from '../db.js';
-  import { buzz } from '../utils.js';
-  import { toastOk } from '../store.js';
+  import { db, setSetting, modelOptions, subsOfType, subsOfType2, subsOfType3, seasonsOf } from '../db.js';
+  import { buzz, fmtNum } from '../utils.js';
+  import { toastOk, askConfirm } from '../store.js';
 
   let opts = $state(null);
   let newCat = $state('');
@@ -26,6 +26,38 @@
     toastOk(msg);
     buzz(10);
   }
+
+  /* كم موديل يستعمل هذه القيمة؟ حذف قيمة مستعملة **لا يفسد** الموديلات — كل
+     موديل يحتفظ بقيمته — لكنها تختفي من الخيارات، فلا تظهر في الفلاتر ولا
+     يمكن اختيارها مجدداً. نسأل قبل الحذف بدل أن يحدث ذلك بصمت. */
+  async function usageOf(kind, value, ctx = {}) {
+    const all = await db.products.toArray();
+    const v = String(value ?? '').trim().toLowerCase();
+    const eq = (x) => String(x ?? '').trim().toLowerCase() === v;
+    return all.filter((p) => {
+      switch (kind) {
+        case 'categories': return eq(p.category);
+        case 'types': return eq(p.type);
+        case 'typeSub': return (p.type || '') === ctx.type && eq(p.typeSub);
+        case 'typeSub2': return (p.type || '') === ctx.type && (p.typeSub || '') === ctx.sub && eq(p.typeSub2);
+        case 'typeSub3': return (p.type || '') === ctx.type && (p.typeSub || '') === ctx.sub && (p.typeSub2 || '') === ctx.sub2 && eq(p.typeSub3);
+        case 'seasons': return seasonsOf(p).some(eq);
+        case 'materials': return eq(p.material);
+        case 'colors': return eq(p.color);
+        default: return false;
+      }
+    }).length;
+  }
+  async function mayRemove(kind, value, ctx = {}) {
+    const n = await usageOf(kind, value, ctx);
+    if (!n) return true;
+    return askConfirm({
+      title: `حذف «${value}»`,
+      body: `${fmtNum(n)} موديل يستعمل «${value}». الحذف لا يغيّر موديلاتك الحالية — كل واحد يحتفظ بقيمته — لكنه لن يظهر كخيار بعد الآن، ولن تجديه في الفلاتر. أحذفه؟`,
+      okLabel: 'احذفي',
+      danger: true
+    });
+  }
   async function add(listKey, inputSetter, raw) {
     const name = String(raw || '').trim();
     if (!name) return;
@@ -36,6 +68,7 @@
     await save(listKey, opts[listKey], 'أُضيف إلى القائمة');
   }
   async function rm(listKey, name) {
+    if (!(await mayRemove(listKey, name))) return;
     opts = { ...opts, [listKey]: opts[listKey].filter((x) => x !== name) };
     if (listKey === 'types') {
       /* حذف النوع يمحو شجرته كاملة — الأبناء يتبعون الأب */
@@ -56,6 +89,7 @@
     await save('modelColors', opts.colors, 'أُضيف اللون بدائرته');
   }
   async function rmColor(label) {
+    if (!(await mayRemove('colors', label))) return;
     opts = { ...opts, colors: opts.colors.filter((c) => c.label !== label) };
     await save('modelColors', opts.colors, 'حُذف اللون');
   }
@@ -88,6 +122,7 @@
     await save('typeSubs', next, 'أُضيفت للقائمة الفرعية');
   }
   async function rmSub(type, name) {
+    if (!(await mayRemove('typeSub', name, { type }))) return;
     const subs = (opts.typeSubs?.[type] || []).filter((x) => x !== name);
     const next = { ...opts.typeSubs, [type]: subs };
     const next2 = { ...opts.typeSubs2 };
@@ -116,6 +151,7 @@
     await save('typeSubs2', tree, 'أُضيفت للقائمة الثالثة');
   }
   async function rmSub2(type, sub, name) {
+    if (!(await mayRemove('typeSub2', name, { type, sub }))) return;
     const tree = { ...(opts.typeSubs2 || {}) };
     const leaf = { ...(tree[type] || {}) };
     leaf[sub] = (leaf[sub] || []).filter((x) => x !== name);
@@ -149,6 +185,7 @@
     await save('typeSubs3', tree, 'أُضيفت للقائمة الرابعة');
   }
   async function rmSub3(type, sub, sub2, name) {
+    if (!(await mayRemove('typeSub3', name, { type, sub, sub2 }))) return;
     const tree = { ...(opts.typeSubs3 || {}) };
     const branch = { ...(tree[type] || {}) };
     const leaf = { ...(branch[sub] || {}) };
