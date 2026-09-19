@@ -5,7 +5,7 @@
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import PhotoSourceSheet from '../components/PhotoSourceSheet.svelte';
-  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf } from '../db.js';
+  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf, loadProducts } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd, fileToPhotoDataUrl, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, celebrateAt, campaignContacts } from '../store.js';
 
@@ -72,7 +72,7 @@
     opts = await modelOptions();
     if (product) {
       /* group by the internal model number — الصورة هي الهوية، والرقم هو الجامع */
-      const all = await db.products.toArray();
+      const all = await loadProducts();
       const group = product.modelId
         ? all.filter((x) => x.modelId === product.modelId)
         : all.filter((x) =>
@@ -259,7 +259,7 @@
          واحدة تخلط الصور والأسعار وتضخّم الكميات بصمت.
          لإضافة لون آخر لنفس الموديل: افتحي الموديل ← «تعديل»، أو استعملي
          «لون آخر لنفس الموديل» في فاتورة الوارد — كلاهما يشارك الرقم عن قصد. */
-      const all0 = await db.products.toArray();
+      const all0 = await loadProducts();
       const freshId = product?.modelId || (await nextModelId());
       /* وقت الوصول: يُكتب فقط حين تُعدّله يدوياً — «الآن» يتركه لقاعدة البيانات */
       const arrivalIso = tsIsNow ? null : isoFromBaghdadLocal(ts);

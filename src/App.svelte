@@ -27,7 +27,7 @@
   import Broadcast from './lib/screens/Broadcast.svelte';
   import StoryStudio from './lib/screens/StoryStudio.svelte';
   import ModelRepair from './lib/screens/ModelRepair.svelte';
-  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays } from './lib/db.js';
+  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable } from './lib/db.js';
 
   let locked = $state(true);
   let screen = $state('home');
@@ -93,6 +93,9 @@
     backfillTypeTree();
     sweepOosModelWide();
     sweepSeasonArrays();
+    /* صور الموديل: تُنسخ مرة واحدة من البطاقات إلى جدولها، فتصير كل جلبة
+       بيانات خفيفة بدل أن تقرأ عشرات الميجابايت كل أربع ثوانٍ */
+    migratePhotosToTable();
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredInstall = e;

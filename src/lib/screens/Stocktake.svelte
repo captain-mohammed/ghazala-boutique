@@ -4,7 +4,7 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, stocktakeApply, typeChain } from '../db.js';
+  import { db, stocktakeApply, typeChain, loadProducts } from '../db.js';
   import { fmtNum, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
 
@@ -17,7 +17,7 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const p = await db.products.toArray();
+      const p = await loadProducts();
       if (alive) products = p;
     };
     grab();

@@ -4,7 +4,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, setSaleStatus, returnSale, setSaleDate } from '../db.js';
+  import { db, setSaleStatus, returnSale, setSaleDate, loadProducts } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, fmtAgo, buzz, buildSalesMessage, sendWhatsApp, salePieces, WA_STATUS_TEMPLATES, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
@@ -67,7 +67,7 @@
   let photos = $state({});
   $effect(() => {
     let alive = true;
-    db.products.toArray().then((ps) => {
+    loadProducts().then((ps) => {
       if (alive) photos = Object.fromEntries(ps.map((p) => [p.sku, { photo: p.photo, type: p.type || '', typeSub: p.typeSub || '', typeSub2: p.typeSub2 || '', typeSub3: p.typeSub3 || '' }]));
     });
     return () => { alive = false; };

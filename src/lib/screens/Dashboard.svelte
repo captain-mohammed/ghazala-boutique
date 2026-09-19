@@ -7,7 +7,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import VariantBits from '../components/VariantBits.svelte';
   import TargetRing from '../components/TargetRing.svelte';
-  import { db, allSettings, upcomingOccasions, vaultState, vaultManual, archivedModels, moneyInTransit } from '../db.js';
+  import { db, allSettings, upcomingOccasions, vaultState, vaultManual, archivedModels, moneyInTransit, loadProducts } from '../db.js';
   import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey, stockArrival, shelfAgeDays, baghdadLocalInput, isoFromBaghdadLocal, baghdadHour } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
   import Sheet from '../components/Sheet.svelte';
@@ -31,7 +31,7 @@
     let alive = true;
     const grab = async () => {
       const [p, s, r, v, st, tr] = await Promise.all([
-        db.products.toArray(), db.sales.toArray(), db.reservations.toArray(), vaultState(), allSettings(),
+        loadProducts(), db.sales.toArray(), db.reservations.toArray(), vaultState(), allSettings(),
         moneyInTransit()
       ]);
       if (!alive) return;

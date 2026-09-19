@@ -1,7 +1,7 @@
 <script>
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
-  import { db, setSetting, modelOptions, subsOfType, subsOfType2, subsOfType3, seasonsOf } from '../db.js';
+  import { db, setSetting, modelOptions, subsOfType, subsOfType2, subsOfType3, seasonsOf, loadProducts } from '../db.js';
   import { buzz, fmtNum } from '../utils.js';
   import { toastOk, askConfirm } from '../store.js';
 
@@ -31,7 +31,7 @@
      موديل يحتفظ بقيمته — لكنها تختفي من الخيارات، فلا تظهر في الفلاتر ولا
      يمكن اختيارها مجدداً. نسأل قبل الحذف بدل أن يحدث ذلك بصمت. */
   async function usageOf(kind, value, ctx = {}) {
-    const all = await db.products.toArray();
+    const all = await loadProducts();
     const v = String(value ?? '').trim().toLowerCase();
     const eq = (x) => String(x ?? '').trim().toLowerCase() === v;
     return all.filter((p) => {

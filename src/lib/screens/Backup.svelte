@@ -3,7 +3,7 @@
   import Icon from '../components/Icon.svelte';
   import Sheet from '../components/Sheet.svelte';
   import Glass from '../components/Glass.svelte';
-  import { db, backupJSON, restoreJSON, getSetting, setSetting } from '../db.js';
+  import { db, backupJSON, restoreJSON, getSetting, setSetting, loadProducts } from '../db.js';
   import { downloadFile, fmtDate, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
   import * as XLSX from 'xlsx';
@@ -68,7 +68,7 @@
   }
 
   async function exportExcel() {
-    const [products, sales] = await Promise.all([db.products.toArray(), db.sales.toArray()]);
+    const [products, sales] = await Promise.all([loadProducts(), db.sales.toArray()]);
     const wb = XLSX.utils.book_new();
 
     const pRows = products.map((p) => ({

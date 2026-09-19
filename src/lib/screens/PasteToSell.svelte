@@ -3,7 +3,7 @@
   import Glass from '../components/Glass.svelte';
   import Pick from '../components/Pick.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, recordSale, piecesSoldToday, typeChain } from '../db.js';
+  import { db, recordSale, piecesSoldToday, typeChain, loadProducts } from '../db.js';
   import { fmtIQD, fmtNum, parseOrderText, buzz } from '../utils.js';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor } from '../store.js';
 
@@ -26,7 +26,7 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const p = await db.products.toArray();
+      const p = await loadProducts();
       if (alive) products = p;
     };
     grab();

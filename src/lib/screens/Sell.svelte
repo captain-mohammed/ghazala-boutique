@@ -12,7 +12,7 @@
   import { longpress, flyToCart, popBadge } from '../motion.js';
   import VariantBits from '../components/VariantBits.svelte';
   import Pick from '../components/Pick.svelte';
-  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType, createReservation, seasonsOf } from '../db.js';
+  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType, createReservation, seasonsOf, loadProducts } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters, filtersOpen } from '../store.js';
@@ -37,9 +37,17 @@
 
   $effect(() => {
     let alive = true;
+    let lastSig = '';
     const grab = async () => {
-      const [p, s, o] = await Promise.all([db.products.toArray(), db.sales.toArray(), modelOptions()]);
-      if (alive) { products = p; sales = s; opts = o; }
+      const [p, s, o] = await Promise.all([loadProducts(), db.sales.toArray(), modelOptions()]);
+      if (!alive) return;
+      /* بصمة رخيصة: لا نعيد رسم مئات البطاقات إلا عند تغيّر حقيقي */
+      let m = 0;
+      for (let i = 0; i < p.length; i++) { const t = Date.parse(p[i].updatedAt || 0); if (t > m) m = t; }
+      const sig = p.length + ':' + m + ':' + s.length;
+      if (sig === lastSig) return;
+      lastSig = sig;
+      products = p; sales = s; opts = o;
     };
     grab();
     const t = setInterval(grab, 4000);

@@ -2,7 +2,7 @@
   import Icon from '../components/Icon.svelte';
   import Ticker from '../components/Ticker.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, allSettings, getSetting, WOMENS_TYPES, modelGroupKey } from '../db.js';
+  import { db, allSettings, getSetting, WOMENS_TYPES, modelGroupKey, loadProducts } from '../db.js';
   import Glass from '../components/Glass.svelte';
   import { fmtIQD, fmtNum, fmtDate, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR, shelfAgeDays, stockArrival, baghdadWeekday, baghdadDayPart } from '../utils.js';
 
@@ -24,7 +24,7 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, s, e, c, st] = await Promise.all([db.products.toArray(), db.sales.toArray(), db.expenses.toArray(), getSetting('monthClosing', []), allSettings()]);
+      const [p, s, e, c, st] = await Promise.all([loadProducts(), db.sales.toArray(), db.expenses.toArray(), getSetting('monthClosing', []), allSettings()]);
       if (!alive) return;
       products = p;
       sales = s;

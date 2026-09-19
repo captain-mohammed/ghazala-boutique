@@ -7,7 +7,7 @@
   import Glass from '../components/Glass.svelte';
   import ProductForm from './ProductForm.svelte';
   import ItemDetail from './ItemDetail.svelte';
-  import { db, modelOptions, hexForColor, deleteProducts, modelGroupKey, subsOfType, subsOfType2, subsOfType3, countUnderType, typeChain, seasonsOf } from '../db.js';
+  import { db, modelOptions, hexForColor, deleteProducts, modelGroupKey, subsOfType, subsOfType2, subsOfType3, countUnderType, typeChain, seasonsOf, loadProducts } from '../db.js';
   import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl } from '../utils.js';
   import { toastErr, toastOk, askConfirm, invoicePreset, catalogFilters, filtersOpen } from '../store.js';
   import { get } from 'svelte/store';
@@ -27,9 +27,24 @@
 
   $effect(() => {
     let alive = true;
+    /* بصمة رخيصة: لا نعيد رسم ٣٠٠ بطاقة إلا إذا تغيّرت البيانات فعلاً.
+       كانت كل جلبة (كل ٤ ثوانٍ) تستبدل المصفوفة فتُعيد سvelte رسم كل شيء،
+       فتتقطّع الحركة بلا أي سبب حقيقي. */
+    let lastSig = '';
+    const sigOf = (rows) => {
+      let m = 0;
+      for (let i = 0; i < rows.length; i++) {
+        const t = Date.parse(rows[i].updatedAt || 0);
+        if (t > m) m = t;
+      }
+      return rows.length + ':' + m;
+    };
     const grab = async () => {
-      const [p, o] = await Promise.all([db.products.toArray(), modelOptions()]);
+      const [p, o] = await Promise.all([loadProducts(), modelOptions()]);
       if (!alive) return;
+      const s = sigOf(p);
+      if (s === lastSig) return;
+      lastSig = s;
       products = p;
       opts = o;
     };
@@ -367,7 +382,7 @@
             <!-- الصورة هي الهوية: إطار مربع بعرض البطاقة، بدون اسم -->
             <div class="thumb" class:oos={g.qty === 0}>
               {#if g.photo}
-                <img src={g.photo} alt={g.type || g.category} loading="lazy" />
+                <img src={g.photo} alt={g.type || g.category} loading="lazy" decoding="async" />
               {:else}
                 <Icon name="image" size={34} color="var(--taupe)" />
               {/if}
@@ -451,7 +466,7 @@
       <!-- الصورة هي الهوية: بلا اسم، النوع والتصنيف فقط -->
       <Glass class="mv-head">
         <div class="mv-thumb" class:oos={g.qty === 0}>
-          {#if g.photo}<img src={g.photo} alt={g.type || g.category} />{:else}<Icon name="image" size={30} color="var(--taupe)" />{/if}
+          {#if g.photo}<img src={g.photo} alt={g.type || g.category} loading="lazy" decoding="async" />{:else}<Icon name="image" size={30} color="var(--taupe)" />{/if}
         </div>
         <div class="mv-info">
           {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="mv-type">{typeChain(g)}</div>{/if}

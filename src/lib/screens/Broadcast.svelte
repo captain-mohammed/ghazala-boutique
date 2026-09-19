@@ -10,7 +10,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
   import Pick from '../components/Pick.svelte';
-  import { db, getSetting, addWaitlistEntry } from '../db.js';
+  import { db, getSetting, addWaitlistEntry, loadProducts } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz, sendWhatsApp, renderTpl, MKT_TEMPLATES } from '../utils.js';
   import { toastOk, toastErr, campaignContacts } from '../store.js';
 
@@ -27,7 +27,7 @@
     loading = true;
     const [sales, prods, wl, t1, t2, t3, t4] = await Promise.all([
       db.sales.toArray(),
-      db.products.toArray(),
+      loadProducts(),
       db.waitlists.toArray(),
       getSetting(MKT_TEMPLATES.firstdibs.key, ''),
       getSetting(MKT_TEMPLATES.waiting.key, ''),

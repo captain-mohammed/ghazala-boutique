@@ -7,7 +7,7 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
-  import { db, getSetting, setSetting } from '../db.js';
+  import { db, getSetting, setSetting, loadProducts } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz, copyText, sendWhatsApp } from '../utils.js';
   import { toastOk, toastErr } from '../store.js';
 
@@ -21,7 +21,7 @@
   onMount(load);
   async function load() {
     loading = true;
-    const prods = await db.products.toArray();
+    const prods = await loadProducts();
     /* group by modelId — keep newest */
     const map = new Map();
     for (const p of prods) {

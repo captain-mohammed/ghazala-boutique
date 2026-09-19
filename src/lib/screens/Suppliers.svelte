@@ -5,7 +5,7 @@
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
-  import { db, getSetting, setSetting } from '../db.js';
+  import { db, getSetting, setSetting, loadProducts } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz } from '../utils.js';
   import { toastOk, toastErr } from '../store.js';
 
@@ -50,7 +50,7 @@
   async function load() {
     if (!loadedOnce) loading = true;
     const [products, sales, supList] = await Promise.all([
-      db.products.toArray(),
+      loadProducts(),
       db.sales.toArray(),
       getSetting('suppliers', [])
     ]);
@@ -116,7 +116,7 @@
   <Glass class="hero rise" style="padding:16px">
     <div class="row" style="justify-content:space-between; align-items:center">
       <div>
-        <h1 class="h1">دخل الموردين</h1>
+        <h1 class="h1">دفتر الموردين</h1>
         <div class="muted small">منين تشترين — ووش صار من مبيعات كل مورد</div>
       </div>
       <span class="hero-ic"><Icon name="upload" size={22} color="var(--burgundy)" /></span>

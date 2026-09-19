@@ -74,6 +74,27 @@ db.version(6).stores({
   payments: '++id, company, date'
 });
 
+/* v7: + photos (صورة الموديل مرة واحدة)
+   كانت كل بطاقة تحمل صورة كاملة — فموديل بأربعة مقاسات يخزّنها أربع مرات.
+   مع ٣٠٠ موديل صار كل جلب يقرأ عشرات الميجابايت كل أربع ثوانٍ، فتتقطّع
+   الحركة. الصورة الآن تُحفظ مرة لكل موديل في جدولها، وتُربط بالبطاقات في
+   الذاكرة بعد الجلب (نفس مرجع النص — بلا نسخ)، فكل الشاشات تعمل كما هي. */
+db.version(7).stores({
+  products: 'sku, name, category, brand, color, size, qty, updatedAt',
+  sales: '++id, date, status, customerName, customerPhone, barcode, deliveryCompany, settledAt, fromReservation',
+  movements: '++id, sku, date, type',
+  settings: 'key',
+  expenses: '++id, date, category',
+  reservations: '++id, sku, createdAt, expiresAt, status',
+  occasions: '++id, customerName, customerPhone, month, day, date',
+  vault: '++id, date, saleId, kind',
+  waitlists: 'key, status, modelId, sku, createdAt',
+  referrals: '++id, fromKey, toKey, date',
+  testimonials: '++id, customerName, customerPhone, date, modelId',
+  payments: '++id, company, date',
+  photos: 'modelId'
+});
+
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
 export const WOMENS_TYPES = ['بوت', 'سلامبر', 'موال', 'كعب عالي'];
 
@@ -335,6 +356,60 @@ export async function addTestimonial({ customerName, customerPhone, text, rating
   return { ok: true };
 }
 
+/* ---------------- صورة الموديل — مرة واحدة لا أربع ----------------
+   الصورة تُحفظ مرة لكل موديل في جدول `photos`. وعند الجلب تُربط بالبطاقات
+   بـ **نفس مرجع النص**، فتعمل كل الشاشات كما هي تماماً — لكن الجلب من قاعدة
+   البيانات صار خفيفاً لأنه لم يعد يجرّ عشرات الميجابايت كل أربع ثوانٍ. */
+export async function setModelPhoto(modelId, data) {
+  const mid = String(modelId || '').trim();
+  if (!mid) return;
+  if (data) await db.photos.put({ modelId: mid, data });
+  else await db.photos.delete(mid);
+}
+
+/* استبديل db.products.toArray() بهذه في كل الشاشات */
+export async function loadProducts() {
+  const [rows, photos] = await Promise.all([db.products.toArray(), db.photos.toArray()]);
+  if (!photos.length) return rows;
+  const byModel = new Map();
+  for (const ph of photos) byModel.set(ph.modelId, ph.data);
+  for (const p of rows) {
+    const d = byModel.get(modelGroupKey(p));
+    if (d) p.photo = d;   /* نفس المرجع — لا نسخ في الذاكرة */
+  }
+  return rows;
+}
+
+/* ترحيل لمرة واحدة: انسخ صور البطقات إلى جدول photos، ثم نظّف البطاقات.
+   قاعدة الأمان: لا تُنظَّف بطاقة إلا بعد التأكد أن صورة موديلها صارت محفوظة. */
+export async function migratePhotosToTable() {
+  try {
+    if (await getSetting('photosMigrated', false)) return 0;
+    const rows = await db.products.toArray();
+    const byModel = new Map();
+    for (const p of rows) {
+      if (!p.photo) continue;
+      const mid = modelGroupKey(p);
+      if (!byModel.has(mid)) byModel.set(mid, p.photo);
+    }
+    if (!byModel.size) { await setSetting('photosMigrated', true); return 0; }
+    for (const [mid, data] of byModel) await db.photos.put({ modelId: mid, data });
+    const have = new Set((await db.photos.toArray()).map((x) => x.modelId));
+    let cleared = 0;
+    for (const p of rows) {
+      if (!p.photo) continue;
+      if (!have.has(modelGroupKey(p))) continue;   /* لا نخسر صورة أبداً */
+      await db.products.update(p.sku, { photo: null });
+      cleared++;
+    }
+    await setSetting('photosMigrated', true);
+    return cleared;
+  } catch (e) {
+    console.error('migratePhotosToTable', e);
+    return 0;
+  }
+}
+
 export async function addProduct(data, { moveNote } = {}) {
   /* Svelte $state proxies (seasons، sizes grids، سطور الفاتورة) لا تُستنسخ
      إلى IndexedDB — نفس فخ setSetting: جولة JSON تُجرّدها قبل أي put */
@@ -353,7 +428,12 @@ export async function addProduct(data, { moveNote } = {}) {
   };
   if (!p.modelId) p.modelId = await nextModelId();
   delete p.id;
+  /* الصورة تُحفظ مرة لكل موديل في جدولها — لا تُنسخ على كل بطاقة */
+  const photoData = p.photo;
+  if (photoData) await setModelPhoto(p.modelId, photoData);
+  p.photo = null;
   await db.products.put(p);
+  p.photo = photoData;   /* تُلحق بالكائن المُرجع للمتصل فقط — غير مخزّنة على البطاقة */
   if (p.qty > 0) await logMovement({ sku, type: 'in', qty: p.qty, note: moveNote || 'إضافة أولية', date: createdAt });
   await syncModelOos(sku);
   return p;
@@ -369,7 +449,12 @@ export async function updateProduct(sku, changes, moveNote) {
   const diff = (Number(changes.qty ?? before.qty) || 0) - before.qty;
   /* pieces went back on the shelf → the راكد clock restarts from here */
   if (diff > 0) p.restockedAt = now;
+  /* صورة الموديل إلى جدولها — ولا تُخزَّن على البطاقة */
+  const photoData = p.photo;
+  if (photoData) await setModelPhoto(p.modelId || modelGroupKey(p), photoData);
+  p.photo = null;
   await db.products.put(p);
+  p.photo = photoData;
   if (diff !== 0) {
     await logMovement({
       sku, type: diff > 0 ? 'in' : 'out', qty: Math.abs(diff),
@@ -1145,23 +1230,24 @@ export async function stocktakeApply(corrections) {
 /* ---------------- Backup / Restore ---------------- */
 
 export async function backupJSON() {
-  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments] = await Promise.all([
+  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos] = await Promise.all([
     db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray(),
     db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.vault.toArray(),
-    db.waitlists.toArray(), db.referrals.toArray(), db.testimonials.toArray(), db.payments.toArray()
+    db.waitlists.toArray(), db.referrals.toArray(), db.testimonials.toArray(), db.payments.toArray(),
+    db.photos.toArray()
   ]);
   return {
-    app: 'ghazala-boutique', version: 6, exportedAt: new Date().toISOString(),
+    app: 'ghazala-boutique', version: 7, exportedAt: new Date().toISOString(),
     products, sales, movements, settings, expenses, reservations, occasions, vault,
-    waitlists, referrals, testimonials, payments
+    waitlists, referrals, testimonials, payments, photos
   };
 }
 
 export async function restoreJSON(data, { merge = false } = {}) {
   if (!data || data.app !== 'ghazala-boutique') throw new Error('ملف النسخة غير صالح');
   if (!merge) {
-    await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, async () => {
-      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear()]);
+    await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, async () => {
+      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear()]);
     });
   }
   await db.products.bulkPut(data.products || []);
@@ -1183,11 +1269,13 @@ export async function restoreJSON(data, { merge = false } = {}) {
   if (Array.isArray(data.testimonials)) await db.testimonials.bulkPut(data.testimonials);
   /* v6 — النسخ الأقدم تخلو منها ببساطة */
   if (Array.isArray(data.payments)) await db.payments.bulkPut(data.payments);
+  /* v7 — صور الموديل (مرة لكل موديل) */
+  if (Array.isArray(data.photos)) await db.photos.bulkPut(data.photos);
 }
 
 export async function wipeAll() {
-  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, async () => {
-    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear()]);
+  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, async () => {
+    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear()]);
   });
 }
 

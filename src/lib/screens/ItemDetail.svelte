@@ -3,7 +3,7 @@
   import Sheet from '../components/Sheet.svelte';
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, adjustQty, deleteProduct, createReservation, RESERVATION_HOURS, addWaitlistEntry, waitingForModel } from '../db.js';
+  import { db, adjustQty, deleteProduct, createReservation, RESERVATION_HOURS, addWaitlistEntry, waitingForModel, loadProducts } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt, invoicePreset } from '../store.js';
 
@@ -47,7 +47,7 @@
     const sku = product?.sku;
     if (sku) {
       db.movements.where('sku').equals(sku).reverse().toArray().then((m) => (moves = m.slice(0, 12)));
-      db.products.toArray().then((ps) => (siblings = ps.filter((x) => sameModel(x, product))));
+      loadProducts().then((ps) => (siblings = ps.filter((x) => sameModel(x, product))));
       loadWaits();
     }
   });
@@ -86,7 +86,7 @@
   async function bump(delta) {
     const q = await adjustQty(p.sku, delta);
     p = { ...p, qty: q };
-    db.products.toArray().then((ps) => (siblings = ps.filter((x) => sameModel(x, p))));
+    loadProducts().then((ps) => (siblings = ps.filter((x) => sameModel(x, p))));
     buzz(10);
     if (delta > 0) celebrateAt(window.innerWidth / 2, window.innerHeight / 2.5, '📦');
     toastOk(delta > 0 ? `+${delta} قطعة` : `−${Math.abs(delta)} قطعة`);

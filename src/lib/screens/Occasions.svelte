@@ -4,7 +4,7 @@
   import Pick from '../components/Pick.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
-  import { db, addOccasion, deleteOccasion, upcomingOccasions } from '../db.js';
+  import { db, addOccasion, deleteOccasion, upcomingOccasions, loadProducts } from '../db.js';
   import { fmtNum, buzz, sendWhatsApp } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
 
@@ -165,7 +165,7 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [prods, sales] = await Promise.all([db.products.toArray(), db.sales.toArray()]);
+      const [prods, sales] = await Promise.all([loadProducts(), db.sales.toArray()]);
       if (!alive) return;
       const models = new Map();
       for (const p of prods) {
