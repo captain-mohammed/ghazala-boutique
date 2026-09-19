@@ -9,3 +9,4 @@ assets-manifest.json
 dev-dist/
 *.log
 .workbuddy-ai/
+dist-old/
