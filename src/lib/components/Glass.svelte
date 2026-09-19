@@ -71,4 +71,9 @@
   .g.strong {
     background: var(--glass-strong);
   }
+  /* أثناء التمرير: أزل الضبابية (تُعاد عند التوقف). المظهر الزجاجي يبقى عند الثبات. */
+  :global(html.is-scrolling) .g {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
 </style>

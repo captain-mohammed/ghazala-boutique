@@ -111,6 +111,26 @@
   });
 
   let deferredInstall = null;
+
+  /* تعطيل ضبابية الزجاج أثناء التمرير يُبقي الحركة سلسة على الجوال:
+     كل بطاقة زجاجية (blur 25px) تُعاد تركيبها في وحدة معالجة الرسوم كل إطار
+     أثناء التمرير، فتبطء الانزلاق. نزيل الضبابية أثناء التمرير ونعيدها بعد توقفه
+     بلمحة — المظهر الزجاجي يبقى كما هو عند الثبات. */
+  $effect(() => {
+    let t;
+    const onScroll = () => {
+      const root = document.documentElement;
+      if (!root.classList.contains('is-scrolling')) root.classList.add('is-scrolling');
+      clearTimeout(t);
+      t = setTimeout(() => root.classList.remove('is-scrolling'), 140);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      clearTimeout(t);
+      document.documentElement.classList.remove('is-scrolling');
+    };
+  });
 </script>
 
 <div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
