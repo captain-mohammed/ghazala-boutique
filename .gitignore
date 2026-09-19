@@ -8,3 +8,4 @@ readme-header.png
 assets-manifest.json
 dev-dist/
 *.log
+.workbuddy-ai/
