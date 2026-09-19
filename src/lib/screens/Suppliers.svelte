@@ -79,6 +79,9 @@
       g.boughtQty += (p.qty || 0) + (saleBySku.get(p.sku)?.qty || 0);   /* المشتري = المتبقي + المبيع */
       g.boughtCost += (p.cost || 0) * ((p.qty || 0) + (saleBySku.get(p.sku)?.qty || 0));
     }
+    /* فهرس بالكود مرة واحدة — products.find داخل حلقة كان O(موردين × بطاقات) */
+    const bySku = new Map();
+    for (const p of products) bySku.set(p.sku, p);
     rows = [...map.values()].map((g) => {
       let soldQty = 0, revenue = 0, cost = 0, soldModels = new Set();
       for (const sku of g.skus) {
@@ -87,10 +90,7 @@
         soldQty += s.qty; revenue += s.revenue; cost += s.cost;
         soldModels.add(sku);
       }
-      const leftQty = [...new Set(g.skus)].reduce((a, sku) => {
-        const p = products.find((x) => x.sku === sku);
-        return a + (p?.qty || 0);
-      }, 0);
+      const leftQty = [...new Set(g.skus)].reduce((a, sku) => a + (bySku.get(sku)?.qty || 0), 0);
 
       const profit = revenue - cost;
       const sellPct = g.boughtQty ? Math.round((soldQty / g.boughtQty) * 100) : 0;
@@ -98,7 +98,7 @@
         ...g,
         modelCount: g.models.size,
         soldQty, revenue, profit, leftQty, sellPct,
-        lastIn: g.skus.map((sku) => products.find((x) => x.sku === sku)?.supplierAt).filter(Boolean).sort().pop() || null
+        lastIn: g.skus.map((sku) => bySku.get(sku)?.supplierAt).filter(Boolean).sort().pop() || null
       };
     }).sort((a, b) => b.boughtCost - a.boughtCost);
     loading = false;

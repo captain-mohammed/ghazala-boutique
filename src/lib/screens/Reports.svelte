@@ -40,6 +40,30 @@
 
   const from = $derived(period === 'today' ? startOfToday() : period === 'week' ? daysAgoStart(6) : period === 'month' ? daysAgoStart(29) : new Date(0));
   const inPeriod = $derived(sales.filter((s) => s.status !== 'returned' && new Date(s.date) >= from));
+
+  /* خرائط بحث تُبنى مرة واحدة — كانت كل صفحة تستدعي products.find داخل حلقة
+     العرض (صفوف × منتجات)، فمع ٣٠٠ موديل صار العرض يبطؤ بلا داعٍ. */
+  const prodBySku = $derived.by(() => {
+    const m = new Map();
+    for (const p of products) m.set(p.sku, p);
+    return m;
+  });
+  const firstByModel = $derived.by(() => {
+    const m = new Map();
+    for (const p of products) {
+      const k = modelGroupKey(p);
+      if (!m.has(k)) m.set(k, p);
+    }
+    return m;
+  });
+  const photoByModel = $derived.by(() => {
+    const m = new Map();
+    for (const p of products) {
+      const k = modelGroupKey(p);
+      if (p.photo && !m.has(k)) m.set(k, p.photo);
+    }
+    return m;
+  });
   const returnedSales = $derived(sales.filter((s) => s.status === 'returned').sort((a, b) => new Date(b.date) - new Date(a.date)));
 
   const totals = $derived({
@@ -243,8 +267,8 @@
       <h2 class="h2" style="margin-bottom:10px"><Icon name="flame" size={17} color="var(--burgundy)" /> الأكثر مبيعاً</h2>
       <div class="stack" style="gap:8px">
         {#each best as b, i (b.sku)}
-          {@const ph = products.find((p) => p.sku === b.sku)?.photo}
-          {@const bp = products.find((p) => p.sku === b.sku)}
+          {@const ph = prodBySku.get(b.sku)?.photo}
+          {@const bp = prodBySku.get(b.sku)}
           <div class="brow pop" style="animation-delay:{0.2 + i * 0.05}s">
             <span class="rank">{i + 1}</span>
             <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
@@ -293,8 +317,8 @@
       {#if movingFast.length}
         <div class="st-head good">يدور بسرعة — ما يلبث على الرف</div>
         {#each movingFast as x (x.key)}
-          {@const ph = products.find((p) => modelGroupKey(p) === x.key && p.photo)?.photo}
-          {@const xp = products.find((p) => modelGroupKey(p) === x.key)}
+          {@const ph = photoByModel.get(x.key)}
+          {@const xp = firstByModel.get(x.key)}
           <div class="brow" style="margin-bottom:6px">
             <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <div class="a-body">
@@ -311,8 +335,8 @@
       {#if movingSlow.length}
         <div class="st-head slow">يتثاقل — فكّري بعرض أو تصفية</div>
         {#each movingSlow as x (x.key)}
-          {@const ph = products.find((p) => modelGroupKey(p) === x.key && p.photo)?.photo}
-          {@const xp = products.find((p) => modelGroupKey(p) === x.key)}
+          {@const ph = photoByModel.get(x.key)}
+          {@const xp = firstByModel.get(x.key)}
           <div class="brow" style="margin-bottom:6px">
             <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
             <div class="a-body">
@@ -403,7 +427,7 @@
       {#if showReturned}
         <div class="stack" style="gap:8px; margin-top:10px">
           {#each returnedSales as s (s.id)}
-            {@const ph = products.find((p) => p.sku === s.items?.[0]?.sku)?.photo}
+            {@const ph = prodBySku.get(s.items?.[0]?.sku)?.photo}
             <div class="brow">
               <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
               <div class="a-body">
