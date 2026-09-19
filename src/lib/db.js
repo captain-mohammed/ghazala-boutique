@@ -463,6 +463,79 @@ export async function splitModel(skus) {
   return { ok: true, modelId: mid, moved };
 }
 
+/* ---------------- دمج الموديلات المتشابهة ----------------
+   الوجه الآخر لعملة الإصلاح: بعد أن صار كل تسجيل جديد يأخذ رقمه الخاص، قد
+   تُنشئ نسخة مكرّرة بالخطأ. هذه الدالة تجد الموديلات التي تتشابه أسماؤها
+   المشتقة (النوع + اللون) والتصنيف لكن أرقامها مختلفة — نسخ مكرّرة محتملة.
+   ⚠️ التشابه ليس دليلاً: قد يكونان موديلين مختلفين فعلاً بنفس النوع واللون
+   (وهذا صار ممكناً ومقصوداً). لذلك لا يُدمج شيء إلا بطلب صريح من المستخدمة. */
+export async function findSimilarModels() {
+  const all = await db.products.toArray();
+  const byName = new Map();
+  for (const p of all) {
+    const k = `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
+    if (!byName.has(k)) byName.set(k, new Map());
+    const models = byName.get(k);
+    const mid = modelGroupKey(p);
+    if (!models.has(mid)) models.set(mid, []);
+    models.get(mid).push(p);
+  }
+  const out = [];
+  for (const [, models] of byName) {
+    if (models.size < 2) continue;
+    const list = [...models.entries()]
+      .map(([modelId, items]) => ({
+        modelId,
+        items,
+        createdAt: Math.min(...items.map((x) => new Date(x.createdAt || x.updatedAt || Date.now()).getTime())),
+        qty: items.reduce((a, x) => a + (x.qty || 0), 0),
+        price: Math.max(...items.map((x) => x.price || 0)),
+        photo: items.find((x) => x.photo)?.photo || null,
+        colors: [...new Set(items.map((x) => (x.color || '').trim()).filter(Boolean))]
+      }))
+      /* الأقدم أولاً — وهو الذي يصير الأساس عند الدمج */
+      .sort((a, b) => a.createdAt - b.createdAt);
+    out.push({ nameKey: `${models.size}`, models: list });
+  }
+  return out.sort((a, b) => b.models.length - a.models.length);
+}
+
+/* دمج موديلات مختارة في موديل واحد. الأساس هو **الأقدم** (الأول في القائمة)،
+   ويُعلن ذلك للمستخدمة قبل التنفيذ. الأكواد (sku) لا تتغيّر، فالمبيعات
+   والحركات تتبع بطاقاتها كما هي — لا يُفقد شيء.
+   ملاحظة: إن اختلفت الصور أو الأسعار بعد الدمج، ستظهر النتيجة في قسم
+   «بطاقات مدمجة خطأً» ويمكن فصلها من هناك. */
+export async function joinModels(modelIds) {
+  const ids = [...new Set((modelIds || []).filter(Boolean))];
+  if (ids.length < 2) return { ok: false, base: null, moved: 0 };
+  const all = await db.products.toArray();
+  const groups = new Map();
+  for (const p of all) {
+    const mid = modelGroupKey(p);
+    if (!ids.includes(mid)) continue;
+    if (!groups.has(mid)) groups.set(mid, []);
+    groups.get(mid).push(p);
+  }
+  const present = [...groups.keys()];
+  if (present.length < 2) return { ok: false, base: null, moved: 0 };
+  const at = (mid) => Math.min(...groups.get(mid).map((x) => new Date(x.createdAt || x.updatedAt || Date.now()).getTime()));
+  const base = present.slice().sort((a, b) => at(a) - at(b))[0];
+  const now = new Date().toISOString();
+  const movedSkus = [];
+  for (const mid of present) {
+    if (mid === base) continue;
+    for (const p of groups.get(mid)) {
+      await db.products.update(p.sku, { modelId: base, updatedAt: now });
+      movedSkus.push(p.sku);
+    }
+  }
+  /* «نفد» يُحسب على الموديل كله — الطرفان تغيّرا معاً */
+  for (const sku of movedSkus) await syncModelOos(sku);
+  const baseCards = groups.get(base);
+  if (baseCards?.length) await syncModelOos(baseCards[0].sku);
+  return { ok: true, base, moved: movedSkus.length };
+}
+
 /* delete a whole model (every color × size card of it) in one go */
 export async function deleteProducts(skus) {
   await db.products.bulkDelete(skus);
