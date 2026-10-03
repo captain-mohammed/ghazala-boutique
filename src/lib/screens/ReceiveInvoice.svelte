@@ -5,8 +5,10 @@
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import PhotoSourceSheet from '../components/PhotoSourceSheet.svelte';
-  import { receiveBatch, nextModelId, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, db, waitingForModel } from '../db.js';
+  import { slide } from 'svelte/transition';
+  import { receiveBatch, nextModelId, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, db, waitingForModel, typeChain } from '../db.js';
   import { fmtNum, fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
+  import { reducedMotion } from '../motion.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, invoicePreset, campaignContacts } from '../store.js';
 
@@ -28,7 +30,12 @@
   let suppliers = $state([]);
   let invoice = $state('');
   let note = $state('');
-  let lines = $state([blank()]);
+  /* سطر واحد مفتوح في الوقت الواحد (أكورديون): إضافة سطر جديد تطوي السابق
+     تلقائياً، فتبقى الفاتورة قصيرة ومقروءة مهما كثُرت الموديلات — وكل سطر
+     مطويّ يظلّ معرَّفاً بصورته ولونه ومقاساته وكميته. */
+  const seedLine = blank();
+  let lines = $state([seedLine]);
+  let openId = $state(seedLine.id);
   let saving = $state(false);
   /* عائلة «لون آخر لنفس الموديل»: كل الأسطر المنسوخة من بعضها تحمل family
      واحداً — يُحوَّل لرقم موديل واحد (M-…) عند الحفظ، فتتجمّع ألوان الفاتورة
@@ -47,17 +54,51 @@
     const pre = get(invoicePreset);
     if (!pre) return;
     if (pre.supplier) supplier = pre.supplier;
-    if (Array.isArray(pre.lines) && pre.lines.length) lines = pre.lines.map((l) => blank(l));
+    if (Array.isArray(pre.lines) && pre.lines.length) {
+      const next = pre.lines.map((l) => blank(l));
+      lines = next;
+      openId = next[0].id;
+    }
     invoicePreset.set(null);
   });
 
   const totalPieces = $derived(lines.reduce((a, l) => a + Object.values(l.sizes).reduce((x, n) => x + (Number(n) || 0), 0), 0));
   const linePieces = (l) => Object.values(l.sizes).reduce((x, n) => x + (Number(n) || 0), 0);
+  const filledLines = $derived(lines.filter((l) => linePieces(l) > 0).length);
   const canSave = $derived(supplier.trim().length >= 2 && lines.some((l) => linePieces(l) > 0));
+
+  /* ---- ملخّص السطر المطويّ: يكفي للتعرّف عليه بلا فتحه ---- */
+  const isOpen = (l) => openId === l.id;
+  const lineTitle = (l) => [typeChain(l), l.color].filter(Boolean).join(' · ');
+  const sizesSummary = (l) =>
+    Object.entries(l.sizes)
+      .filter(([, n]) => Number(n) > 0)
+      .map(([s, n]) => `${s}×${fmtNum(n)}`)
+      .join('  ');
+  const moneySummary = (l) => {
+    const bits = [];
+    if (iqd(l.cost) > 0) bits.push(`تكلفة ${fmtIQD(iqd(l.cost))}`);
+    if (iqd(l.price) > 0) bits.push(`بيع ${fmtIQD(iqd(l.price))}`);
+    return bits.join(' · ');
+  };
+  const missingPhoto = (l) => linePieces(l) > 0 && !l.photo;
+  const blankish = (l) => !lineTitle(l) && linePieces(l) === 0;
+
+  function toggleOpen(l) {
+    openId = openId === l.id ? null : l.id;
+    buzz(6);
+  }
+  const allFolded = $derived(openId === null);
+  function foldAll() {
+    openId = null;
+    buzz(6);
+  }
 
   function addLine() {
     const last = lines[lines.length - 1];
-    lines = [...lines, blank(last ? { category: last.category, type: last.type, season: last.season, material: last.material, color: last.color, cost: last.cost, price: last.price } : {})];
+    const nl = blank(last ? { category: last.category, type: last.type, season: last.season, material: last.material, color: last.color, cost: last.cost, price: last.price } : {});
+    lines = [...lines, nl];
+    openId = nl.id; /* السطر الجديد يُفتح والسابق يُطوى */
     buzz(8);
   }
   /* لون آخر لنفس الموديل — يشارك نفس الرقم الداخلي والصورة والأسعار */
@@ -69,16 +110,23 @@
       : last.family ? last.family
       : (familySeq += 1, 'F' + familySeq); /* عائلة جديدة — الأسطر تُرقَّم معاً عند الحفظ */
     if (shared.startsWith('F')) last.family = shared;
-    lines = [...lines, blank({
+    const nl = blank({
       category: last.category, type: last.type, typeSub: last.typeSub || '', typeSub2: last.typeSub2 || '', typeSub3: last.typeSub3 || '', season: last.season, material: last.material,
       color: '', cost: last.cost, price: last.price, photo: last.photo,
       modelId: shared.startsWith('M-') ? shared : undefined,
       family: shared.startsWith('F') ? shared : null
-    })];
+    });
+    lines = [...lines, nl];
+    openId = nl.id; /* السطر الجديد يُفتح والسابق يُطوى */
     buzz(8);
   }
   function removeLine(id) {
-    if (lines.length > 1) lines = lines.filter((l) => l.id !== id);
+    if (lines.length <= 1) return;
+    const idx = lines.findIndex((l) => l.id === id);
+    const next = lines.filter((l) => l.id !== id);
+    lines = next;
+    /* لا نترك الصفحة بلا سطر مفتوح: نفتح الذي قبله */
+    if (openId === id) openId = (next[Math.max(0, idx - 1)] || next[0])?.id ?? null;
     buzz(6);
   }
 
@@ -136,12 +184,18 @@
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.6, '📦');
       toastOk(`تم الاستلام — ${fmtNum(r.pieces)} قطعة (${fmtNum(r.added)} بطاقة جديدة${r.merged ? `، ${fmtNum(r.merged)} اندمجت` : ''})`);
       /* سطر غامض: أكثر من موديل بنفس النوع واللون — لم نخمّن أبداً، ونسجّله
-         منفصلاً ونُبلّغ. التنبيه يبقى مدة أطول لأنه يهم فعلاً. */
+         منفصلاً ونُبلّغ.
+         ⚠️ الصياغة القديمة كانت تقول «عندك ٢٥ موديلات باسم «بوت أسود» —
+         راجعيهم من «إصلاح الموديلات»»، فتُفهَم خطأً كأنها ٢٥ نسخة مكرّرة،
+         وتوجّه صاحبة البوتيك إلى صفحة الدمج. والحقيقة أن الاسم المشتق
+         (النوع + اللون) يتكرّر بطبيعته: كل بوت أسود اسمه «بوت أسود»، والصور
+         هي التي تفرّق بينها — والبيانات سليمة تماماً ولم يُدمج شيء.
+         التنبيه الآن يقول ما جرى فعلاً وما العمل الصحيح. */
       if (r.splitOff?.length) {
         const f = r.splitOff[0];
         toast(
-          `⚠️ ${fmtNum(r.splitOff.length)} سطر سُجّل كموديل منفصل: عندك ${fmtNum(f.existing)} موديلات باسم «${f.name}». راجعيهم من «إصلاح الموديلات».`,
-          'error',
+          `سُجّل السطر كموديل جديد — لم تُضَف كميته إلى أي موديل قديم. الاسم «${f.name}» يحمله ${fmtNum(f.existing)} موديلات (الاسم يُشتق من النوع واللون فقط، والصورة هي التي تفرّق بينها)، فلا نعرف أيّها تقصدين. لتزويد موديل موجود، افتحي الموديل من المخزون واضغطي «تعديل».`,
+          'default',
           9000
         );
       }
@@ -197,6 +251,9 @@
       <div class="bold">فاتورة وارد</div>
       <div class="muted small">استلمي البضاعة كلها بصفحة واحدة — والمورد يُسجَّل للأبد</div>
     </div>
+    {#if totalPieces > 0}
+      <span class="head-count"><b>{fmtNum(totalPieces)}</b> قطعة</span>
+    {/if}
   </Glass>
 
   <div class="row" style="gap:10px">
@@ -215,17 +272,67 @@
     </div>
   </div>
 
+  <!-- إضافة الأسطر فوق القائمة: لا تحتاجين تمرير الفاتورة كلها لتصلين إليها -->
+  <div class="add-row">
+    <button class="btn add-line" onclick={addLine}>
+      <Icon name="plus" size={17} /> سطر موديل آخر
+    </button>
+    <button class="btn add-line same" onclick={addSameModelLine}>
+      <Icon name="copy" size={15} /> لون آخر لنفس الموديل
+    </button>
+  </div>
+
+  {#if lines.length > 1}
+    <div class="lines-bar">
+      <span class="lb-txt">
+        <b>{fmtNum(lines.length)}</b> أسطر
+        {#if filledLines}<span class="lb-dim"> · {fmtNum(filledLines)} فيها كميات</span>{/if}
+      </span>
+      <button class="lb-btn" onclick={foldAll} disabled={allFolded}>اطوي الكل</button>
+    </div>
+  {/if}
+
   {#each lines as l, li (l.id)}
-    <Glass class="line rise" style="animation-delay:{Math.min(li * 0.05, 0.4)}s">
-      <div class="ln-head">
-        <span class="ln-n">سطر {fmtNum(li + 1)}</span>
-        <span class="ln-pieces" class:has={linePieces(l) > 0}>{linePieces(l) > 0 ? `${fmtNum(linePieces(l))} قطعة` : 'بدون كميات'}</span>
-        {#if lines.length > 1}
-          <button class="ln-x" aria-label="حذف السطر" onclick={() => removeLine(l.id)}><Icon name="x" size={13} /></button>
+    {@const open = isOpen(l)}
+    <Glass class="line rise {open ? 'is-open' : 'is-folded'}" style="animation-delay:{Math.min(li * 0.05, 0.4)}s">
+      <!-- سطر مطويّ: الرأس وحده يبقى — الصورة واللون والمقاسات والكمية تكفي للتعرّف عليه -->
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="ln-head"
+        role="button"
+        tabindex="0"
+        aria-expanded={open}
+        onclick={() => toggleOpen(l)}
+        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleOpen(l); } }}
+      >
+        <span class="ln-thumb" class:has={!!l.photo}>
+          {#if l.photo}<img src={l.photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}
+        </span>
+
+        <span class="ln-main">
+          <span class="ln-n">
+            سطر {fmtNum(li + 1)}{#if lineTitle(l)}<b class="ln-title"> · {lineTitle(l)}</b>{/if}
+          </span>
+          <span class="ln-sub">
+            {#if sizesSummary(l)}{sizesSummary(l)}{:else}<i class="ln-none">لم تُدخَل مقاسات بعد</i>{/if}
+          </span>
+          {#if moneySummary(l)}<span class="ln-sub dim">{moneySummary(l)}</span>{/if}
+        </span>
+
+        {#if missingPhoto(l)}
+          <span class="ln-warn" title="بلا صورة — الصورة هي هوية الموديل"><Icon name="alert" size={13} color="var(--warn)" /></span>
         {/if}
+        <span class="ln-pieces" class:has={linePieces(l) > 0}>
+          {linePieces(l) > 0 ? `${fmtNum(linePieces(l))} قطعة` : 'بلا كمية'}
+        </span>
+        {#if lines.length > 1}
+          <button class="ln-x" aria-label="حذف السطر {fmtNum(li + 1)}" onclick={(e) => { e.stopPropagation(); removeLine(l.id); }}><Icon name="x" size={13} /></button>
+        {/if}
+        <span class="ln-chev" class:open aria-hidden="true"></span>
       </div>
 
-      <div class="ln-body">
+      {#if open}
+      <div class="ln-body" transition:slide={{ duration: reducedMotion() ? 0 : 180 }}>
         <div class="row" style="gap:10px; align-items:flex-start">
           <div class="field" style="flex:1">
             <label>صورة الموديل * <span class="muted tiny">— هي الهوية</span></label>
@@ -328,15 +435,9 @@
           <SizeQtyGrid sizes={SIZE_RUNS[l.category] || SIZE_RUNS['نسائية']} bind:value={l.sizes} />
         </div>
       </div>
+      {/if}
     </Glass>
   {/each}
-
-  <button class="btn block add-line" onclick={addLine}>
-    <Icon name="plus" size={18} /> سطر موديل آخر
-  </button>
-  <button class="btn block add-line same" onclick={addSameModelLine}>
-    <Icon name="copy" size={16} /> لون آخر لنفس الموديل — نفس الصورة والسعر
-  </button>
 
   <div class="field">
     <label>ملاحظة الفاتورة <span class="muted tiny">(اختياري)</span></label>
@@ -374,27 +475,89 @@
   }
   .req { color: var(--burgundy); font-weight: 800; }
 
+  .head-count {
+    flex: none; font-size: 11.5px; font-weight: 800; color: var(--burgundy-deep);
+    background: rgba(181, 73, 91, 0.09); border-radius: 999px; padding: 5px 11px;
+    font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .head-count b { font-size: 13.5px; }
+
   :global(.line) { padding: 0; overflow: hidden; }
+  /* السطر المفتوح يبان: إطار نبيتي خفيف */
+  :global(.line.is-open) { border-color: rgba(181, 73, 91, 0.38) !important; }
+
   .ln-head {
-    display: flex; align-items: center; gap: 8px;
-    padding: 9px 13px;
+    display: flex; align-items: center; gap: 9px;
+    padding: 9px 11px;
     background: rgba(181, 73, 91, 0.06);
     border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: background 0.18s;
   }
-  .ln-n { font-size: 12.5px; font-weight: 800; color: var(--burgundy-deep); flex: 1; }
+  .ln-head:active { background: rgba(181, 73, 91, 0.12); }
+  :global(.line.is-folded) .ln-head { border-bottom: none; }
+
+  .ln-thumb {
+    flex: none; width: 38px; height: 38px; border-radius: 10px;
+    overflow: hidden; display: flex; align-items: center; justify-content: center;
+    background: rgba(122, 46, 58, 0.07); border: 1px solid var(--line);
+  }
+  .ln-thumb.has { border-color: rgba(181, 73, 91, 0.38); }
+  .ln-thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+  .ln-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .ln-n { font-size: 12.5px; font-weight: 800; color: var(--burgundy-deep); }
+  .ln-title { color: var(--ink); font-weight: 800; }
+  .ln-sub {
+    font-size: 11px; font-weight: 700; color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .ln-sub.dim { color: var(--taupe); }
+  .ln-none { color: var(--taupe); font-weight: 700; font-style: normal; }
+  .ln-warn { flex: none; display: flex; align-items: center; }
+
   .ln-pieces {
+    flex: none;
     font-size: 11px; font-weight: 800; color: var(--taupe);
     background: rgba(122, 46, 58, 0.07);
-    border-radius: 999px; padding: 3px 9px;
+    border-radius: 999px; padding: 3px 9px; white-space: nowrap;
   }
   .ln-pieces.has { color: var(--good); background: rgba(78, 138, 95, 0.12); }
   .ln-x {
+    flex: none;
     width: 26px; height: 26px; border-radius: 8px;
     border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.6);
-    color: var(--burgundy); cursor: pointer;
+    color: var(--burgundy); cursor: pointer; padding: 0;
     display: flex; align-items: center; justify-content: center;
   }
+  /* سهم الفتح/الطوي — نفس نمط .chev في التقارير */
+  .ln-chev {
+    flex: none; width: 7px; height: 7px;
+    border-inline-end: 2px solid var(--taupe); border-bottom: 2px solid var(--taupe);
+    transform: rotate(-45deg);
+    transition: transform 0.2s ease;
+  }
+  .ln-chev.open { transform: rotate(45deg); }
+
   .ln-body { padding: 12px 13px; display: flex; flex-direction: column; gap: 2px; }
+
+  .lines-bar { display: flex; align-items: center; gap: 8px; padding: 0 4px; }
+  .lb-txt { flex: 1; font-size: 12px; font-weight: 800; color: var(--ink-2); }
+  .lb-txt b { color: var(--burgundy-deep); }
+  .lb-dim { color: var(--taupe); font-weight: 700; }
+  .lb-btn {
+    font-family: inherit; font-size: 11px; font-weight: 800;
+    color: var(--taupe);
+    background: rgba(122, 46, 58, 0.06);
+    border: 1px solid var(--line-2); border-radius: 999px;
+    padding: 5px 11px; cursor: pointer;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .lb-btn:active { transform: scale(0.94); }
+  .lb-btn:disabled { opacity: 0.4; cursor: default; }
 
   .ln-photo {
     width: 56px; height: 56px; flex: none;
@@ -412,16 +575,22 @@
   .ph-hint { font-size: 10.5px; font-weight: 800; color: var(--taupe); }
   .ln-photo.has { border-style: solid; border-color: rgba(181, 73, 91, 0.4); }
   .ln-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-  .add-line.same { border-color: rgba(201, 162, 75, 0.45); color: #8a6a35; }
-
+  .add-row { display: flex; gap: 8px; }
   .add-line {
+    flex: 1;
     border-style: dashed;
     border-width: 1.5px;
     border-color: rgba(181, 73, 91, 0.4);
     color: var(--burgundy);
     background: rgba(255, 255, 255, 0.35);
     justify-content: center;
-    min-height: 50px;
+    min-height: 48px;
+    font-size: 12.5px;
+    padding: 6px 10px;
+    gap: 6px;
+    line-height: 1.25;
+    text-align: center;
   }
+  .add-line.same { border-color: rgba(201, 162, 75, 0.45); color: #8a6a35; }
   :global(.totals) { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
 </style>
