@@ -64,8 +64,27 @@
 
   const totalPieces = $derived(lines.reduce((a, l) => a + Object.values(l.sizes).reduce((x, n) => x + (Number(n) || 0), 0), 0));
   const linePieces = (l) => Object.values(l.sizes).reduce((x, n) => x + (Number(n) || 0), 0);
+  const missingPhoto = (l) => linePieces(l) > 0 && !l.photo;
   const filledLines = $derived(lines.filter((l) => linePieces(l) > 0).length);
+  const totalCost = $derived(lines.reduce((a, l) => a + iqd(l.cost) * linePieces(l), 0));
   const canSave = $derived(supplier.trim().length >= 2 && lines.some((l) => linePieces(l) > 0));
+
+  /* عدّ عربي سليم: ١ سطر · سطران · ٣ أسطر · ١١ سطراً */
+  const arCount = (n, one, two, few, many) =>
+    n === 1 ? one : n === 2 ? two : n >= 3 && n <= 10 ? few : many;
+  const lineWord = (n) => arCount(n, 'سطر', 'سطران', 'أسطر', 'سطر');
+  const pieceWord = (n) => arCount(n, 'قطعة', 'قطعتان', 'قطع', 'قطعة');
+
+  /* رأس الصفحة يقول حالة الفاتورة الآن — لا جملة ثابتة */
+  const headSubtitle = $derived.by(() => {
+    const sup = supplier.trim();
+    if (!sup) return 'اختاري المورد أولاً — يُسجَّل على كل قطعة تستلمينها';
+    if (!totalPieces) return `${sup} · أضيفي المقاسات المستلمة في الأسطر`;
+    const missing = lines.filter(missingPhoto).length;
+    return missing
+      ? `${sup} · ${fmtNum(missing)} ${arCount(missing, 'سطر بلا صورة', 'سطران بلا صورة', 'أسطر بلا صورة', 'سطر بلا صورة')}`
+      : `${sup} · جاهزة للاستلام`;
+  });
 
   /* ---- ملخّص السطر المطويّ: يكفي للتعرّف عليه بلا فتحه ---- */
   const isOpen = (l) => openId === l.id;
@@ -81,9 +100,6 @@
     if (iqd(l.price) > 0) bits.push(`بيع ${fmtIQD(iqd(l.price))}`);
     return bits.join(' · ');
   };
-  const missingPhoto = (l) => linePieces(l) > 0 && !l.photo;
-  const blankish = (l) => !lineTitle(l) && linePieces(l) === 0;
-
   function toggleOpen(l) {
     openId = openId === l.id ? null : l.id;
     buzz(6);
@@ -246,14 +262,27 @@
 
 <div class="stack" style="gap:12px">
   <Glass class="head-card rise">
-    <span class="h-ic"><Icon name="upload" size={20} color="#fff" /></span>
-    <div style="flex:1; min-width:0">
-      <div class="bold">فاتورة وارد</div>
-      <div class="muted small">استلمي البضاعة كلها بصفحة واحدة — والمورد يُسجَّل للأبد</div>
+    <div class="hc-top">
+      <span class="h-ic"><Icon name="upload" size={21} color="#fff" /></span>
+      <div class="hc-txt">
+        <div class="hc-sub">{headSubtitle}</div>
+      </div>
     </div>
-    {#if totalPieces > 0}
-      <span class="head-count"><b>{fmtNum(totalPieces)}</b> قطعة</span>
-    {/if}
+    <!-- ملخّص حيّ للفاتورة: يقرأه من أعلى الصفحة بلا تمرير -->
+    <div class="hc-stats">
+      <div class="hc-stat">
+        <b>{fmtNum(lines.length)}</b>
+        <span>{lineWord(lines.length)}</span>
+      </div>
+      <div class="hc-stat">
+        <b class:dim={!totalPieces}>{fmtNum(totalPieces)}</b>
+        <span>{pieceWord(totalPieces)}</span>
+      </div>
+      <div class="hc-stat grow">
+        <b class:dim={!totalCost}>{fmtIQD(totalCost)}</b>
+        <span>تكلفة تقديرية</span>
+      </div>
+    </div>
   </Glass>
 
   <div class="row" style="gap:10px">
@@ -444,20 +473,15 @@
     <input class="input" bind:value={note} placeholder="مثال: دفعة ثانية، مقاسات كبيرة…" />
   </div>
 
-  <Glass class="totals" radius="var(--r-md)">
-    <div class="row" style="justify-content:space-between">
-      <span class="muted">القطع المستلمة</span>
-      <span class="bold">{fmtNum(totalPieces)} قطعة</span>
-    </div>
-    <div class="row" style="justify-content:space-between">
-      <span class="muted">أول تكلفة تقديرية</span>
-      <span class="money">{fmtIQD(lines.reduce((a, l) => a + iqd(l.cost) * linePieces(l), 0))}</span>
-    </div>
-  </Glass>
-
   <button class="btn primary lg block" onclick={save} disabled={saving || !canSave}>
     <Icon name="check" size={20} /> استلام الفاتورة
   </button>
+  {#if totalPieces > 0}
+    <p class="save-hint">
+      ستُستلم <b>{fmtNum(totalPieces)}</b> {pieceWord(totalPieces)}
+      {#if totalCost > 0} · تكلفة تقديرية <b>{fmtIQD(totalCost)}</b>{/if}
+    </p>
+  {/if}
 </div>
 
 <input type="file" accept="image/*" capture="environment" style="display:none" bind:this={camInput} onchange={(e) => onLinePhoto(photoLine, e)} />
@@ -466,21 +490,62 @@
 <PhotoSourceSheet open={photoSrcOpen} onclose={() => (photoSrcOpen = false)} onpick={pickPhotoSource} />
 
 <style>
-  :global(.head-card) { display: flex; align-items: center; gap: 12px; padding: 13px 15px; }
-  .h-ic {
-    flex: none; width: 42px; height: 42px; border-radius: 13px;
-    background: linear-gradient(150deg, var(--gold), #a4803e);
-    display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 12px rgba(164, 128, 62, 0.3);
+  /* رأس الصفحة: بطاقة هوية الفاتورة — خيط ذهبي، شعار نبيتي، وملخّص حيّ */
+  :global(.head-card) {
+    padding: 14px 15px 12px;
+    display: flex; flex-direction: column; gap: 12px;
+    position: relative; overflow: hidden;
+    background: linear-gradient(158deg, rgba(255, 255, 255, 0.94) 0%, rgba(181, 73, 91, 0.07) 62%, rgba(201, 161, 90, 0.13) 100%) !important;
+    border-color: rgba(181, 73, 91, 0.18) !important;
   }
-  .req { color: var(--burgundy); font-weight: 800; }
+  :global(.head-card)::before {
+    content: ''; position: absolute;
+    inset-block-start: 0; inset-inline: 0; height: 2px;
+    background: linear-gradient(90deg, transparent 4%, var(--gold) 50%, transparent 96%);
+    opacity: 0.8;
+  }
+  .hc-top { display: flex; align-items: center; gap: 12px; }
+  .h-ic {
+    flex: none; width: 46px; height: 46px; border-radius: 15px;
+    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 0 1px rgba(201, 161, 90, 0.5), 0 8px 18px rgba(122, 46, 58, 0.26);
+  }
+  /* لا عنوان في البطاقة — عنوان الصفحة أعلاه يكفي. السطر هنا يقول حالة
+     الفاتورة: المورد، وكم سطراً ينتظر، وما الناقص */
+  .hc-txt { flex: 1; min-width: 0; }
+  .hc-sub {
+    font-size: 13px; font-weight: 800; color: var(--ink); line-height: 1.5;
+    overflow: hidden; text-overflow: ellipsis;
+  }
 
-  .head-count {
-    flex: none; font-size: 11.5px; font-weight: 800; color: var(--burgundy-deep);
-    background: rgba(181, 73, 91, 0.09); border-radius: 999px; padding: 5px 11px;
+  .hc-stats {
+    display: flex; align-items: stretch;
+    border-top: 1px dashed rgba(201, 161, 90, 0.5);
+    padding-top: 10px;
+  }
+  .hc-stat {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    padding: 0 6px;
+    border-inline-end: 1px solid var(--line);
+  }
+  .hc-stat:last-child { border-inline-end: none; }
+  .hc-stat.grow { flex: 1.5; }
+  .hc-stat b {
+    font-size: 15px; font-weight: 900; color: var(--burgundy-deep);
     font-variant-numeric: tabular-nums; white-space: nowrap;
   }
-  .head-count b { font-size: 13.5px; }
+  .hc-stat b.dim { color: var(--taupe); opacity: 0.6; }
+  .hc-stat span { font-size: 10px; font-weight: 800; color: var(--taupe); }
+  .hc-stat.grow b { font-size: 14px; }
+
+  .save-hint {
+    margin: -2px 0 0; text-align: center;
+    font-size: 11.5px; font-weight: 700; color: var(--taupe);
+  }
+  .save-hint b { color: var(--burgundy-deep); font-variant-numeric: tabular-nums; }
+  .req { color: var(--burgundy); font-weight: 800; }
 
   :global(.line) { padding: 0; overflow: hidden; }
   /* السطر المفتوح يبان: إطار نبيتي خفيف */
@@ -592,5 +657,4 @@
     text-align: center;
   }
   .add-line.same { border-color: rgba(201, 162, 75, 0.45); color: #8a6a35; }
-  :global(.totals) { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
 </style>

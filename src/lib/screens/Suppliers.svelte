@@ -72,25 +72,38 @@
       const sup = (p.supplier || '').trim() || 'غير محدد';
       if (!map.has(sup)) map.set(sup, { name: sup, models: new Map(), boughtQty: 0, boughtCost: 0, skus: [] });
       const g = map.get(sup);
-      if (!g.models.has(p.modelId || p.name)) {
-        g.models.set(p.modelId || p.name, { name: p.name, photo: p.photo, price: p.price, type: p.type, typeSub: p.typeSub, typeSub2: p.typeSub2, typeSub3: p.typeSub3, createdAt: p.createdAt, sku: p.sku });
-        g.skus.push(p.sku);
+      /* ⚠️ كل بطاقة (لون × مقاس) لها كود، والمجاميع تُحسب من **كل** أكواد
+         المورد. كان الدفع يقع داخل شرط «موديل جديد»، فيحمل g.skus كوداً
+         واحداً لكل موديل — فبيع مقاس واحد من موديل بأربعة مقاسات كان
+         يُحتسب وحده، ونقصت معه «بيع منها» و«الإيراد» و«الربح» و«المتبقي
+         على الرف» و«نسبة التصريف». (علي جليل مثلاً: 53,000 بدل 68,000) */
+      g.skus.push(p.sku);
+      const mk = p.modelId || p.name;
+      if (!g.models.has(mk)) {
+        g.models.set(mk, {
+          name: p.name, photo: p.photo, price: Number(p.price) || 0, cost: Number(p.cost) || 0,
+          type: p.type, typeSub: p.typeSub, typeSub2: p.typeSub2, typeSub3: p.typeSub3,
+          createdAt: p.createdAt, sku: p.sku, qty: 0, cards: 0, colors: []
+        });
       }
-      g.boughtQty += (p.qty || 0) + (saleBySku.get(p.sku)?.qty || 0);   /* المشتري = المتبقي + المبيع */
-      g.boughtCost += (p.cost || 0) * ((p.qty || 0) + (saleBySku.get(p.sku)?.qty || 0));
+      const mm = g.models.get(mk);
+      mm.qty += Number(p.qty) || 0;
+      mm.cards += 1;
+      if (p.color && !mm.colors.includes(p.color)) mm.colors.push(p.color);
+      g.boughtQty += (Number(p.qty) || 0) + (saleBySku.get(p.sku)?.qty || 0);   /* المشتري = المتبقي + المبيع */
+      g.boughtCost += (Number(p.cost) || 0) * ((Number(p.qty) || 0) + (saleBySku.get(p.sku)?.qty || 0));
     }
     /* فهرس بالكود مرة واحدة — products.find داخل حلقة كان O(موردين × بطاقات) */
     const bySku = new Map();
     for (const p of products) bySku.set(p.sku, p);
     rows = [...map.values()].map((g) => {
-      let soldQty = 0, revenue = 0, cost = 0, soldModels = new Set();
+      let soldQty = 0, revenue = 0, cost = 0;
       for (const sku of g.skus) {
         const s = saleBySku.get(sku);
         if (!s) continue;
         soldQty += s.qty; revenue += s.revenue; cost += s.cost;
-        soldModels.add(sku);
       }
-      const leftQty = [...new Set(g.skus)].reduce((a, sku) => a + (bySku.get(sku)?.qty || 0), 0);
+      const leftQty = g.skus.reduce((a, sku) => a + (Number(bySku.get(sku)?.qty) || 0), 0);
 
       const profit = revenue - cost;
       const sellPct = g.boughtQty ? Math.round((soldQty / g.boughtQty) * 100) : 0;
@@ -169,54 +182,61 @@
     />
   {:else}
     {#each rows as r, i (r.name)}
-      <Glass class="rise" style="animation-delay:{Math.min(i * 0.05, 0.3)}s; padding:14px">
+      <Glass class="rise sup-card" style="animation-delay:{Math.min(i * 0.05, 0.3)}s">
         <button class="sup-head" onclick={() => { buzz(6); open = open === r.name ? null : r.name; }}>
-          <div class="row" style="justify-content:space-between; align-items:center; width:100%">
-            <div style="min-width:0">
-              <div class="sup-name">{r.name}</div>
-              <div class="muted tiny">{fmtNum(r.modelCount)} موديل{r.lastIn ? ` — آخر استلام ${fmtDate(r.lastIn)}` : ''}</div>
-            </div>
-            <div class="col" style="align-items:flex-end; gap:2px">
-              <span class="money">{fmtIQD(r.boughtCost)}</span>
-              <span class="muted tiny">{fmtNum(r.boughtQty)} قطعة مشتراة</span>
-            </div>
-          </div>
+          <span class="sup-main">
+            <span class="sup-name">{r.name}</span>
+            <span class="sup-meta">
+              {fmtNum(r.modelCount)} موديل · {fmtNum(r.boughtQty)} قطعة{#if r.lastIn} · آخر استلام {fmtDate(r.lastIn)}{/if}
+            </span>
+          </span>
+          <span class="sup-money">
+            <b>{fmtIQD(r.boughtCost)}</b>
+            <i>تكلفة الشراء</i>
+          </span>
           <span class="chev" class:flip={open === r.name}><Icon name="back" size={14} /></span>
         </button>
 
+        <!-- التصريف ظاهر دائماً: تقارنين الموردين بلا فتح كل بطاقة -->
+        <div class="sup-prog">
+          <div class="sell-bar"><i style="width:{Math.min(100, r.sellPct)}%"></i></div>
+          <span class="pct">{r.sellPct}%</span>
+        </div>
+        <div class="sup-line">
+          <span>بيع منها <b>{fmtNum(r.soldQty)}</b></span>
+          <span>على الرف <b>{fmtNum(r.leftQty)}</b></span>
+        </div>
+
         {#if open === r.name}
           <div class="sup-detail">
-            <div class="kv">
-              <span class="muted small">بيع منها</span>
-              <span class="bold small">{fmtNum(r.soldQty)} قطعة</span>
+            <div class="stat-grid">
+              <div class="stat">
+                <b>{fmtIQD(r.revenue)}</b>
+                <span>إيراد مبيعاته</span>
+              </div>
+              <div class="stat">
+                <b style="color:{r.profit >= 0 ? 'var(--good)' : 'var(--burgundy)'}">{fmtIQD(r.profit)}</b>
+                <span>ربحها الصافي</span>
+              </div>
             </div>
-            <div class="kv">
-              <span class="muted small">إيراد مبيعاته</span>
-              <span class="money small">{fmtIQD(r.revenue)}</span>
-            </div>
-            <div class="kv">
-              <span class="muted small">ربحها الصافي</span>
-              <span class="bold small" style="color:{r.profit >= 0 ? 'var(--good)' : 'var(--burgundy)'}">{fmtIQD(r.profit)}</span>
-            </div>
-            <div class="kv">
-              <span class="muted small">متبقي على الرف</span>
-              <span class="bold small">{fmtNum(r.leftQty)} قطعة</span>
-            </div>
-            <div class="sell-bar">
-              <i style="width:{Math.min(100, r.sellPct)}%"></i>
-            </div>
-            <div class="muted tiny" style="text-align:center">نسبة التصريف: {r.sellPct}% من المشتراة</div>
 
             {#if r.models.size}
-              <div class="m-title muted tiny">موديلاته</div>
+              <div class="m-title">
+                <span>موديلاته</span>
+                <span class="m-n">{fmtNum(r.modelCount)}</span>
+              </div>
               <div class="m-list">
                 {#each [...r.models.values()] as m (m.sku)}
+                  {@const chain = [m.type, m.typeSub, m.typeSub2, m.typeSub3].filter(Boolean).join(' - ')}
                   <div class="m-row">
                     <span class="m-thumb">{#if m.photo}<img src={m.photo} alt="" />{:else}<Icon name="image" size={14} color="var(--taupe)" />{/if}</span>
-                    <div style="flex:1; min-width:0">
-                      {#if m.type || m.typeSub}<div class="bold tiny">{[m.type, m.typeSub, m.typeSub2, m.typeSub3].filter(Boolean).join(' - ')}</div>{/if}
-                      <div class="muted tiny">{fmtIQD(m.price)}</div>
-                    </div>
+                    <span class="m-info">
+                      <span class="bold tiny">{chain || m.name || 'موديل'}</span>
+                      <span class="muted tiny">
+                        {m.colors.join('، ') || 'بلا لون'} · {fmtNum(m.cards)} بطاقة · {fmtNum(m.qty)} على الرف
+                      </span>
+                    </span>
+                    <span class="m-price money tiny">{fmtIQD(m.price)}</span>
                   </div>
                 {/each}
               </div>
@@ -235,12 +255,32 @@
     background: rgba(181, 73, 91, 0.1);
     border: 1px solid rgba(181, 73, 91, 0.18);
   }
+  /* بطاقة المورد: الاسم والتكلفة في الأعلى، ثم شريط التصريف — فيُقارَن
+     الموردون عمودياً بلا فتح أي بطاقة */
+  :global(.sup-card) { padding: 13px 14px 12px; display: flex; flex-direction: column; gap: 9px; }
   .sup-head {
-    width: 100%; display: flex; align-items: center; gap: 8px;
+    width: 100%; display: flex; align-items: center; gap: 10px;
     background: none; border: none; padding: 0; cursor: pointer;
-    font-family: inherit; text-align: right;
+    font-family: inherit; text-align: start;
   }
-  .sup-name { font-weight: 800; font-size: 15px; color: var(--ink); }
+  .sup-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .sup-name {
+    font-weight: 800; font-size: 15px; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sup-meta { font-size: 10.5px; font-weight: 700; color: var(--taupe); font-variant-numeric: tabular-nums; }
+  .sup-money { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+  .sup-money b { font-size: 14px; font-weight: 900; color: var(--burgundy-deep); font-variant-numeric: tabular-nums; }
+  .sup-money i { font-size: 9.5px; font-weight: 700; font-style: normal; color: var(--taupe); }
+
+  .sup-prog { display: flex; align-items: center; gap: 8px; }
+  .pct {
+    flex: none; min-width: 36px; text-align: end;
+    font-size: 11px; font-weight: 800; color: var(--burgundy-deep);
+    font-variant-numeric: tabular-nums;
+  }
+  .sup-line { display: flex; gap: 14px; font-size: 10.5px; font-weight: 700; color: var(--taupe); }
+  .sup-line b { color: var(--ink-2); font-weight: 800; font-variant-numeric: tabular-nums; }
   .reg-head {
     width: 100%; display: flex; align-items: center; gap: 10px;
     background: none; border: none; padding: 0; cursor: pointer;
@@ -255,20 +295,37 @@
   .reg-t { font-weight: 800; font-size: 14.5px; color: var(--ink); }
   .chev { color: var(--taupe); transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); transform: rotate(90deg); }
   .chev.flip { transform: rotate(-90deg); }
-  .sup-detail { margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line-2); display: flex; flex-direction: column; gap: 8px; }
-  .kv { display: flex; justify-content: space-between; align-items: center; }
-  .sell-bar {
-    height: 7px; border-radius: 999px; overflow: hidden;
-    background: rgba(122, 46, 58, 0.1); margin-top: 4px;
+  .sup-detail { padding-top: 10px; border-top: 1px dashed var(--line-2); display: flex; flex-direction: column; gap: 10px; }
+
+  /* رقمان كبيران بدل أربعة صفوف «عنوان … قيمة» — تُقرأ بلمحة */
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 9px 8px; border-radius: 12px;
+    background: rgba(255, 255, 255, 0.45); border: 1px solid var(--line);
   }
-  .sell-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--gold), var(--burgundy)); transition: width 0.8s cubic-bezier(0.22, 1, 0.36, 1); }
-  .m-title { margin-top: 6px; font-weight: 800; }
-  .m-list { display: flex; flex-direction: column; gap: 6px; max-height: 220px; overflow-y: auto; }
-  .m-row { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.4); }
+  .stat b { font-size: 14px; font-weight: 900; color: var(--burgundy-deep); font-variant-numeric: tabular-nums; }
+  .stat span { font-size: 10px; font-weight: 700; color: var(--taupe); }
+
+  .sell-bar { flex: 1; height: 7px; border-radius: 999px; overflow: hidden; background: rgba(122, 46, 58, 0.1); }
+  .sell-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--gold), var(--burgundy)); }
+
+  .m-title { font-weight: 800; font-size: 12px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+  .m-n {
+    font-size: 10px; font-weight: 800; color: var(--taupe);
+    background: rgba(122, 46, 58, 0.07); border-radius: 999px; padding: 2px 8px;
+  }
+  .m-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }
+  .m-row {
+    display: flex; align-items: center; gap: 9px; padding: 7px 9px;
+    border-radius: 11px; background: rgba(255, 255, 255, 0.42); border: 1px solid var(--line);
+  }
   .m-thumb {
-    width: 34px; height: 34px; border-radius: 9px; flex: none; overflow: hidden;
+    width: 36px; height: 36px; border-radius: 10px; flex: none; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
     background: rgba(255, 255, 255, 0.5); border: 1px solid var(--line);
   }
   .m-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .m-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .m-price { flex: none; font-variant-numeric: tabular-nums; }
 </style>
