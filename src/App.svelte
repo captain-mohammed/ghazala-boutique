@@ -28,7 +28,7 @@
   import StoryStudio from './lib/screens/StoryStudio.svelte';
   import ModelRepair from './lib/screens/ModelRepair.svelte';
   import MyStore from './lib/screens/MyStore.svelte';
-  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable } from './lib/db.js';
+  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable, sweepAllDuplicateVariants } from './lib/db.js';
 
   let locked = $state(true);
   let screen = $state('home');
@@ -98,6 +98,9 @@
     /* صور الموديل: تُنسخ مرة واحدة من البطاقات إلى جدولها، فتصير كل جلبة
        بيانات خفيفة بدل أن تقرأ عشرات الميجابايت كل أربع ثوانٍ */
     migratePhotosToTable();
+    /* حارس المتغيّرات: موديل واحد لا يحمل بطاقتين بنفس اللون والمقاس.
+       تُدمج المكرّرة بلا سجل في أختها — وإن كان لها سجل تُترك للإصلاح اليدوي */
+    sweepAllDuplicateVariants();
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredInstall = e;

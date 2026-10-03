@@ -9,6 +9,7 @@
   let products = $state([]);
   let sales = $state([]);
   let showReturned = $state(false);
+  let showDead = $state(false);
   let expenses = $state([]);
   let closings = $state([]);
   let settings = $state(null);
@@ -46,22 +47,6 @@
   const prodBySku = $derived.by(() => {
     const m = new Map();
     for (const p of products) m.set(p.sku, p);
-    return m;
-  });
-  const firstByModel = $derived.by(() => {
-    const m = new Map();
-    for (const p of products) {
-      const k = modelGroupKey(p);
-      if (!m.has(k)) m.set(k, p);
-    }
-    return m;
-  });
-  const photoByModel = $derived.by(() => {
-    const m = new Map();
-    for (const p of products) {
-      const k = modelGroupKey(p);
-      if (p.photo && !m.has(k)) m.set(k, p.photo);
-    }
     return m;
   });
   const returnedSales = $derived(sales.filter((s) => s.status === 'returned').sort((a, b) => new Date(b.date) - new Date(a.date)));
@@ -111,18 +96,6 @@
     return { byDay, maxDay, bestDay: DAY_AR[byDay.indexOf(bestDayQty)], bestDayQty, bestPart: bestPart[0], bestPartQty: bestPart[1] };
   });
 
-  /* Best sellers in period */
-  const best = $derived.by(() => {
-    const m = new Map();
-    for (const s of inPeriod) for (const it of s.items) {
-      const cur = m.get(it.sku) || { sku: it.sku, name: it.name, color: it.color || '', size: it.size || '', qty: 0, revenue: 0 };
-      cur.qty += it.qty;
-      cur.revenue += it.qty * it.price;
-      m.set(it.sku, cur);
-    }
-    return [...m.values()].sort((a, b) => b.qty - a.qty).slice(0, 5);
-  });
-
   /* مخزون راكد — counted from when the current shelf stock ARRIVED (creation /
      last stock-in / restock), never from the previous sales cycle. An item
      sitting for hours shows 0 يوم and only crosses the threshold after the
@@ -145,20 +118,6 @@
       map.set(k, cur);
     }
     return [...map.values()];
-  });
-
-  /* نفد — الموديل كامل وصل صفر (كل الألوان والمقاسات معاً). مقاس واحد ناقص
-     يبقى فقرة في شجرة المقاسات و«استلام الناقص»، لا نفد. */
-  const holes = $derived.by(() => {
-    const map = new Map();
-    for (const p of products) {
-      const k = modelGroupKey(p);
-      const cur = map.get(k) || { key: k, name: p.name, items: [], full: true };
-      cur.items.push(p);
-      if ((p.qty || 0) > 0) cur.full = false;
-      map.set(k, cur);
-    }
-    return [...map.values()].filter((m) => m.full);
   });
 
   const stockValue = $derived(products.reduce((a, p) => a + (p.qty || 0) * (p.cost || 0), 0));
@@ -189,34 +148,6 @@
   const typeMax = $derived(Math.max(1, ...byType.map((t) => t.profit)));
   const typeRevenue = $derived(byType.reduce((a, t) => a + t.revenue, 0));
 
-  /* ---- Sell-through rate: % of each model sold since it arrived ----
-     Per MODEL: every color × size card of the same name+category counts
-     together (a 4-color model isn't 4 strangers). arrived = what's on the
-     shelf now + everything sold of it **within the chosen period** — so
-     التصريف يتبع الفترة مثل باقي التقرير (اليوم/أسبوع/شهر/الكل). */
-  const sellThrough = $derived.by(() => {
-    const soldQty = new Map();
-    for (const s of sales) {
-      if (s.status === 'returned') continue;
-      if (new Date(s.date) < from) continue; /* خارج الفترة المختارة */
-      for (const it of s.items) soldQty.set(it.sku, (soldQty.get(it.sku) || 0) + (Number(it.qty) || 0));
-    }
-    const map = new Map();
-    for (const p of products) {
-      const k = modelGroupKey(p);
-      const cur = map.get(k) || { key: k, name: p.name, color: p.color || '', size: p.size || '', sold: 0, arrived: 0 };
-      cur.sold += soldQty.get(p.sku) || 0;
-      cur.arrived += (soldQty.get(p.sku) || 0) + (p.qty || 0);
-      map.set(k, cur);
-    }
-    return [...map.values()]
-      .filter((x) => x.arrived > 0)
-      .map((x) => ({ ...x, rate: Math.round((x.sold / x.arrived) * 100) }))
-      .sort((a, b) => b.rate - a.rate);
-  });
-  const movingFast = $derived(sellThrough.filter((x) => x.rate >= 60 && x.sold >= 3).slice(0, 4));
-  const movingSlow = $derived(sellThrough.filter((x) => x.rate < 25 && x.arrived >= 3).slice(-4).reverse());
-  const periodLabel = $derived(PERIODS.find((p) => p.id === period)?.label || '');
 </script>
 
 <div class="stack" style="gap:12px">
@@ -262,30 +193,6 @@
     </Glass>
   {/if}
 
-  {#if best.length}
-    <Glass class="rise" style="animation-delay:0.15s; padding:16px">
-      <h2 class="h2" style="margin-bottom:10px"><Icon name="flame" size={17} color="var(--burgundy)" /> الأكثر مبيعاً</h2>
-      <div class="stack" style="gap:8px">
-        {#each best.slice(0, 20) as b, i (b.sku)}
-          {@const ph = prodBySku.get(b.sku)?.photo}
-          {@const bp = prodBySku.get(b.sku)}
-          <div class="brow pop" style="animation-delay:{0.2 + i * 0.05}s">
-            <span class="rank">{i + 1}</span>
-            <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
-            <div class="a-body">
-              {#if bp && (bp.type || bp.typeSub || bp.typeSub2 || bp.typeSub3)}
-                <div class="bold small">{[bp.type, bp.typeSub, bp.typeSub2, bp.typeSub3].filter(Boolean).join(' - ')}</div>
-              {/if}
-              <VariantBits dense variants={[{ color: b.color, size: b.size }]} />
-              <div class="muted small">{fmtNum(b.qty)} قطعة</div>
-            </div>
-            <div class="money small">{fmtIQD(b.revenue)}</div>
-          </div>
-        {/each}
-      </div>
-    </Glass>
-  {/if}
-
   {#if byType.length && period !== 'today'}
     <Glass class="rise" style="animation-delay:0.18s; padding:16px">
       <div class="row" style="justify-content:space-between; margin-bottom:10px">
@@ -304,52 +211,6 @@
           </div>
         {/each}
       </div>
-    </Glass>
-  {/if}
-
-  {#if sellThrough.length}
-    <Glass class="rise" style="animation-delay:0.2s; padding:16px">
-      <div class="row" style="justify-content:space-between; margin-bottom:4px">
-        <h2 class="h2"><Icon name="flame" size={17} color="var(--burgundy)" /> نسبة التصريف</h2>
-        <span class="tiny bold" style="color:var(--taupe)">فترة: {periodLabel}</span>
-      </div>
-      <p class="muted small" style="margin:0 0 10px">كم٪ من كل موديل انباع خلال {periodLabel} — مقياس التاجر الحقيقي. غيّري الفترة من الأعلى.</p>
-      {#if movingFast.length}
-        <div class="st-head good">يدور بسرعة — ما يلبث على الرف</div>
-        {#each movingFast.slice(0, 15) as x (x.key)}
-          {@const ph = photoByModel.get(x.key)}
-          {@const xp = firstByModel.get(x.key)}
-          <div class="brow" style="margin-bottom:6px">
-            <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
-            <div class="a-body">
-              {#if xp && (xp.type || xp.typeSub || xp.typeSub2 || xp.typeSub3)}
-                <div class="bold small">{[xp.type, xp.typeSub, xp.typeSub2, xp.typeSub3].filter(Boolean).join(' - ')}</div>
-              {/if}
-              <VariantBits dense variants={[{ color: x.color, size: x.size }]} />
-              <div class="muted small">انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
-            </div>
-            <span class="qbadge hot">{x.rate}%</span>
-          </div>
-        {/each}
-      {/if}
-      {#if movingSlow.length}
-        <div class="st-head slow">يتثاقل — فكّري بعرض أو تصفية</div>
-        {#each movingSlow.slice(0, 15) as x (x.key)}
-          {@const ph = photoByModel.get(x.key)}
-          {@const xp = firstByModel.get(x.key)}
-          <div class="brow" style="margin-bottom:6px">
-            <span class="r-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
-            <div class="a-body">
-              {#if xp && (xp.type || xp.typeSub || xp.typeSub2 || xp.typeSub3)}
-                <div class="bold small">{[xp.type, xp.typeSub, xp.typeSub2, xp.typeSub3].filter(Boolean).join(' - ')}</div>
-              {/if}
-              <VariantBits dense variants={[{ color: x.color, size: x.size }]} />
-              <div class="muted small">انباع {fmtNum(x.sold)} من {fmtNum(x.arrived)}</div>
-            </div>
-            <span class="qbadge cold">{x.rate}%</span>
-          </div>
-        {/each}
-      {/if}
     </Glass>
   {/if}
 
@@ -373,31 +234,14 @@
     </Glass>
   {/if}
 
-  {#if holes.length}
-    <Glass class="rise" style="animation-delay:0.2s; padding:16px">
-      <h2 class="h2" style="margin-bottom:10px"><Icon name="alert" size={17} color="var(--warn)" /> نفد من المخزون ({holes.length})</h2>
-      <p class="muted small" style="margin:0 0 10px">موديلات خلصت كل قطعها — حان وقت الاستلام.</p>
-      <div class="stack" style="gap:8px">
-        {#each holes.slice(0, 20) as h (h.key)}
-          <div class="brow">
-            <span class="r-thumb">{#if h.items.find((p) => p.photo)}<img src={h.items.find((p) => p.photo).photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
-            <div class="a-body">
-              {#if h.items[0].type || h.items[0].typeSub || h.items[0].typeSub2 || h.items[0].typeSub3}
-                <div class="bold small">{[h.items[0].type, h.items[0].typeSub, h.items[0].typeSub2, h.items[0].typeSub3].filter(Boolean).join(' - ')}</div>
-              {/if}
-              <VariantBits dense variants={h.items.map((p) => ({ color: p.color, size: p.size }))} />
-            </div>
-            <span class="qbadge low">نفد</span>
-          </div>
-        {/each}
-      </div>
-    </Glass>
-  {/if}
-
   {#if dead.length}
-    <Glass class="rise" style="animation-delay:0.25s; padding:16px">
-      <h2 class="h2" style="margin-bottom:10px"><Icon name="clock" size={17} color="var(--burgundy)" /> مخزون راكد ({dead.length})</h2>
-      <p class="muted small" style="margin:0 0 10px">كل قطعة تُحسب بأيامها منذ وصلت الرف — والعدد الذي تختارينه في الإعدادات هو المتصفّر.</p>
+    <Glass class="rise" style="animation-delay:0.25s; padding:14px 16px">
+      <button class="ret-toggle" onclick={() => (showDead = !showDead)}>
+        <span class="muted"><Icon name="clock" size={15} /> مخزون راكد <span class="cnt">({fmtNum(dead.length)})</span></span>
+        <span class="ret-side"><i class="chev" class:open={showDead}></i></span>
+      </button>
+      {#if showDead}
+      <p class="muted small" style="margin:8px 0 10px">كل قطعة تُحسب بأيامها منذ وصلت الرف — والعدد الذي تختارينه في الإعدادات هو المتصفّر.</p>
       <div class="stack" style="gap:8px">
         {#each dead.slice(0, 8) as d (d.key)}
           <div class="brow">
@@ -415,6 +259,7 @@
           </div>
         {/each}
       </div>
+      {/if}
     </Glass>
   {/if}
 
@@ -468,6 +313,7 @@
     background: none; border: none; padding: 0; font-family: inherit; cursor: pointer;
   }
   .ret-side { display: flex; align-items: center; gap: 8px; }
+  .cnt { color: var(--burgundy-deep); font-weight: 800; font-variant-numeric: tabular-nums; }
   .chev {
     width: 8px; height: 8px;
     border-inline-end: 2px solid var(--taupe); border-bottom: 2px solid var(--taupe);
@@ -483,16 +329,6 @@
     border-radius: var(--r-sm);
     background: rgba(255, 255, 255, 0.35);
     border: 1px solid var(--line);
-  }
-  .rank {
-    flex: none;
-    width: 26px; height: 26px;
-    border-radius: 9px;
-    background: linear-gradient(150deg, var(--gold), #b0894a);
-    color: #fff;
-    font-size: 12.5px;
-    font-weight: 800;
-    display: flex; align-items: center; justify-content: center;
   }
   .r-thumb {
     flex: none;
@@ -515,9 +351,6 @@
     font-weight: 800;
     font-size: 12.5px;
   }
-  .qbadge.low { background: rgba(192, 127, 58, 0.15); color: var(--warn); }
-  .qbadge.hot { background: rgba(78, 138, 95, 0.15); color: var(--good); }
-  .qbadge.cold { background: rgba(122, 46, 58, 0.12); color: var(--burgundy-deep); }
 
   .tp-row { padding: 2px 0; }
   .tp-bar {
@@ -534,12 +367,6 @@
     transform-origin: right;
   }
   @keyframes grow-x { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-  .st-head {
-    font-size: 11.5px; font-weight: 800;
-    padding: 4px 2px 6px;
-  }
-  .st-head.good { color: var(--good); }
-  .st-head.slow { color: var(--warn); margin-top: 6px; }
   /* وقت الذروة: أعمدة الأسبوع بخط غزالة الذهبي */
   .peak-days { display: flex; justify-content: space-between; align-items: flex-end; gap: 6px; margin-bottom: 10px; }
   .pk-day { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }

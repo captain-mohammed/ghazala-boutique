@@ -5,7 +5,7 @@
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import PhotoSourceSheet from '../components/PhotoSourceSheet.svelte';
-  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf, loadProducts } from '../db.js';
+  import { db, addProduct, updateProduct, modelOptions, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf, loadProducts, cardIsReferenced, sweepDuplicateVariants } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd, fileToPhotoDataUrl, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, celebrateAt, campaignContacts } from '../store.js';
 
@@ -58,7 +58,13 @@
   /* multi-color × multi-size: one card per selected color */
   let selColors = $state([]); // color labels ('' stored as NOCOLOR)
   let byColor = $state({});   // label → { size: qty }
-  let siblings = $state([]);  // loaded existing variants (edit mode)
+
+  /* حقول كانت ناقصة أصلاً في الموديل المفتوح للتعديل. لا نُطالب بها عند
+     الحفظ — وإلا امتنع تعديل لون أو مقاس في أي موديل قديم سابق لقوائم
+     التفصيل/الموسم، بلا ذنب لصاحبته. (٤ موديلات في بوتيك غزالة كانت
+     محجوبة تماماً عن الحفظ لهذا السبب.) */
+  let origGaps = $state({});
+  const gap = (k) => editing && !!origGaps[k];
 
   let opts = $state({ categories: [], types: [], seasons: [], materials: [], colors: [], typeSubs: {} });
   (async () => {
@@ -89,7 +95,6 @@
       }
       selColors = cs;
       byColor = bc;
-      siblings = group;
       /* الشجرة والمواسم من الموديل كله — أول قيمة موجودة بين القطع (البطاقة
          المضغوطة قد تكون خالية منها بينما أخواتها حاملاتها) */
       const pick = (k) => group.map((x) => x[k]).find(Boolean) || '';
@@ -104,6 +109,11 @@
         ts = baghdadLocalInput(new Date(earliest));
         tsIsNow = false;
       }
+      /* بعد أن اكتملت قراءة الموديل: سجّلي ما كان ناقصاً فيه أصلاً */
+      origGaps = {
+        typeSub: !typeSub, typeSub2: !typeSub2, typeSub3: !typeSub3,
+        season: seasons.length === 0, material: !material, supplier: !(supplier || '').trim()
+      };
     }
   })();
 
@@ -205,14 +215,16 @@
     if (!img) m.push('الصورة');
     if (!category) m.push('التصنيف');
     if (!type) m.push('النوع');
-    /* تفصيلات النوع المعرّفة في الإعدادات تصبح إجبارية مثل النوع نفسه */
-    if (!typeSub && subsNow.length) m.push('التفصيل');
-    if (!typeSub2 && subs2Now.length) m.push('تفصيل أدق');
-    if (!typeSub3 && subs3Now.length) m.push('تفصيل أخير');
-    if (!seasons.length) m.push('الموسم');
+    /* تفصيلات النوع المعرّفة في الإعدادات تصبح إجبارية مثل النوع نفسه —
+       إلا ما كان ناقصاً في الموديل أصلاً وقت فتحه للتعديل: لا نحجب تعديل
+       لون أو مقاس بسبب فراغ لم تصنعه صاحبة البوتيك */
+    if (!typeSub && subsNow.length && !gap('typeSub')) m.push('التفصيل');
+    if (!typeSub2 && subs2Now.length && !gap('typeSub2')) m.push('تفصيل أدق');
+    if (!typeSub3 && subs3Now.length && !gap('typeSub3')) m.push('تفصيل أخير');
+    if (!seasons.length && !gap('season')) m.push('الموسم');
     if (!selColors.length) m.push('اللون');
-    if (!material) m.push('المادة');
-    if (!supplier.trim()) m.push('المورد');
+    if (!material && !gap('material')) m.push('المادة');
+    if (!supplier.trim() && !gap('supplier')) m.push('المورد');
     if (iqd(cost) <= 0) m.push('التكلفة');
     if (iqd(price) <= 0) m.push('سعر البيع');
     /* editing may end at zero pieces on purpose — that's exactly how «نفد» is saved */
@@ -282,6 +294,8 @@
       const idx = new Map(ownCards.map((p) => [modelKey(p), p]));
       const touched = new Set();
       let updated = 0, created = 0;
+      /* المتغيّرات التي لا بطاقة لها بعد — تُعالَج بعد معرفة البطاقات المتاحة */
+      const pending = [];
 
       for (const c of selColors) {
         const color = c === NOCOLOR ? '' : c;
@@ -300,21 +314,50 @@
             touched.add(twin.sku);
             updated++;
           } else if (q > 0) {
-            const p = await addProduct({ ...base, color, size: sz, qty: q, ...withArrival });
-            touched.add(p.sku);
-            created++;
+            pending.push({ color, sz, q });
           }
         }
       }
 
       if (editing) {
-        /* the form is the truth — variants removed from the grid go to zero */
-        for (const x of siblings) {
-          if (!touched.has(x.sku) && (x.qty || 0) !== 0) {
-            await updateProduct(x.sku, { qty: 0 });
-            updated++;
-          }
+        /* البطاقات التي خرج متغيّرها من الشبكة.
+           كانت تُصفَّر وتبقى — فتظهر للمستخدمة كأن اللون «تكرّر»: بطاقة جديدة
+           + بطاقة قديمة صفرية. الآن البطاقة التي لا يشير إليها بيع ولا حجز ولا
+           انتظار **يُعاد استخدامها**: يتغيّر لونها ومقاسها بنفس الكود فتُحلّ
+           محلّ المتغيّر الجديد. لا بطاقة جديدة ولا بقايا، والكود يبقى كما هو
+           فتظل حركاته ورقمه صحيحين. والبطاقة المرتبطة ببيع أو حجز تبقى كما هي
+           (تُصفَّر) لأن تاريخها لا يُمحى. */
+        const spares = [];
+        for (const x of ownCards) {
+          if (touched.has(x.sku)) continue;
+          if (await cardIsReferenced(x.sku)) continue;
+          spares.push(x);
         }
+        const stillPending = [];
+        for (const n of pending) {
+          const spare = spares.shift();
+          if (!spare) { stillPending.push(n); continue; }
+          await updateProduct(spare.sku, { ...base, color: n.color, size: n.sz, qty: n.q, modelId: spare.modelId || freshId, ...withArrival });
+          touched.add(spare.sku);
+          updated++;
+        }
+        pending.length = 0;
+        pending.push(...stillPending);
+
+        /* ما تبقّى لم يُلمس: متغيّر مُزال فعلاً، أو بطاقة لها مرجع خارجي */
+        for (const x of ownCards) {
+          if (touched.has(x.sku)) continue;
+          if ((Number(x.qty) || 0) !== 0) { await updateProduct(x.sku, { qty: 0 }); updated++; }
+        }
+        /* حارس: لا يبقى متغيّران بنفس اللون والمقاس في هذا الموديل */
+        await sweepDuplicateVariants(freshId);
+      }
+
+      /* ما لم يجد بطاقة يُعاد استخدامها (إضافة، أو زيادة عدد المتغيّرات) */
+      for (const n of pending) {
+        const p = await addProduct({ ...base, color: n.color, size: n.sz, qty: n.q, ...withArrival });
+        touched.add(p.sku);
+        created++;
       }
 
       buzz([20, 50, 20]);

@@ -183,53 +183,9 @@
     detail = null;
   }
 
-  /* ---- Swipe the sale row: pull left follows the finger, revealing
-     both quick actions (تم التسليم / راجع) side by side. Tap the open
-     row to close it, swipe right or tap another row to snap shut. ---- */
-  const OPEN = 150; /* يكفي لعرض الزرين معاً */
-  let swipedId = $state(null);
-  let drag = $state(0); /* الإزاحة اللحظية أثناء السحب — الصف تتبع الإصبع */
-  let dragging = $state(false);
-  const swipe = { active: false, id: null, x0: 0, dx: 0 };
-
-  function swipeStart(e, id) {
-    if (e.pointerType === 'mouse') return;
-    swipe.active = true;
-    dragging = true;
-    swipe.id = id;
-    swipe.x0 = e.clientX;
-    swipe.dx = 0;
-  }
-  function swipeMove(e) {
-    if (!swipe.active) return;
-    swipe.dx = e.clientX - swipe.x0;
-    /* مقاومة ناعمة بعد نقطة الفتح، وسحب للخلف يغلق الصف مباشرة */
-    if (swipedId === swipe.id) {
-      drag = Math.min(0, Math.max(-OPEN - 40, -OPEN + swipe.dx));
-    } else {
-      drag = swipe.dx < 0 ? Math.max(-OPEN - 40, swipe.dx) : 0;
-    }
-  }
-  function swipeEnd() {
-    if (!swipe.active) return;
-    swipe.active = false;
-    dragging = false;
-    if (swipedId === swipe.id) {
-      if (drag > -OPEN + 34) swipedId = null; /* سُحبت للخلف بعيداً */
-    } else if (swipe.dx < -46) {
-      swipedId = swipe.id;
-      buzz(8);
-    }
-    drag = 0;
-    swipe.dx = 0;
-  }
-
-  function rowX(s) {
-    /* أثناء السحب الفعلي يأخذ الإزاحة اللحظية الأولوية — تتبع الإصبع باتجاهين */
-    if (swipe.active && swipe.id === s.id) return drag;
-    if (swipedId === s.id) return -OPEN;
-    return 0;
-  }
+  /* ملاحظة: سحب الصف لإظهار «تم التسليم / راجع» أُزيل بطلب صاحبة البوتيك —
+     كان يزاحم القراءة ويسحب الصف بلا سبب. الإجراءان باقيان في ورقة
+     التفاصيل (اضغطي العملية)، والصف الآن للقراءة فقط. */
 
   async function shareWhatsApp(s) {
     const statusTpl = WA_STATUS_TEMPLATES[s.status] || WA_STATUS_TEMPLATES.pending;
@@ -266,65 +222,60 @@
   {:else}
     <div class="stack" style="gap:10px">
       {#each logShown as s, i (s.id)}
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          class="swipe-wrap"
-          class:open={swipedId === s.id}
-          class:dragging={dragging && swipe.id === s.id}
-          onpointerdown={(e) => swipeStart(e, s.id)}
-          onpointermove={swipeMove}
-          onpointerup={swipeEnd}
-          onpointercancel={swipeEnd}
+        <Glass
+          as="button"
+          class="sale rise"
+          style="animation-delay:{Math.min(i * 0.04, 0.3)}s"
+          onclick={() => { buzz(6); backSel = {}; detail = s; }}
         >
-          <!-- actions live under the full row width — both always visible when open -->
-          {#if swipedId === s.id || (swipe.active && swipe.id === s.id && drag < -60)}
-            <div class="swipe-actions">
-              {#if s.status !== 'delivered'}
-                <button class="sw-btn ok" onclick={() => { swipedId = null; markDelivered(s); }}>
-                  <Icon name="check" size={17} /> تم التسليم
-                </button>
-              {/if}
-              {#if s.status !== 'returned'}
-                <button class="sw-btn ret" onclick={() => { swipedId = null; doReturn(s); }}>
-                  <Icon name="undo" size={16} /> راجع
-                </button>
-              {/if}
-            </div>
+          <!-- الرأس: من، ومتى، وحالتها -->
+          <span class="s-head">
+            <span class="s-ic"><Icon name={s.status === 'returned' ? 'undo' : 'truck'} size={18} color="var(--burgundy)" /></span>
+            <span class="s-id">
+              <span class="s-name">{s.customerName || 'زبون'}</span>
+              <span class="s-when">{fmtDate(s.date)} · {fmtNum(salePieces(s))} قطعة</span>
+            </span>
+            <span class="st {STATUS[s.status]?.cls}">{STATUS[s.status]?.label}</span>
+          </span>
+
+          <!-- القطع: سطر لكل قطعة — اللون والمقاس والكمية وسعرها -->
+          {#if s.items?.length}
+            <span class="s-items">
+              {#each s.items as it, ii (it.sku + '|' + ii)}
+                <span class="s-item">
+                  <span class="s-it-t">{it.name || 'قطعة'}{it.color ? ` · ${it.color}` : ''}</span>
+                  <span class="s-it-s">مقاس {it.size || '—'}</span>
+                  <span class="s-it-q">×{fmtNum(it.qty)}</span>
+                  <span class="s-it-p">{fmtIQD((Number(it.price) || 0) * (Number(it.qty) || 0))}</span>
+                </span>
+              {/each}
+            </span>
           {/if}
-          <Glass
-            as="button"
-            class="sale rise {swipedId === s.id ? 'dimmed' : ''}"
-            style="animation-delay:{Math.min(i * 0.04, 0.3)}s; transform: translateX({rowX(s)}px)"
-            onclick={() => { if (Math.abs(swipe.dx) < 8) { if (swipedId === s.id) { swipedId = null; } else { buzz(6); backSel = {}; detail = s; } } }}
-          >
-          <span class="s-ic"><Icon name={s.status === 'returned' ? 'undo' : 'truck'} size={19} color="var(--burgundy)" /></span>
-          <div class="a-body">
-            <div class="row" style="gap:8px">
-              <span class="bold">{s.customerName || 'زبون'}</span>
-              <span class="st {STATUS[s.status]?.cls}">{STATUS[s.status]?.label}</span>
-            </div>
-            <div class="muted small">{fmtDate(s.date)} - {fmtNum(salePieces(s))} قطعة {s.barcode ? '- ' + s.barcode : ''}</div>
-            {#if s.items?.length}
-              <VariantBits dense variants={s.items} />
-            {/if}
-          </div>
-          <div class="col" style="align-items:flex-end; gap:6px">
-            <div class="money">{fmtIQD(s.subtotal)}</div>
-            {#if waEligible(s)}
-              <span
-                class="wa-chip"
-                role="button"
-                tabindex="0"
-                aria-label="إرسال رسالة الواتساب"
-                onclick={(e) => { e.stopPropagation(); shareWhatsApp(s); }}
-                onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); shareWhatsApp(s); } }}
-              >
-                <Icon name="whatsapp" size={14} /> واتساب
-              </span>
-            {/if}
-          </div>
-          </Glass>
-        </div>
+
+          <!-- الذيل: مرجع الشحنة، ثم الإجمالي وزر الواتساب -->
+          <span class="s-foot">
+            <span class="s-tags">
+              {#if s.barcode}<span class="s-tag">#{s.barcode}</span>{/if}
+              {#if s.deliveryCompany}<span class="s-tag">{s.deliveryCompany}</span>{/if}
+              {#if s.province}<span class="s-tag">{s.province}</span>{/if}
+            </span>
+            <span class="s-sum">
+              {#if waEligible(s)}
+                <span
+                  class="wa-chip"
+                  role="button"
+                  tabindex="0"
+                  aria-label="إرسال رسالة الواتساب"
+                  onclick={(e) => { e.stopPropagation(); shareWhatsApp(s); }}
+                  onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); shareWhatsApp(s); } }}
+                >
+                  <Icon name="whatsapp" size={14} /> واتساب
+                </span>
+              {/if}
+              <span class="money s-total">{fmtIQD(s.subtotal)}</span>
+            </span>
+          </span>
+        </Glass>
       {/each}
       {#if logVisible < filtered.length}
         <div class="more-row">
@@ -465,62 +416,14 @@
 <style>
   .more-row { display: flex; justify-content: center; padding: 18px 0 28px; }
   .more-sentinel { height: 1px; width: 100%; }
-  .swipe-wrap {
-    position: relative;
-    border-radius: var(--r-lg);
-    overflow: hidden;
-    touch-action: pan-y;
-  }
-  .swipe-actions {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    justify-content: flex-start;
-    align-items: center;
-    gap: 8px;
-    padding: 0 14px;
-    z-index: 0;
-    /* تدرّج خفيف يسبق الأزرار — يوحي بأن هناك أكثر من إجراء */
-    background: linear-gradient(to left, rgba(122, 46, 58, 0.06), transparent 55%);
-  }
-  .sw-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    border: none;
-    cursor: pointer;
-    font-family: inherit;
-    font-weight: 800;
-    font-size: 12.5px;
-    min-height: 44px;
-    padding: 10px 14px;
-    border-radius: 14px;
-    color: #fff;
-    white-space: nowrap;
-    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
-  .sw-btn:active { transform: scale(0.94); }
-  .sw-btn.ok { background: linear-gradient(135deg, #4e8a5f, #3c7050); }
-  .sw-btn.ret { background: linear-gradient(135deg, var(--burgundy), var(--burgundy-deep)); }
-  .swipe-wrap :global(.sale) {
-    position: relative;
-    z-index: 1;
-    transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
-    will-change: transform;
-    touch-action: pan-y;
-  }
-  /* أثناء السحب الفعلي: بلا انتقال وبلا أنيميشن دخول — الصف تتبع الإصبع لحظياً.
-     أنيميشن .rise بـ fill-mode both كان يطغى على التحويل اللحظي. */
-  .swipe-wrap.dragging :global(.sale) { transition: none; animation: none; }
-  /* .rise uses fill-mode both — release it so the open-translate applies */
-  .swipe-wrap.open :global(.sale) { animation: none; }
-  /* الصف المفتوح يخفت قليلاً — الأزرار هي البطلة */
-  .swipe-wrap :global(.sale.dimmed) { filter: brightness(0.97); }
-
+  /* صف العملية: ثلاثة أقسام مكدّسة — الرأس (من ومتى والحالة)، القطع (سطر
+     لكل قطعة)، والذيل (مرجع الشحنة والإجمالي). لم تعد كل معلومة محشورة في
+     سطر واحد، والسحب أُزيل — الصف للقراءة فقط، والإجراءات في ورقة التفاصيل. */
   :global(.sale) {
     display: flex;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 9px;
     padding: 12px 14px;
     cursor: pointer;
     text-align: right;
@@ -528,6 +431,8 @@
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   :global(.sale:active) { transform: scale(0.98); }
+
+  .s-head { display: flex; align-items: center; gap: 10px; }
   .s-ic {
     flex: none;
     width: 40px; height: 40px;
@@ -535,7 +440,36 @@
     border-radius: 13px;
     background: var(--accent-soft);
   }
-  .a-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .s-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .s-name {
+    font-weight: 800; font-size: 14.5px; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .s-when { font-size: 11px; font-weight: 700; color: var(--taupe); font-variant-numeric: tabular-nums; }
+
+  .s-items {
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 8px 10px;
+    border-radius: 13px;
+    background: rgba(255, 255, 255, 0.42);
+    border: 1px solid var(--line);
+  }
+  .s-item { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 700; color: var(--ink-2); }
+  .s-it-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .s-it-s { flex: none; color: var(--taupe); }
+  .s-it-q { flex: none; min-width: 26px; text-align: center; color: var(--burgundy); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .s-it-p { flex: none; min-width: 64px; text-align: left; font-weight: 800; font-variant-numeric: tabular-nums; }
+
+  .s-foot { display: flex; align-items: center; gap: 10px; }
+  .s-tags { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px 6px; }
+  .s-tag {
+    font-size: 10px; font-weight: 800; color: var(--taupe);
+    background: rgba(122, 46, 58, 0.06);
+    border-radius: 999px; padding: 2px 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .s-sum { flex: none; display: flex; align-items: center; gap: 8px; }
+  .s-total { font-size: 15px; color: var(--burgundy); font-variant-numeric: tabular-nums; }
   .it-thumb {
     flex: none;
     width: 40px; height: 40px;

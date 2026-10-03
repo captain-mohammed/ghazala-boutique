@@ -575,16 +575,24 @@
     cursor: pointer;
     text-align: right;
     width: 100%;
+    /* زوايا أنعم من الافتراضي (٢٤px) — البطاقة تبدو رقيقة لا صلبة */
+    border-radius: 27px !important;
+    border-color: rgba(201, 161, 90, 0.22) !important;
     transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   :global(.card:active) { transform: scale(0.97); }
+  /* إطار الصورة: مستدير بخيط ذهبي — نفس معالجة بطاقة «بيع».
+     كان الإطار ملتصقاً بحافة البطاقة بخط فاصل صلب، فيبدو الموديل قاسياً
+     ومقطوعاً. الآن الصورة تطفو داخل البطاقة بإطار ذهبي ناعم. */
   .thumb {
     position: relative;
-    width: 100%;
-    aspect-ratio: 1 / 1; /* الإطار المربع للصورة */
+    margin: 9px 9px 0;
+    aspect-ratio: 1 / 1;
     display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(150deg, rgba(255, 255, 255, 0.6), rgba(181, 73, 91, 0.06));
-    border-bottom: 1px solid var(--line);
+    background: linear-gradient(150deg, rgba(255, 255, 255, 0.65), rgba(181, 73, 91, 0.07));
+    border: 1.5px solid rgba(201, 161, 90, 0.45);
+    border-radius: 16px;
+    box-shadow: 0 0 0 3px rgba(201, 161, 90, 0.07), 0 3px 10px rgba(58, 26, 32, 0.08);
     overflow: hidden;
   }
   .thumb.oos { opacity: 0.75; }

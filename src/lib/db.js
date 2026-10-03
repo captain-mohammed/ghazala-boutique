@@ -744,6 +744,71 @@ export const modelGroupKey = (p) => p.modelId || `${(p.name || '').trim().toLowe
 export const seasonsOf = (p) =>
   Array.isArray(p?.seasons) && p.seasons.length ? p.seasons : p?.season ? [p.season] : [];
 
+/* ---------------- حارس هوية المتغيّرات (اللون × المقاس) ----------------
+   موديل واحد = نفس الحذاء بألوانه ومقاساته. فلا يجوز أن يحمل **بطاقتين
+   بنفس اللون ونفس المقاس** — هاتان بطاقة واحدة في الحقيقة.
+   ولا يجوز أن تبقى بطاقة صفرية بلا أي سجل: تلك بقايا تعديل، لا تاريخ لها،
+   وتظهر للمستخدمة كأن الموديل «تكرّر». (وهذا ما اشتكت منه صاحبة البوتيك:
+   تعديل اللون أو المقاس كان يُنشئ بطاقة جديدة ويترك القديمة صفراً.)
+
+   التاريخ المقدّس: أي بطاقة ذكرها بيع أو حركة أو حجز أو قائمة انتظار **لا
+   تُحذف أبداً** — تُصفَّر وتبقى، حتى لا يضيع سجل. */
+
+/* هل تشير وثيقة **خارجية** إلى هذا الكود؟ بيع، حجز، أو قائمة انتظار.
+   ⚠️ الحركات **لا** تُحتسب: كل بطاقة تُنشأ بحركة «وارد»، فاحتسابها كان يجعل
+   كل بطاقة «لها تاريخ» — فلا يُصلَح شيء أبداً. والحركة سجل البطاقة نفسها
+   تسير معها حيث سارت (وهي تُقرأ بالكود فقط، لا تربطها بأي جدول آخر). */
+export async function cardIsReferenced(sku) {
+  if (!sku) return true;
+  const [res, waits, sales] = await Promise.all([
+    db.reservations.where('sku').equals(sku).count(),
+    db.waitlists.where('sku').equals(sku).count(),
+    db.sales.filter((s) => (s.items || []).some((it) => it.sku === sku)).count()
+  ]);
+  return res + waits + sales > 0;
+}
+
+/* دمج أي بطاقتين مكرّرتين (نفس اللون والمقاس) داخل موديل واحد.
+   المكرّرة غير المرتبطة بأي بيع/حجز/انتظار تُدمج في أختها وتُحذف؛ وإن كانت
+   مرتبطة تُترك كما هي ليُصلحها المستخدم من «إصلاح الموديلات» — لا نحذف
+   تاريخاً أبداً. (الحركات تُحذف مع بطاقتها: هي سجلها الخاص، ولا شيء يقرؤها
+   بعد اختفاء البطاقة.) */
+export async function sweepDuplicateVariants(modelId) {
+  if (!modelId) return 0;
+  const cards = (await db.products.toArray()).filter((p) => p.modelId === modelId);
+  const seen = new Map();
+  let fixed = 0;
+  for (const c of cards) {
+    const k = `${(c.color || '').trim().toLowerCase()}|${String(c.size || '').trim()}`;
+    if (!seen.has(k)) { seen.set(k, c); continue; }
+    const keep = seen.get(k);
+    if (await cardIsReferenced(c.sku)) continue;
+    await db.products.update(keep.sku, {
+      qty: (Number(keep.qty) || 0) + (Number(c.qty) || 0),
+      updatedAt: new Date().toISOString()
+    });
+    await db.products.delete(c.sku);
+    fixed++;
+  }
+  return fixed;
+}
+
+/* جولة إقلاع: تُصلح أي مكرّر آمن في كل الموديلات. لا تفعل شيئاً إن كانت
+   البيانات سليمة (وهو الحال دائماً بعد الحارس) */
+export async function sweepAllDuplicateVariants() {
+  const all = await db.products.toArray();
+  const groups = new Map();
+  for (const p of all) {
+    const k = p.modelId;
+    if (!k) continue;
+    if (!groups.has(k)) groups.set(k, 0);
+    groups.set(k, groups.get(k) + 1);
+  }
+  let fixed = 0;
+  for (const [mid, n] of groups) if (n > 1) fixed += await sweepDuplicateVariants(mid);
+  return fixed;
+}
+
 /* one-time migration: season string → seasons array (يدوم على البيانات القديمة) */
 export async function sweepSeasonArrays() {
   const all = await db.products.toArray();

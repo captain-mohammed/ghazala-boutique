@@ -21,11 +21,19 @@
   onMount(load);
   async function load() {
     loading = true;
-    const [sales, reservations, occasions] = await Promise.all([
+    const [sales, reservations, occasions, products] = await Promise.all([
       db.sales.toArray(),
       db.reservations.toArray(),
-      db.occasions.toArray()
+      db.occasions.toArray(),
+      db.products.toArray()
     ]);
+    /* فهرس بالكود: نوع كل قطعة مباعة — منه نعرف «شو تحب تشتري» */
+    const prodBySku = new Map();
+    for (const p of products) prodBySku.set(p.sku, p);
+    const tallyTop = (m) => {
+      const best = [...m.entries()].sort((a, b) => b[1] - a[1])[0];
+      return best ? best[0] : '';
+    };
     const map = new Map();
     const key = (n, p) => `${(n || '').trim()}|${(p || '').trim()}`;
     const touch = (n, p) => {
@@ -49,8 +57,19 @@
       const openRes = c.reservations.filter((r) => r.status === 'active' && new Date(r.expiresAt) > new Date());
       const nextOcc = nextOccasionOf(c.occasions);
       const daysSince = last ? Math.floor((Date.now() - new Date(last).getTime()) / 86400000) : null;
+      /* ذوقها: من القطع التي اشترتها فعلاً — النوع واللون والمقاس الأكثر تكراراً */
+      const types = new Map(), colors = new Map(), sizes = new Map();
+      for (const s of active) for (const it of s.items || []) {
+        const t = prodBySku.get(it.sku)?.type || '';
+        if (t) types.set(t, (types.get(t) || 0) + (Number(it.qty) || 0));
+        if (it.color) colors.set(it.color, (colors.get(it.color) || 0) + (Number(it.qty) || 0));
+        if (it.size) sizes.set(String(it.size), (sizes.get(String(it.size)) || 0) + (Number(it.qty) || 0));
+      }
       return {
         ...c, sales, spent, pieces, last, openRes,
+        topType: tallyTop(types), topColor: tallyTop(colors), topSize: tallyTop(sizes),
+        avgOrder: active.length ? Math.round(spent / active.length) : 0,
+        lastItems: (sales[0]?.items || []),
         orders: active.length,
         vip: spent >= 150000 || active.length >= 3,
         recent: last ? new Date(last) >= weekAgo : false,
@@ -150,13 +169,19 @@
 </script>
 
 <div class="stack" style="gap:12px">
-  <Glass class="hero rise" style="padding:16px">
-    <div class="row" style="justify-content:space-between; align-items:center">
-      <div>
+  <Glass class="hero rise">
+    <div class="h-top">
+      <span class="hero-ic"><Icon name="user" size={21} color="#fff" /></span>
+      <div class="h-txt">
         <h1 class="h1">الزبونات</h1>
-        <div class="muted small">{fmtNum(customers.length)} زبونة — الدفتر يبني نفسه من مبيعاتك</div>
+        <div class="h-sub">الدفتر يبني نفسه من مبيعاتك وحجوزاتك</div>
       </div>
-      <span class="hero-ic"><Icon name="user" size={22} color="var(--burgundy)" /></span>
+    </div>
+    <!-- ملخّص حيّ: كم زبونة، كم نجمة، وكم غايبة تستاهل سالّمة -->
+    <div class="h-stats">
+      <div class="h-stat"><b>{fmtNum(customers.length)}</b><span>زبونة</span></div>
+      <div class="h-stat"><b>{fmtNum(customers.filter((c) => c.vip).length)}</b><span>VIP</span></div>
+      <div class="h-stat"><b class:dim={!goneQuiet.length}>{fmtNum(goneQuiet.length)}</b><span>غايبة عنا</span></div>
     </div>
   </Glass>
 
@@ -254,6 +279,28 @@
           <div><b>{fmtNum(detail.pieces)}</b><span>قطعة</span></div>
           <div><b>{fmtNum(detail.reservations.length)}</b><span>حجز</span></div>
         </div>
+
+        <!-- شو تحب تشتري: نوعها ولونها ومقاسها الأكثر — ومتوسط عملها -->
+        {#if detail.topType || detail.topColor || detail.topSize}
+          <div class="taste">
+            <div class="taste-h"><Icon name="flame" size={12} color="var(--gold)" /> ذوقها</div>
+            <div class="taste-row">
+              {#if detail.topType}<span class="taste-c">النوع: <b>{detail.topType}</b></span>{/if}
+              {#if detail.topColor}<span class="taste-c">اللون: <b>{detail.topColor}</b></span>{/if}
+              {#if detail.topSize}<span class="taste-c">المقاس: <b>{detail.topSize}</b></span>{/if}
+            </div>
+          </div>
+        {/if}
+        <div class="kline">
+          <span class="muted small">متوسط العملية</span>
+          <span class="bold small">{fmtIQD(detail.avgOrder)}</span>
+        </div>
+        <div class="kline">
+          <span class="muted small">آخر زيارة</span>
+          <span class="bold small">
+            {detail.last ? `${fmtDate(detail.last)}${detail.daysSince !== null ? ` · منذ ${fmtNum(detail.daysSince)} يوم` : ''}` : '—'}
+          </span>
+        </div>
         <div class="stamps big" title="ختم الغزالة: كل 5 عمليات = بطاقة مكتملة">
           {#each Array(5) as _, si (si)}
             <i class="stamp" class:on={si < detail.stampFill}></i>
@@ -284,17 +331,33 @@
         {/if}
       </Glass>
 
-      <div class="muted tiny bold" style="margin-top:2px">سجل العمليات</div>
+      <div class="muted tiny bold" style="margin-top:2px">سجل العمليات ({fmtNum(detail.sales.length)})</div>
+      {#if !detail.sales.length}
+        <div class="muted small">لا عمليات بعد</div>
+      {/if}
       {#each detail.sales as s (s.id)}
-        <Glass style="padding:10px 12px">
-          <div class="row" style="justify-content:space-between">
+        <Glass class="sale-card" style="padding:11px 12px">
+          <div class="row" style="justify-content:space-between; align-items:center">
             <span class="bold small">{fmtDate(s.date)}</span>
             <span class="money small">{fmtIQD(s.subtotal)}</span>
           </div>
-          <div class="muted tiny">{fmtNum(salePieces(s))} قطعة{s.status === 'returned' ? ' — راجع' : ''}{s.province ? ` - ${s.province}` : ''}</div>
-        </Glass>  {:else}
-    <div class="muted small">لا عمليات بعد</div>
-  {/each}
+          <!-- كل قطعة بسطرها: تعرف بالضبط شو اشترت -->
+          {#if s.items?.length}
+            <div class="sale-items">
+              {#each s.items as it, ii (it.sku + '|' + ii)}
+                <div class="sale-item">
+                  <span class="si-t">{it.name || 'قطعة'}{it.color ? ` · ${it.color}` : ''}</span>
+                  <span class="si-s">مقاس {it.size || '—'}</span>
+                  <span class="si-q">×{fmtNum(it.qty)}</span>
+                </div>
+              {/each}
+            </div>
+          {/if}
+          <div class="muted tiny">
+            {fmtNum(salePieces(s))} قطعة{s.status === 'returned' ? ' — راجع' : ''}{s.deliveryCompany ? ` · ${s.deliveryCompany}` : ''}{s.province ? ` · ${s.province}` : ''}
+          </div>
+        </Glass>
+      {/each}
     </div>
   {/if}
 </Sheet>
@@ -343,12 +406,62 @@
 <style>
   .more-row { display: flex; justify-content: center; padding: 18px 0 28px; }
   .more-sentinel { height: 1px; width: 100%; }
-  .hero-ic {
-    width: 44px; height: 44px; border-radius: 14px; flex: none;
-    display: flex; align-items: center; justify-content: center;
-    background: rgba(181, 73, 91, 0.1);
-    border: 1px solid rgba(181, 73, 91, 0.18);
+  /* رأس الصفحة: نفس معالجة «فاتورة وارد» — خيط ذهبي وشعار نبيتي وملخّص حيّ */
+  :global(.hero) {
+    padding: 14px 15px 12px;
+    display: flex; flex-direction: column; gap: 12px;
+    position: relative; overflow: hidden;
+    background: linear-gradient(158deg, rgba(255, 255, 255, 0.94) 0%, rgba(181, 73, 91, 0.07) 62%, rgba(201, 161, 90, 0.13) 100%) !important;
+    border-color: rgba(181, 73, 91, 0.18) !important;
   }
+  :global(.hero)::before {
+    content: ''; position: absolute;
+    inset-block-start: 0; inset-inline: 0; height: 2px;
+    background: linear-gradient(90deg, transparent 4%, var(--gold) 50%, transparent 96%);
+    opacity: 0.8;
+  }
+  .h-top { display: flex; align-items: center; gap: 12px; }
+  .hero-ic {
+    width: 46px; height: 46px; border-radius: 15px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
+    box-shadow: 0 0 0 1px rgba(201, 161, 90, 0.5), 0 8px 18px rgba(122, 46, 58, 0.26);
+  }
+  .h-txt { flex: 1; min-width: 0; }
+  .h-txt :global(.h1) { margin: 0; }
+  .h-sub { font-size: 11.5px; font-weight: 700; color: var(--taupe); margin-top: 2px; }
+  .h-stats {
+    display: flex; align-items: stretch;
+    border-top: 1px dashed rgba(201, 161, 90, 0.5);
+    padding-top: 10px;
+  }
+  .h-stat {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    padding: 0 6px;
+    border-inline-end: 1px solid var(--line);
+  }
+  .h-stat:last-child { border-inline-end: none; }
+  .h-stat b { font-size: 15px; font-weight: 900; color: var(--burgundy-deep); font-variant-numeric: tabular-nums; }
+  .h-stat b.dim { color: var(--taupe); opacity: 0.6; }
+  .h-stat span { font-size: 10px; font-weight: 800; color: var(--taupe); }
+
+  /* ذوق الزبونة + سطور المعلومات في ورقة التفاصيل */
+  .taste {
+    padding: 9px 11px; border-radius: 12px;
+    background: rgba(201, 161, 90, 0.09);
+    border: 1px dashed rgba(201, 161, 90, 0.4);
+  }
+  .taste-h { font-size: 11px; font-weight: 800; color: #8a6a35; display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+  .taste-row { display: flex; flex-wrap: wrap; gap: 5px 12px; }
+  .taste-c { font-size: 12px; font-weight: 700; color: var(--taupe); }
+  .taste-c b { color: var(--ink); font-weight: 800; }
+  .kline { display: flex; justify-content: space-between; align-items: center; }
+  .sale-items { display: flex; flex-direction: column; gap: 3px; margin: 7px 0 5px; }
+  .sale-item { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 700; color: var(--ink-2); }
+  .si-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .si-s { flex: none; color: var(--taupe); }
+  .si-q { flex: none; min-width: 26px; text-align: center; color: var(--burgundy); font-weight: 800; font-variant-numeric: tabular-nums; }
   .search {
     display: flex; align-items: center; gap: 8px;
     padding: 11px 14px; border-radius: 14px;
