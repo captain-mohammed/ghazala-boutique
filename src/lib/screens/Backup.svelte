@@ -4,13 +4,14 @@
   import Sheet from '../components/Sheet.svelte';
   import Glass from '../components/Glass.svelte';
   import { db, backupJSON, restoreJSON, getSetting, setSetting, loadProducts } from '../db.js';
-  import { downloadFile, fmtDate, buzz } from '../utils.js';
+  import { downloadFile, fmtDate, fmtNum, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
   import * as XLSX from 'xlsx';
 
   let lastBackup = $state(null);
   let restoreOpen = $state(false);
   let pendingData = $state(null);
+  let restoring = $state(false);
   let fileInput;
 
   onMount(async () => {
@@ -50,20 +51,38 @@
     } catch {
       toastErr('تعذر قراءة الملف');
     } finally {
-      e.currentTarget.value = '';
+      /* ⚠️ `e.currentTarget` يُصفَّر بعد انتهاء الإرسال — أي بعد أول await —
+         فالتفريغ عبره كان يرمي «Cannot set properties of null». نستخدم
+         مرجع العنصر نفسه. */
+      if (fileInput) fileInput.value = '';
     }
   }
 
+  /* سبب مقروء للفشل — «فشلت الاستعادة» وحدها لا تخبر صاحبة البوتيك بشيء */
+  const why = (err) => {
+    const n = err?.name || '';
+    if (n === 'QuotaExceededError') return 'الذاكرة ممتلئة — لا مساحة كافية لحفظ النسخة';
+    if (n === 'DataCloneError') return 'ملف غير متوافق — لم نستطع قراءته';
+    if (n === 'AbortError' || n === 'InvalidStateError') return 'انقطعت العملية — أغلقي التطبيقات الأخرى وحاولي مرة ثانية';
+    return err?.message || n || 'خطأ غير معروف';
+  };
+
   async function doRestore(replace) {
+    if (restoring) return;
+    restoring = true;
     try {
-      await restoreJSON(pendingData, { merge: !replace });
+      const r = await restoreJSON(pendingData, { merge: !replace });
       restoreOpen = false;
       pendingData = null;
       buzz([30, 60, 30]);
-      toastOk(replace ? 'تمت الاستعادة الكاملة' : 'تمت إضافة البيانات');
+      celebrateAt(window.innerWidth / 2, window.innerHeight / 2.6, '🪄');
+      toastOk(`تمت الاستعادة — ${fmtNum(r.products)} موديل و${fmtNum(r.sales)} عملية بيع`);
     } catch (err) {
-      console.error(err);
-      toastErr('فشلت الاستعادة');
+      /* الخطأ الحقيقي إلى وحدة التحكم، وسببه بالعربي إلى الشاشة */
+      console.error('restoreJSON failed:', err);
+      toastErr(`فشلت الاستعادة — ${why(err)}`);
+    } finally {
+      restoring = false;
     }
   }
 
@@ -145,13 +164,16 @@
     <p class="muted small" style="margin:0">
       النسخة تحتوي {pendingData?.products?.length ?? 0} موديل و{pendingData?.sales?.length ?? 0} عملية بيع.
     </p>
-    <button class="btn primary block" onclick={() => doRestore(false)}>
+    {#if restoring}
+      <p class="muted small" style="margin:0">… نستعيد البيانات — لا تغلقي التطبيق</p>
+    {/if}
+    <button class="btn primary block" onclick={() => doRestore(false)} disabled={restoring}>
       إضافة للبيانات الحالية (دمج)
     </button>
-    <button class="btn danger block" onclick={() => doRestore(true)}>
+    <button class="btn danger block" onclick={() => doRestore(true)} disabled={restoring}>
       استبدال كل البيانات الحالية
     </button>
-    <button class="btn ghost block" onclick={() => { restoreOpen = false; pendingData = null; }}>إلغاء</button>
+    <button class="btn ghost block" onclick={() => { restoreOpen = false; pendingData = null; }} disabled={restoring}>إلغاء</button>
   </div>
 </Sheet>
 

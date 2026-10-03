@@ -510,8 +510,13 @@ export async function backfillModelIds() {
 
 /* ---------------- إصلاح الموديلات المدمجة ----------------
    الدمج الخاطئ يترك بصمة واضحة: بطاقات تحت رقم موديل واحد تختلف في التكلفة أو
-   سعر البيع أو الصورة. الموديل الحقيقي الواحد (نفس الحذاء بألوانه ومقاساته)
-   تشترك بطاقاته في كل ذلك — فاختلافها دليل دمج. الفحص للقراءة فقط. */
+   سعر البيع — أو تحمل اللون والمقاس نفسه مرتين. الموديل الحقيقي الواحد (نفس
+   الحذاء بألوانه ومقاساته) لا يفعل ذلك أبداً، فوجود أي منها دليل دمج. الفحص
+   للقراءة فقط ولا يعدّل شيئاً.
+
+   ⚠️ لا تفحص الصورة هنا: منذ v7 الصورة تُخزَّن مرة واحدة لكل **رقم موديل**
+   (جدول photos)، فكل بطاقات الموديل ترى الصورة نفسها بالضرورة — واختلافها
+   داخل الموديل مستحيل بنيوياً. كان الفحص عليها يبدو منطقياً وهو ميت تماماً. */
 export async function findMergedModels() {
   const all = await db.products.toArray();
   const groups = new Map();
@@ -525,13 +530,20 @@ export async function findMergedModels() {
     if (items.length < 2) continue;
     const costs = [...new Set(items.map((x) => Number(x.cost) || 0))];
     const prices = [...new Set(items.map((x) => Number(x.price) || 0))];
-    const photos = [...new Set(items.map((x) => x.photo || '').filter(Boolean))];
+    /* بطاقتان بنفس اللون ونفس المقاس داخل موديل واحد: الحذاء الواحد لا
+       يحتاج بطاقتين — إحداهما أثر دمج أو تسجيل مكرّر. */
+    const seen = new Map();
+    let dupPairs = 0;
+    for (const it of items) {
+      const dk = `${(it.color || '').trim().toLowerCase()}|${(it.size || '').trim()}`;
+      if (seen.has(dk)) dupPairs++; else seen.set(dk, it.sku);
+    }
     const reasons = [];
     if (costs.length > 1) reasons.push(`تكلفة مختلفة (${costs.length})`);
     if (prices.length > 1) reasons.push(`سعر مختلف (${prices.length})`);
-    if (photos.length > 1) reasons.push(`صور مختلفة (${photos.length})`);
+    if (dupPairs) reasons.push(`لون ومقاس مكرر (${dupPairs})`);
     if (!reasons.length) continue;
-    out.push({ key, items, reasons, costs, prices, photoCount: photos.length });
+    out.push({ key, items, reasons, costs, prices, dupPairs });
   }
   /* الأكبر أولاً — أسوأ الحالات في الأعلى */
   return out.sort((a, b) => b.items.length - a.items.length || b.reasons.length - a.reasons.length);
@@ -584,21 +596,31 @@ export async function findSimilarModels() {
     models.get(mid).push(p);
   }
   const out = [];
-  for (const [, models] of byName) {
+  for (const [nameKey, models] of byName) {
     if (models.size < 2) continue;
     const list = [...models.entries()]
       .map(([modelId, items]) => ({
         modelId,
         items,
         createdAt: Math.min(...items.map((x) => new Date(x.createdAt || x.updatedAt || Date.now()).getTime())),
-        qty: items.reduce((a, x) => a + (x.qty || 0), 0),
-        price: Math.max(...items.map((x) => x.price || 0)),
+        lastAt: Math.max(...items.map((x) => new Date(x.updatedAt || x.createdAt || Date.now()).getTime())),
+        qty: items.reduce((a, x) => a + (Number(x.qty) || 0), 0),
+        price: Math.max(...items.map((x) => Number(x.price) || 0)),
+        cost: Math.max(...items.map((x) => Number(x.cost) || 0)),
         photo: items.find((x) => x.photo)?.photo || null,
-        colors: [...new Set(items.map((x) => (x.color || '').trim()).filter(Boolean))]
+        colors: [...new Set(items.map((x) => (x.color || '').trim()).filter(Boolean))],
+        sizes: [...new Set(items.map((x) => (x.size || '').trim()).filter(Boolean))],
+        type: typeChain(items[0]),
+        seasons: [...new Set(items.flatMap((x) => seasonsOf(x)))],
+        material: items.find((x) => x.material)?.material || '',
+        supplier: items.find((x) => x.supplier)?.supplier || '',
+        cardCount: items.length
       }))
       /* الأقدم أولاً — وهو الذي يصير الأساس عند الدمج */
       .sort((a, b) => a.createdAt - b.createdAt);
-    out.push({ nameKey: `${models.size}`, models: list });
+    /* اسم حقيقي للمجموعة (الاسم المشتق|التصنيف) — كان رقم عدد الموديلات،
+       فتتشابه مجموعتان مختلفتان لهما العدد نفسه ويتشاركان تحديد المستخدمة. */
+    out.push({ nameKey, models: list });
   }
   return out.sort((a, b) => b.models.length - a.models.length);
 }
@@ -625,15 +647,32 @@ export async function joinModels(modelIds) {
   const base = present.slice().sort((a, b) => at(a) - at(b))[0];
   const now = new Date().toISOString();
   const movedSkus = [];
+  const absorbed = [];
   for (const mid of present) {
     if (mid === base) continue;
+    absorbed.push(mid);
     for (const p of groups.get(mid)) {
       await db.products.update(p.sku, { modelId: base, updatedAt: now });
       movedSkus.push(p.sku);
     }
   }
-  /* «نفد» يُحسب على الموديل كله — الطرفان تغيّرا معاً (جلب واحد) */
-  await syncModelsFor([...movedSkus, ...(baseCards?.length ? [baseCards[0].sku] : [])]);
+  /* الصورة صارت واحدة لكل **رقم موديل** (v7): قد يكون للأساس بلا صورة بينما
+     للمُندمَج صورة — نُهاجرها إليه حتى لا يضيع وجه الموديل، ثم نُنظّف صور
+     الأرقام المُندمَجة لأنها صارت يتيمة (لا بطاقة تشير إليها) وتُثقل النسخة
+     الاحتياطية بلا فائدة. */
+  const basePhoto = await db.photos.get(base);
+  if (!basePhoto) {
+    for (const mid of absorbed) {
+      const ph = await db.photos.get(mid);
+      if (ph?.data) { await db.photos.put({ modelId: base, data: ph.data }); break; }
+    }
+  }
+  for (const mid of absorbed) await db.photos.delete(mid);
+
+  /* «نفد» يُحسب على الموديل كله — الطرفان تغيّرا معاً (جلب واحد).
+     (كان `baseCards` غير معرّف هنا فيرمي ReferenceError ويفشل كل دمج.) */
+  const baseSkus = groups.get(base).map((x) => x.sku);
+  await syncModelsFor([...movedSkus, ...(baseSkus.length ? [baseSkus[0]] : [])]);
   return { ok: true, base, moved: movedSkus.length };
 }
 
@@ -855,7 +894,8 @@ export async function recordSale({ items, customerName, customerPhone, province,
 }
 
 export async function setSaleStatus(id, status) {
-  await db.sales.update(id, { status });
+  /* updatedAt يجعل بصمة التحديث في سجل المبيعات ترى التغيير فوراً */
+  await db.sales.update(id, { status, updatedAt: new Date().toISOString() });
 }
 
 /* Pieces sold today (non-returned) — drives milestone celebrations */
@@ -973,9 +1013,105 @@ export async function returnSale(id) {
   }
   /* القطع رجعت للرف — النفد ينمحى إن كان الموديل كامل راجع. مرة واحدة للكل */
   await syncModelsFor(s.items.map((it) => it.sku));
-  await db.sales.update(id, { status: 'returned' });
+  await db.sales.update(id, { status: 'returned', updatedAt: now });
   /* the sale's profit leaves the vault — recorded, never hidden */
   await vaultWithdraw({ amount: s.profit, saleId: id, note: `إرجاع بيع #${id}` });
+}
+
+/* ---------------- الإرجاع الجزئي (تسليم جزئي) ----------------
+   الواقع في البوتيك: الزبونة تطلب قطعتين، وعند وصول الطلب تأخذ واحدة
+   وتُرجع الثانية. تسجيل العملية كلها «تم التسليم» يخفي القطعة الراجعة،
+   وتسجيلها كلها «راجع» يمحو البيع الحقيقي — وكلاهما يُفسد الربح والرصيد
+   عند شركة التوصيل.
+
+   الحلّ: تُفصل القطع الراجعة إلى عملية «راجع» **مستقلة** بتاريخ العملية
+   نفسها، وتبقى العملية الأصلية بالقطع المستلَمة فقط. فسجل المبيعات يقول
+   الحقيقة كاملة: قطعة تم تسليمها، وقطعة رجعت.
+
+   الحسابات كلها من سطور القطع نفسها لا من مجاميع العملية، فيبقى الربح
+   والمجموع مطابقَين لما قُبض فعلاً. القطع الراجعة تعود للرف، وربحها وحده
+   يخرج من الخزنة — ربح المستلَم يبقى داخلها.
+
+   selections: ['SKU'] أو [{ sku, qty }] — بلا qty يُرجع السطر كاملاً. */
+export async function returnSaleItems(id, selections, { markDelivered = false } = {}) {
+  const s = await db.sales.get(id);
+  if (!s || s.status === 'returned') return { ok: false, reason: 'not-found' };
+
+  /* الكمية الراجعة لكل كود، بحدّ أقصى = الكمية في العملية */
+  const want = new Map();
+  for (const sel of selections || []) {
+    const sku = typeof sel === 'string' ? sel : sel?.sku;
+    if (!sku) continue;
+    const cap = (s.items || []).filter((it) => it.sku === sku).reduce((a, it) => a + (Number(it.qty) || 0), 0);
+    const raw = typeof sel === 'object' && sel.qty != null ? Number(sel.qty) : cap;
+    const take = Math.max(0, Math.min(Number.isFinite(raw) ? raw : cap, cap));
+    if (take > 0) want.set(sku, take);
+  }
+  if (!want.size) return { ok: false, reason: 'empty' };
+
+  const keptItems = [];
+  const backItems = [];
+  for (const it of s.items || []) {
+    const q = Number(it.qty) || 0;
+    const back = Math.min(q, want.get(it.sku) || 0);
+    if (back > 0) {
+      backItems.push({ ...it, qty: back });
+      if (q - back > 0) keptItems.push({ ...it, qty: q - back });
+    } else {
+      keptItems.push({ ...it });
+    }
+  }
+  if (!backItems.length) return { ok: false, reason: 'empty' };
+
+  const now = new Date().toISOString();
+  const sumOf = (items, pick) => items.reduce((a, it) => a + pick(it) * (Number(it.qty) || 0), 0);
+
+  /* القطع الراجعة تعود للرف — والسجل يشهد */
+  for (const it of backItems) {
+    const p = await db.products.get(it.sku);
+    if (p) await db.products.update(it.sku, { qty: (Number(p.qty) || 0) + it.qty, updatedAt: now });
+    await logMovement({ sku: it.sku, type: 'in', qty: it.qty, note: `إرجاع بيع #${id}` });
+  }
+  await syncModelsFor(backItems.map((it) => it.sku));
+
+  const backSub = sumOf(backItems, (it) => Number(it.price) || 0);
+  const backCost = sumOf(backItems, (it) => Number(it.cost) || 0);
+  const backProfit = backSub - backCost;
+
+  /* رجع كل شيء → نفس الإرجاع الكامل، بلا عملية مكرّرة */
+  if (!keptItems.length) {
+    await db.sales.update(id, { status: 'returned', updatedAt: now });
+    await vaultWithdraw({ amount: backProfit, saleId: id, note: `إرجاع بيع #${id}` });
+    return { ok: true, split: false, returned: backItems.length, kept: 0, returnedId: null };
+  }
+
+  const keptSub = sumOf(keptItems, (it) => Number(it.price) || 0);
+  const keptCost = sumOf(keptItems, (it) => Number(it.cost) || 0);
+  const fee = Number(s.deliveryFee) || 0;
+
+  /* سطر «راجع» مستقل — يظهر في السجل والتقارير كعملية إرجاع كاملة،
+     ويحمل رقم العملية الأم في returnedFrom. أجرة التوصيل لا تُنسخ إليه:
+     هي أُجرة شحنة واحدة دفعتها الزبونة للشركة، ومكانها العملية الأصلية. */
+  const { id: _omit, ...rest } = s;
+  const backId = await db.sales.add({
+    ...rest,
+    items: backItems,
+    subtotal: backSub, cost: backCost, profit: backProfit,
+    deliveryFee: 0, total: backSub,
+    status: 'returned', settledAt: null,
+    returnedFrom: id, splitAt: now, createdAt: now, updatedAt: now
+  });
+
+  await db.sales.update(id, {
+    items: keptItems,
+    subtotal: keptSub, cost: keptCost, profit: keptSub - keptCost,
+    total: keptSub + fee,
+    updatedAt: now,
+    ...(markDelivered ? { status: 'delivered' } : {})
+  });
+
+  await vaultWithdraw({ amount: backProfit, saleId: id, note: `إرجاع جزئي بيع #${id} → #${backId}` });
+  return { ok: true, split: true, returned: backItems.length, kept: keptItems.length, returnedId: backId };
 }
 
 /* تعديل وقت العملية: العملية سُجلت متأخرة أو بالغلط؟ الوقت الجديد يسري على
@@ -1289,34 +1425,39 @@ export async function backupJSON() {
   };
 }
 
+/* ⚠️ فخّ $state (كان سبب «فشلت الاستعادة»): النسخة تُقرأ من واجهة Svelte
+   وتُحفظ في متغيّر $state، فيغلّفها Svelte في Proxy تفاعلي عميق. IndexedDB
+   ترفض استنساخ الـProxy (DataCloneError: could not be cloned) فتفشل كل
+   عملية كتابة — بلا رسالة مفهومة. جولة JSON تُجرّدها إلى قيم عادية، تماماً
+   كما في setSetting/addProduct/updateProduct. لا تُمرَّر النسخة خاماً أبداً. */
 export async function restoreJSON(data, { merge = false } = {}) {
   if (!data || data.app !== 'ghazala-boutique') throw new Error('ملف النسخة غير صالح');
-  if (!merge) {
-    await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, async () => {
-      await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear()]);
-    });
-  }
-  await db.products.bulkPut(data.products || []);
-  await db.sales.bulkPut(data.sales || []);
-  await db.movements.bulkPut(data.movements || []);
-  if (Array.isArray(data.settings)) {
+  data = JSON.parse(JSON.stringify(data));
+  const arr = (key) => (Array.isArray(data[key]) ? data[key] : []);
+
+  const tables = [
+    db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions,
+    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos
+  ];
+
+  /* استعادة واحدة ذرّية: إما تنجح كاملة أو لا يُمَس شيء. الكتابة خارج معاملة
+     كانت تترك قاعدة نصف مستعادة عند أي خطأ في المنتصف. */
+  await db.transaction('rw', ...tables, db.settings, async () => {
+    if (!merge) await Promise.all(tables.map((t) => t.clear()));
+
+    for (const t of tables) {
+      const rows = arr(t.name);
+      if (rows.length) await t.bulkPut(rows);
+    }
+
     /* رسائل البوتيك (كل القوالب: الطلبات والتسليم والإرجاع والتسويق) لا
        تُستعاد من نسخة قديمة — تبقى كما كتبتها صاحبة البوتيك. كان waTemplate
        وحده محمياً وبقية الستة تُدهس بصمت. */
-    await db.settings.bulkPut(data.settings.filter((s) => !TEMPLATE_KEYS.has(s.key)));
-  }
-  if (Array.isArray(data.expenses)) await db.expenses.bulkPut(data.expenses);
-  if (Array.isArray(data.reservations)) await db.reservations.bulkPut(data.reservations);
-  if (Array.isArray(data.occasions)) await db.occasions.bulkPut(data.occasions);
-  if (Array.isArray(data.vault)) await db.vault.bulkPut(data.vault);
-  /* v5 tables — older backups simply lack them */
-  if (Array.isArray(data.waitlists)) await db.waitlists.bulkPut(data.waitlists);
-  if (Array.isArray(data.referrals)) await db.referrals.bulkPut(data.referrals);
-  if (Array.isArray(data.testimonials)) await db.testimonials.bulkPut(data.testimonials);
-  /* v6 — النسخ الأقدم تخلو منها ببساطة */
-  if (Array.isArray(data.payments)) await db.payments.bulkPut(data.payments);
-  /* v7 — صور الموديل (مرة لكل موديل) */
-  if (Array.isArray(data.photos)) await db.photos.bulkPut(data.photos);
+    const settings = arr('settings').filter((s) => s && s.key && !TEMPLATE_KEYS.has(s.key));
+    if (settings.length) await db.settings.bulkPut(settings);
+  });
+
+  return { products: arr('products').length, sales: arr('sales').length, photos: arr('photos').length };
 }
 
 export async function wipeAll() {

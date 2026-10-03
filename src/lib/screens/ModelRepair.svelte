@@ -2,7 +2,7 @@
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
-  import { findMergedModels, splitModel, findSimilarModels, joinModels } from '../db.js';
+  import { db, findMergedModels, splitModel, findSimilarModels, joinModels } from '../db.js';
   import { fmtIQD, fmtNum, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
@@ -14,13 +14,36 @@
   let merged = $state([]);    // بطاقات مدمجة خطأً (فصل)
   let similar = $state([]);   // موديلات متشابهة (دمج)
   let loaded = $state(false);
-  let picked = $state({});    // nameKey → [sku…]        للفصل
-  let jpicked = $state({});   // nameKey → [modelId…]    للدمج
+  let picked = $state({});    // key → [sku…]            للفصل
+  let jpicked = $state({});   // nameKey → { modelId:true } للدمج
   let busy = $state(false);
 
+  /* صور الموديلات — الصورة هي هوية المنتج، وهي في جدول `photos` منذ v7
+     (مرة واحدة لكل رقم موديل)، فلا تصل مع قراءة البطاقات.
+     ⚠️ غير تفاعلي عن قصد: تُجلب مرة واحدة، والاستطلاع كل ٦ ثوانٍ لا يعيد
+     قراءتها — وإلا صار كل نبض يجرّ ميجابايتات الصور فيتقطّع التمرير. */
+  let photoMap = {};
+
+  async function loadPhotos() {
+    try {
+      const rows = await db.photos.toArray();
+      photoMap = Object.fromEntries(rows.map((r) => [r.modelId, r.data]));
+    } catch { photoMap = {}; }
+  }
+
+  /* إلحاق الصورة بكل بطاقة (الفصل) وكل موديل (الدمج) */
+  function decorate(a, b) {
+    return {
+      merged: a.map((g) => ({ ...g, items: g.items.map((p) => ({ ...p, photo: photoMap[g.key] || null })) })),
+      similar: b.map((g) => ({ ...g, models: g.models.map((m) => ({ ...m, photo: photoMap[m.modelId] || null })) }))
+    };
+  }
+
   async function scan() {
+    await loadPhotos();
     const [a, b] = await Promise.all([findMergedModels(), findSimilarModels()]);
-    merged = a; similar = b;
+    const d = decorate(a, b);
+    merged = d.merged; similar = d.similar;
     picked = {}; jpicked = {};
     loaded = true;
   }
@@ -29,10 +52,12 @@
     let alive = true;
     const grab = async () => {
       const [a, b] = await Promise.all([findMergedModels(), findSimilarModels()]);
+      const d = decorate(a, b);
       /* التحديث الدوري لا يلمس اختياراتك — يقرأ الواقع من جديد فقط */
-      if (alive) { merged = a; similar = b; loaded = true; }
+      if (alive) { merged = d.merged; similar = d.similar; loaded = true; }
     };
-    grab();
+    /* الصور أولاً، ثم الاستطلاع — كي تظهر الصورة من أول رسم */
+    loadPhotos().then(() => { if (alive) grab(); });
     const t = setInterval(grab, 6000);
     return () => { alive = false; clearInterval(t); };
   });
@@ -76,6 +101,11 @@
     const d = new Date(ts);
     return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
   };
+
+  /* تفاصيل التعرّف على القطعة — الصورة وحدها لا تكفي حين يتشابه موديلان */
+  const chainOf = (p) => [p?.type, p?.typeSub, p?.typeSub2, p?.typeSub3].filter(Boolean).join(' - ');
+  const seasonOf = (p) => (Array.isArray(p?.seasons) && p.seasons.length ? p.seasons.join('، ') : (p?.season || ''));
+  const metaOf = (p) => [chainOf(p), seasonOf(p), p?.material, p?.brand].filter(Boolean).join(' · ');
 
   async function doSplit(g) {
     const skus = selOf(g.key);
@@ -132,7 +162,7 @@
       <div style="flex:1">
         <div class="h-title">فحص هوية الموديلات</div>
         <p class="muted small" style="margin:3px 0 0">
-          موديل واحد = نفس الحذاء بألوانه ومقاساته، فتتفق بطاقاته في التكلفة والسعر والصورة،
+          موديل واحد = نفس الحذاء بألوانه ومقاساته، فتتفق بطاقاته في التكلفة وسعر البيع،
           ويحمل رقمه الخاص. هنا نفحص الحالتين المعكوستين: بطاقات انضمّت لموديل غريب،
           وموديلات متشابهة قد تكون نسخة مكرّرة.
         </p>
@@ -157,8 +187,8 @@
       </div>
       <Glass class="note">
         <span class="muted small">
-          موديلات تختلف بطاقاتها في التكلفة أو السعر أو الصورة. اختاري البطاقات الدخيلة
-          ثم افصليها — لا يتغيّر أي شيء قبل ضغط «افصلي».
+          موديلات تختلف بطاقاتها في التكلفة أو سعر البيع، أو تحمل اللون والمقاس نفسه
+          مرتين. اختاري البطاقات الدخيلة ثم افصليها — لا يتغيّر أي شيء قبل ضغط «افصلي».
         </span>
       </Glass>
 
@@ -183,13 +213,15 @@
               <button type="button" class="pcard" class:on={sel.includes(p.sku)} onclick={() => toggle(g.key, p.sku)}>
                 <span class="pbox">
                   {#if p.photo}<img src={p.photo} alt="" />
-                  {:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}
+                  {:else}<span class="pnone"><Icon name="image" size={15} color="var(--taupe)" /><i>بلا صورة</i></span>{/if}
                   {#if sel.includes(p.sku)}<span class="ptick"><Icon name="check" size={13} color="#fff" /></span>{/if}
                 </span>
                 <span class="pinfo">
-                  <span class="prow"><b class="bold">{p.color || 'بلا لون'}</b> · مقاس {p.size || '—'}</span>
-                  <span class="prow muted tiny">{p.sku} · {fmtNum(p.qty || 0)} قطعة</span>
+                  <span class="prow"><b class="bold">{p.color || 'بلا لون'}</b> · مقاس {p.size || '—'} <span class="qty-chip">{fmtNum(p.qty || 0)} قطعة</span></span>
+                  {#if metaOf(p)}<span class="prow muted tiny">{metaOf(p)}</span>{/if}
                   <span class="prow tiny">تكلفة {fmtIQD(p.cost)} · بيع {fmtIQD(p.price)}</span>
+                  <span class="prow muted tiny">{p.sku} · وصول {dayOf(p.createdAt || p.updatedAt)}</span>
+                  {#if p.supplier}<span class="prow muted tiny">المورد: {p.supplier}</span>{/if}
                 </span>
               </button>
             {/each}
@@ -216,12 +248,12 @@
       <Glass class="note">
         <span class="muted small">
           موديلات منفصلة بنفس النوع واللون. إن كانت نسخة مكرّرة بالخطأ، اختاريها وادمجيها —
-          الأساس هو <b class="bold">الأقدم</b>. وإن كانت مختلفة فعلاً (سعر أو صورة مغايرة)
-          فاتركيها كما هي.
+          الأساس هو <b class="bold">الأقدم</b>. وإن كانت مختلفة فعلاً (سعر أو صورة أو
+          مقاسات مغايرة) فاتركيها كما هي. صورتا الموديلين معروضتان أمامك للمقارنة.
         </span>
       </Glass>
 
-      {#each similar as g (g.nameKey + g.models[0].modelId)}
+      {#each similar as g (g.nameKey)}
         {@const js = jselOf(g.nameKey)}
         {@const n = Object.keys(js).length}
         <Glass class="card rise">
@@ -229,7 +261,7 @@
             <span class="c-badge"><Icon name="copy" size={14} color="var(--burgundy)" /></span>
             <div style="flex:1; min-width:0">
               <div class="c-name">{g.models[0].items[0].name || 'موديل'}</div>
-              <div class="muted tiny">{g.models[0].items[0].category} · {fmtNum(g.models.length)} موديلات منفصلة</div>
+              <div class="muted tiny">{g.models[0].items[0].category} · {fmtNum(g.models.length)} موديلات منفصلة بنفس النوع واللون</div>
             </div>
           </div>
 
@@ -238,7 +270,7 @@
               <button type="button" class="pcard" class:on={!!js[m.modelId]} onclick={() => toggleJoin(g.nameKey, m.modelId)}>
                 <span class="pbox">
                   {#if m.photo}<img src={m.photo} alt="" />
-                  {:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}
+                  {:else}<span class="pnone"><Icon name="image" size={15} color="var(--taupe)" /><i>بلا صورة</i></span>{/if}
                   {#if js[m.modelId]}<span class="ptick"><Icon name="check" size={13} color="#fff" /></span>{/if}
                 </span>
                 <span class="pinfo">
@@ -246,8 +278,16 @@
                     <b class="bold">{m.modelId}</b>
                     {#if mi === 0}<span class="oldest">الأقدم — الأساس</span>{/if}
                   </span>
-                  <span class="prow muted tiny">{fmtNum(m.items.length)} بطاقة · {fmtNum(m.qty)} قطعة · {m.colors.join('، ') || 'بلا لون'}</span>
-                  <span class="prow tiny">بيع {fmtIQD(m.price)} · {dayOf(m.createdAt)}</span>
+                  <span class="prow">
+                    <b class="bold">{m.colors.join('، ') || 'بلا لون'}</b>
+                    · مقاسات {m.sizes.join('، ') || '—'}
+                    <span class="qty-chip">{fmtNum(m.qty)} قطعة</span>
+                  </span>
+                  {#if m.type || m.seasons.length || m.material || m.supplier}
+                    <span class="prow muted tiny">{[m.type, m.seasons.join('، '), m.material, m.supplier].filter(Boolean).join(' · ')}</span>
+                  {/if}
+                  <span class="prow tiny">تكلفة {fmtIQD(m.cost)} · بيع {fmtIQD(m.price)}</span>
+                  <span class="prow muted tiny">{fmtNum(m.cardCount)} بطاقة · وصول {dayOf(m.createdAt)} · آخر تحديث {dayOf(m.lastAt)}</span>
                 </span>
               </button>
             {/each}
@@ -311,10 +351,10 @@
 
   .cards { display: flex; flex-direction: column; gap: 7px; }
   .pcard {
-    display: flex; align-items: center; gap: 10px; text-align: start;
+    display: flex; align-items: flex-start; gap: 10px; text-align: start;
     width: 100%; cursor: pointer; font-family: inherit;
     border: 1px solid var(--line-2); border-radius: 14px;
-    background: rgba(255, 255, 255, 0.45); padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.45); padding: 9px 10px;
     transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
   }
   .pcard.on {
@@ -323,18 +363,29 @@
     box-shadow: 0 0 0 3px rgba(181, 73, 91, 0.09);
   }
   .pbox {
-    position: relative; flex: none; width: 46px; height: 46px;
-    border-radius: 11px; overflow: hidden;
+    position: relative; flex: none; width: 58px; height: 58px;
+    border-radius: 12px; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
     background: rgba(122, 46, 58, 0.06);
   }
   .pbox img { width: 100%; height: 100%; object-fit: cover; }
+  /* بلا صورة: الصورة هي الهوية، فغيابها يجب أن يبان لا أن يمرّ صامتاً */
+  .pnone {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    color: var(--taupe);
+  }
+  .pnone i { font-size: 8.5px; font-style: normal; font-weight: 800; }
+  .qty-chip {
+    display: inline-block; margin-inline-start: 5px;
+    font-size: 10px; font-weight: 800; color: var(--taupe);
+    background: rgba(122, 46, 58, 0.07); border-radius: 999px; padding: 1px 7px;
+  }
   .ptick {
     position: absolute; inset-block-start: 3px; inset-inline-end: 3px;
     width: 19px; height: 19px; border-radius: 999px;
     background: var(--burgundy); display: flex; align-items: center; justify-content: center;
   }
-  .pinfo { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .pinfo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .prow { font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
   .oldest {
     margin-inline-start: 6px; font-size: 10px; font-weight: 800;

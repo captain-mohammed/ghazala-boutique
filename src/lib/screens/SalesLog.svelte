@@ -4,7 +4,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, setSaleStatus, returnSale, setSaleDate, loadProducts } from '../db.js';
+  import { db, setSaleStatus, returnSale, returnSaleItems, setSaleDate, loadProducts } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, fmtAgo, buzz, buildSalesMessage, sendWhatsApp, salePieces, WA_STATUS_TEMPLATES, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
@@ -138,6 +138,51 @@
     if (detail?.id === s.id) detail = { ...detail, status: 'returned' };
   }
 
+  /* ---- تسليم جزئي: طلب وصل وفيه قطعة رجعت — تُعلَّم الراجعة وحدها ----
+     كل قطعة في التفاصيل لها زرّ يبدّلها بين «استلمت» و«راجع». المختار
+     يُفصل إلى عملية «راجع» مستقلة ويعود للمخزون، والباقي يبقى مُسلَّماً. */
+  let backSel = $state({}); /* كل عملية تُفتح بتحديد فارغ — يُصفَّر عند الفتح */
+  const backKeys = $derived(Object.keys(backSel));
+
+  const backPreview = $derived.by(() => {
+    if (!detail || !backKeys.length) return { count: 0, amount: 0, keptCount: 0 };
+    let count = 0, amount = 0, keptCount = 0;
+    for (const it of detail.items || []) {
+      if (backSel[it.sku]) { count += it.qty; amount += (Number(it.price) || 0) * it.qty; }
+      else keptCount += it.qty;
+    }
+    return { count, amount, keptCount };
+  });
+
+  function toggleBack(sku) {
+    const next = { ...backSel };
+    if (next[sku]) delete next[sku]; else next[sku] = true;
+    backSel = next;
+    buzz(6);
+  }
+
+  async function doPartialReturn(s) {
+    const keys = Object.keys(backSel);
+    if (!keys.length) return;
+    const ok = await askConfirm({
+      title: 'تسليم جزئي',
+      body:
+        `تُسجَّل ${fmtNum(backPreview.count)} قطعة «راجع» وتعود للمخزون، ` +
+        `وتبقى ${fmtNum(backPreview.keptCount)} قطعة مُسلَّمة في العملية.` +
+        (s.status === 'pending' ? '\n\nوتُعلَّم العملية «تم التسليم».' : ''),
+      okLabel: 'نفّذي'
+    });
+    if (!ok) return;
+    const r = await returnSaleItems(s.id, keys, { markDelivered: true });
+    if (!r.ok) { toastErr('ما قدرنا نسجّل الإرجاع الجزئي'); return; }
+    backSel = {};
+    buzz([20, 40, 20]);
+    toastOk(r.split
+      ? `تم — ${fmtNum(r.returned)} قطعة رجعت و${fmtNum(r.kept)} بقيت مُسلَّمة`
+      : 'تم إرجاع كل القطع');
+    detail = null;
+  }
+
   /* ---- Swipe the sale row: pull left follows the finger, revealing
      both quick actions (تم التسليم / راجع) side by side. Tap the open
      row to close it, swipe right or tap another row to snap shut. ---- */
@@ -250,7 +295,7 @@
             as="button"
             class="sale rise {swipedId === s.id ? 'dimmed' : ''}"
             style="animation-delay:{Math.min(i * 0.04, 0.3)}s; transform: translateX({rowX(s)}px)"
-            onclick={() => { if (Math.abs(swipe.dx) < 8) { if (swipedId === s.id) { swipedId = null; } else { buzz(6); detail = s; } } }}
+            onclick={() => { if (Math.abs(swipe.dx) < 8) { if (swipedId === s.id) { swipedId = null; } else { buzz(6); backSel = {}; detail = s; } } }}
           >
           <span class="s-ic"><Icon name={s.status === 'returned' ? 'undo' : 'truck'} size={19} color="var(--burgundy)" /></span>
           <div class="a-body">
@@ -325,11 +370,25 @@
         {/if}
       </Glass>
 
+      {#if detail.returnedFrom}
+        <div class="muted small" style="display:flex; align-items:center; gap:6px">
+          <Icon name="undo" size={13} /> راجع من العملية رقم {detail.returnedFrom} — قطعة واحدة منها أو أكثر
+        </div>
+      {/if}
+
+      {#if detail.status !== 'returned' && (detail.items?.length || 0) > 1}
+        <p class="muted tiny" style="margin:0">
+          وصل الطلب ناقصاً؟ اضغطي على أي قطعة لتحويلها إلى «راجع» — تُفصل وحدها وتعود للمخزون،
+          والباقي يبقى مُسلَّماً في هذه العملية.
+        </p>
+      {/if}
+
       <div class="stack" style="gap:8px">
         {#each detail.items as it (it.sku)}
           {@const ph = photos[it.sku]?.photo}
           {@const ip = photos[it.sku]}
-          <Glass class="row" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
+          {@const back = !!backSel[it.sku]}
+          <Glass class="row it-row {back ? 'is-back' : ''}" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
             <div style="display:flex; gap:10px; align-items:center; min-width:0">
               <span class="it-thumb">{#if ph}<img src={ph} alt="" />{:else}<Icon name="image" size={15} color="var(--taupe)" />{/if}</span>
               <div>
@@ -340,7 +399,21 @@
                 <div class="muted small">{fmtIQD(it.price)} × {it.qty}</div>
               </div>
             </div>
-            <div class="money small">{fmtIQD(it.price * it.qty)}</div>
+            <div class="col" style="align-items:flex-end; gap:5px">
+              <div class="money small">{fmtIQD(it.price * it.qty)}</div>
+              {#if detail.status !== 'returned'}
+                <button
+                  type="button"
+                  class="ret-chip"
+                  class:on={back}
+                  onclick={() => toggleBack(it.sku)}
+                  aria-pressed={back}
+                >
+                  <Icon name={back ? 'undo' : 'check'} size={11} />
+                  {back ? 'راجع' : 'استلمت'}
+                </button>
+              {/if}
+            </div>
           </Glass>
         {/each}
       </div>
@@ -359,7 +432,19 @@
         </button>
       {/if}
 
-      {#if detail.status === 'pending'}
+      {#if detail.status !== 'returned' && backKeys.length}
+        <Glass class="split-note">
+          <span class="muted small">
+            <b class="bold">{fmtNum(backPreview.count)} قطعة</b> ستُسجَّل «راجع»
+            ({fmtIQD(backPreview.amount)}) وتعود للمخزون،
+            وتبقى <b class="bold">{fmtNum(backPreview.keptCount)} قطعة</b> مُسلَّمة هنا.
+          </span>
+        </Glass>
+        <button class="btn primary block" onclick={() => doPartialReturn(detail)}>
+          <Icon name="check" size={17} /> تسليم المستلَم وإرجاع المختار
+        </button>
+        <button class="btn ghost block" onclick={() => (backSel = {})}>إلغاء التحديد</button>
+      {:else if detail.status === 'pending'}
         <div class="row" style="gap:10px">
           <button class="btn primary" style="flex:1" onclick={() => markDelivered(detail)}>
             <Icon name="check" size={17} /> تم التسليم
@@ -532,4 +617,38 @@
   }
   .ts-edit:active { transform: scale(0.94); }
   .ts-input { direction: ltr; text-align: center; font-variant-numeric: tabular-nums; }
+
+  /* ---- تسليم جزئي: زرّ حالة القطعة + تمييز الراجعة ---- */
+  .ret-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: inherit;
+    font-size: 10.5px;
+    font-weight: 800;
+    color: var(--taupe);
+    background: rgba(122, 46, 58, 0.06);
+    border: 1px solid var(--line-2);
+    border-radius: 999px;
+    padding: 3px 9px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.18s, color 0.18s, border-color 0.18s;
+  }
+  .ret-chip:active { transform: scale(0.92); }
+  .ret-chip.on {
+    color: #fff;
+    background: linear-gradient(135deg, var(--burgundy), var(--burgundy-deep));
+    border-color: transparent;
+  }
+  /* الصف نفسه يخفت قليلاً حين تُعلَّم قطعته راجعة */
+  :global(.it-row.is-back) {
+    border-color: rgba(181, 73, 91, 0.45) !important;
+    background: rgba(181, 73, 91, 0.07) !important;
+  }
+  :global(.split-note) {
+    padding: 11px 13px;
+    border-color: rgba(181, 73, 91, 0.32) !important;
+    background: rgba(181, 73, 91, 0.06) !important;
+  }
 </style>
