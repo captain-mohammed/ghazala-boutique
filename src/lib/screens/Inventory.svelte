@@ -131,6 +131,22 @@
       const subsAll = [...new Set(items.map((x) => x.typeSub).filter(Boolean))];
       const subs2All = [...new Set(items.map((x) => x.typeSub2).filter(Boolean))];
       const subs3All = [...new Set(items.map((x) => x.typeSub3).filter(Boolean))];
+      /* السلسلة المعروضة تُبنى **مستوى بمستوى**. إن اختلفت قطع الموديل في
+         مستوى واحد عُرضت قيمه مفصولة بـ«/»: «بوت - كعب - 3/5». أما لصقها
+         بشرطات («بوت - كعب - 3 - 5») فيجعلها تُقرأ كتفصيلين متتاليين، وهي
+         في الحقيقة اختلاف بين بطاقتين — إشارة إلى موديل مدموج خطأً.
+         (M-0053 في بوتيك غزالة: بطاقة كعب ٣ وبطاقة كعب ٥.) */
+      const lvl = (vals) => {
+        const u = [...new Set(vals.filter(Boolean))];
+        return u.join('/');
+      };
+      const chain = [
+        lvl(items.map((x) => x.type)),
+        lvl(items.map((x) => x.typeSub)),
+        lvl(items.map((x) => x.typeSub2)),
+        lvl(items.map((x) => x.typeSub3))
+      ].filter(Boolean).join(' - ');
+      const chainSplit = items.some((x) => x.typeSub2 && subs2All.length > 1) || items.some((x) => x.typeSub3 && subs3All.length > 1);
       const colorMap = new Map();
       for (const p of items) {
         const c = (p.color || '').trim();
@@ -148,7 +164,7 @@
         items, qty, price, lead,
         name: lead.name, category: lead.category,
         type: lead.type, typeSub: lead.typeSub || subsAll[0] || '', typeSub2: lead.typeSub2 || subs2All[0] || '', typeSub3: lead.typeSub3 || subs3All[0] || '',
-        subsAll, subs2All, subs3All,
+        subsAll, subs2All, subs3All, chain, chainSplit,
         seasons: [...new Set(items.flatMap((x) => seasonsOf(x)))],
         material: lead.material,
         photo: items.find((x) => x.photo)?.photo || null,
@@ -415,7 +431,9 @@
             {#if !wall}
             <div class="card-body">
               <!-- النوع بعرض البطاقة كاملاً أسفل الصورة مباشرة -->
-              {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="card-type">{[g.type, ...g.subsAll, ...g.subs2All, ...g.subs3All].filter(Boolean).join(' - ')}</div>{/if}
+              {#if g.chain}
+                <div class="card-type" class:split={g.chainSplit}>{g.chain}{#if g.chainSplit}<span class="chain-warn" title="قطع هذا الموديل تختلف في التفصيل — راجعي «إصلاح الموديلات»">⚠</span>{/if}</div>
+              {/if}
               <!-- الصف: القياسات يميناً والدوائر يساراً -->
               <div class="card-mid">
                 <div class="card-sizes-box">
@@ -626,6 +644,9 @@
   .card-body { height: 122px; padding: 9px 12px 4px; display: flex; flex-direction: column; gap: 7px; flex: none; overflow: hidden; }
   /* النوع بعرض البطاقة أسفل الصورة */
   .card-type { font-weight: 800; font-size: 13.5px; color: var(--ink); width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
+  /* قطع الموديل تختلف في التفصيل — تلوين خفيف + علامة تنبيه */
+  .card-type.split { color: var(--warn); }
+  .chain-warn { font-size: 11px; margin-inline-start: 4px; }
   /* الصف الأوسط: القياسات يميناً (مرن) والدوائر يساراً (ثابتة) */
   .card-mid { flex: 1; min-height: 0; display: flex; gap: 12px; }
   /* الدوائر: ثلاثة بكل صف، ملتصقة بيسار البطاقة دائماً */

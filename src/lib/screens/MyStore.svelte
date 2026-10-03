@@ -156,7 +156,7 @@
 </script>
 
 <div class="stack" style="gap:12px">
-  <Glass class="hero rise">
+  <Glass class="hero store-hero rise">
     <div class="row" style="justify-content:space-between; align-items:center">
       <div style="min-width:0">
         <h1 class="h1">متجري</h1>
@@ -291,7 +291,8 @@
 </div>
 
 <style>
-  :global(.hero) { padding: 16px; }
+  /* اسم خاص بالمكوّن: `:global(.hero)` ليست محصورة، وكانت تعيد ضبط حشوة رأس كل شاشة أخرى */
+  :global(.store-hero) { padding: 16px; }
   .hero-ic {
     width: 48px; height: 48px; border-radius: 15px; flex: none;
     display: flex; align-items: center; justify-content: center;

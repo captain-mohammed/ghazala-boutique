@@ -5,7 +5,7 @@
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
   import { db, setSaleStatus, returnSale, returnSaleItems, setSaleDate, loadProducts } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, fmtAgo, buzz, buildSalesMessage, sendWhatsApp, salePieces, WA_STATUS_TEMPLATES, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
+  import { fmtIQD, fmtNum, fmtDate, fmtAgo, buzz, buildSalesMessage, sendWhatsApp, salePieces, saleItemLabel, WA_STATUS_TEMPLATES, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   const FILTERS = [
@@ -243,7 +243,7 @@
             <span class="s-items">
               {#each s.items as it, ii (it.sku + '|' + ii)}
                 <span class="s-item">
-                  <span class="s-it-t">{it.name || 'قطعة'}{it.color ? ` · ${it.color}` : ''}</span>
+                  <span class="s-it-t">{saleItemLabel(it)}</span>
                   <span class="s-it-s">مقاس {it.size || '—'}</span>
                   <span class="s-it-q">×{fmtNum(it.qty)}</span>
                   <span class="s-it-p">{fmtIQD((Number(it.price) || 0) * (Number(it.qty) || 0))}</span>

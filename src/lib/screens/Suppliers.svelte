@@ -186,9 +186,9 @@
         <button class="sup-head" onclick={() => { buzz(6); open = open === r.name ? null : r.name; }}>
           <span class="sup-main">
             <span class="sup-name">{r.name}</span>
-            <span class="sup-meta">
-              {fmtNum(r.modelCount)} موديل · {fmtNum(r.boughtQty)} قطعة{#if r.lastIn} · آخر استلام {fmtDate(r.lastIn)}{/if}
-            </span>
+            <span class="sup-meta">{fmtNum(r.modelCount)} موديل · {fmtNum(r.boughtQty)} قطعة</span>
+            <!-- آخر استلام في سطره — كان ملتصقاً بنهاية السطر السابق فيضيع -->
+            {#if r.lastIn}<span class="sup-last">آخر استلام {fmtDate(r.lastIn)}</span>{/if}
           </span>
           <span class="sup-money">
             <b>{fmtIQD(r.boughtCost)}</b>
@@ -269,6 +269,7 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .sup-meta { font-size: 10.5px; font-weight: 700; color: var(--taupe); font-variant-numeric: tabular-nums; }
+  .sup-last { font-size: 10px; font-weight: 700; color: var(--taupe); opacity: 0.85; font-variant-numeric: tabular-nums; }
   .sup-money { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
   .sup-money b { font-size: 14px; font-weight: 900; color: var(--burgundy-deep); font-variant-numeric: tabular-nums; }
   .sup-money i { font-size: 9.5px; font-weight: 700; font-style: normal; color: var(--taupe); }

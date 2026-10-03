@@ -542,6 +542,13 @@ export async function findMergedModels() {
     if (costs.length > 1) reasons.push(`تكلفة مختلفة (${costs.length})`);
     if (prices.length > 1) reasons.push(`سعر مختلف (${prices.length})`);
     if (dupPairs) reasons.push(`لون ومقاس مكرر (${dupPairs})`);
+    /* بطاقات الموديل تختلف في سلسلة النوع: «بوت - كعب - 3» و«بوت - كعب - 5»
+       في موديل واحد. إما موديلان دُمجا خطأً، أو إدخال غير متسق — وكلاهما
+       يستحق المراجعة. (هذا ما جعل «إصلاح الموديلات» يُظهر «3 - 5» في المخزون:
+       الاختلاف كان حقيقياً بين بطاقتين، لا تفصيلاً ثالثاً.) */
+    const lv = (k) => [...new Set(items.map((x) => (x[k] || '').trim()).filter(Boolean))];
+    const chainDiff = ['typeSub', 'typeSub2', 'typeSub3'].filter((k) => lv(k).length > 1);
+    if (chainDiff.length) reasons.push(`تفصيل مختلف (${chainDiff.map((k) => lv(k).join('/')).join(' · ')})`);
     if (!reasons.length) continue;
     out.push({ key, items, reasons, costs, prices, dupPairs });
   }

@@ -136,9 +136,13 @@
       if (p.typeSub2) g.subs2.add(p.typeSub2);
       if (p.typeSub3) g.subs3.add(p.typeSub3);
     }
-    /* سلسلة النوع من كل شجرة الموديل: النوع الرئيسي + كل التفاصيل الموجودة فيه */
+    /* سلسلة النوع من كل شجرة الموديل — **مستوى بمستوى**. إن اختلفت بطاقات
+       الموديل في مستوى واحد عُرضت قيمه مفصولة بـ«/» («بوت - كعب - 3/5»)،
+       لأن لصقها بشرطات يجعلها تُقرأ كتفصيلين متتاليين بينما هي اختلاف بين
+       بطاقتين — إشارة إلى موديل مدموج خطأً (M-0053: كعب ٣ وكعب ٥). */
     for (const g of map.values()) {
-      g.typeChain = [g.rep.type, ...g.subs, ...g.subs2, ...g.subs3].filter(Boolean).join(' - ');
+      g.typeChain = [g.rep.type, [...g.subs].join('/'), [...g.subs2].join('/'), [...g.subs3].join('/')]
+        .filter(Boolean).join(' - ');
     }
     const sorted = [...map.values()].map((g) => ({ ...g.rep, modelChain: g.typeChain }));
     if (f.sort === 'new') sorted.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
@@ -750,27 +754,26 @@
           onlongpress={(e) => openPickerFor(p)}
           onclick={(e) => addToCart(p, e?.currentTarget)}
         >
-          <div class="pthumb">
-            {#if p.photo}<img src={p.photo} alt={p.name} />{:else}<Icon name="box" size={24} color="var(--taupe)" />{/if}
-          </div>
-          <div class="pinfo">
-            <!-- سلسلة النوع بعرض كامل وتلتف أسطراً — كل التفاصيل تُقرأ -->
-            <div class="pname">{p.modelChain || p.type || p.name}</div>
-            <div class="pcolors">
+          <!-- الصف العلوي: الصورة والألوان والسعر وخاتم الإضافة -->
+          <span class="p-top">
+            <span class="pthumb">
+              {#if p.photo}<img src={p.photo} alt={p.name} />{:else}<Icon name="box" size={24} color="var(--taupe)" />{/if}
+            </span>
+            <span class="pcolors">
               {#each modelColorsOf(p) as cc (cc.label)}
                 <span class="pc-color">
                   <i class="pdot" style="background:{cc.hex}"></i>
                   <span class="pc-qty">{fmtNum(cc.qty)}</span>
                 </span>
               {/each}
-            </div>
-            <div class="psizes muted tiny">مقاسات: {sizesLabel(p)}</div>
-          </div>
-          <!-- السعر بجوار خاتم الإضافة -->
-          <div class="psum">
-            <span class="pprice">{fmtIQD(p.price)}</span>
-          </div>
-          <span class="add-ic"><Icon name="plus" size={16} color="#fff" /></span>
+            </span>
+            <!-- السعر بجوار خاتم الإضافة -->
+            <span class="psum"><span class="pprice">{fmtIQD(p.price)}</span></span>
+            <span class="add-ic"><Icon name="plus" size={16} color="#fff" /></span>
+          </span>
+          <!-- سلسلة النوع بعرض البطاقة كاملاً — لا تُقصّ ولا تُضغط بين الصورة والسعر -->
+          <span class="pname">{p.modelChain || p.type || p.name}</span>
+          <span class="psizes muted tiny">مقاسات: {sizesLabel(p)}</span>
         </Glass>
       {/each}
     </div>
@@ -1101,13 +1104,16 @@
   :global(.pcard) {
     position: relative;
     display: flex;
-    align-items: center;
-    gap: 12px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 7px;
     padding: 10px 12px;
     cursor: pointer;
     text-align: right;
     transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+  .p-top { display: flex; align-items: center; gap: 10px; }
+  .p-top .pcolors { flex: 1; min-width: 0; }
   :global(.pcard:active) { transform: scale(0.985); }
   :global(.pcard.oos) { opacity: 0.6; }
   .pthumb {
@@ -1122,11 +1128,14 @@
   }
   .pthumb img { width: 100%; height: 100%; object-fit: cover; }
   :global(.pcard.oos) .pthumb img { filter: grayscale(0.55); }
-  .pinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .pcolors { display: flex; flex-wrap: wrap; gap: 3px 10px; }
   .pc-color { display: inline-flex; align-items: center; gap: 4px; }
   .pc-qty { font-size: 10.5px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
-  .pname { font-weight: 800; font-size: 14px; color: var(--ink); line-height: 1.55; word-break: break-word; }
+  .pname {
+    width: 100%;
+    font-weight: 800; font-size: 14px; color: var(--ink);
+    line-height: 1.5; word-break: break-word;
+  }
   .psizes { margin-top: 0; }
   /* السعر بجوار خاتم الإضافة */
   .psum { flex: none; display: flex; flex-direction: column; align-items: flex-end; }

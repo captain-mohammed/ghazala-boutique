@@ -8,7 +8,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
   import { db, upcomingOccasions, addReferral, addTestimonial, referralStats } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, salePieces, daysAgoStart, buzz, sendWhatsApp, buildSalesMessage } from '../utils.js';
+  import { fmtIQD, fmtNum, fmtDate, salePieces, saleItemLabel, daysAgoStart, buzz, sendWhatsApp, buildSalesMessage } from '../utils.js';
   import { toastOk } from '../store.js';
 
   let { goto } = $props();
@@ -169,7 +169,7 @@
 </script>
 
 <div class="stack" style="gap:12px">
-  <Glass class="hero rise">
+  <Glass class="hero cust-hero rise">
     <div class="h-top">
       <span class="hero-ic"><Icon name="user" size={21} color="#fff" /></span>
       <div class="h-txt">
@@ -221,31 +221,35 @@
     {/if}
 
     {#each custShown as c, i (c.name + '|' + c.phone)}
-      <Glass class="rise" style="animation-delay:{Math.min(i * 0.04, 0.3)}s; padding:13px 14px">
+      <Glass class="cust-card rise {c.vip ? 'is-vip' : ''}" style="animation-delay:{Math.min(i * 0.04, 0.3)}s">
         <button class="cust" onclick={() => openDetail(c)}>
           <span class="avatar" class:vip={c.vip}>{c.name.trim().charAt(0)}</span>
-          <div class="c-body">
-            <div class="row" style="gap:7px; align-items:center">
+          <span class="c-body">
+            <!-- الاسم والمبلغ في سطر واحد: أول ما تقع عليه العين -->
+            <span class="c-line">
               <span class="c-name">{c.name}</span>
-              {#if c.vip}<span class="badge gold"><Icon name="flame" size={10} /> VIP</span>{/if}
-              {#if c.openRes.length}<span class="badge warn"><Icon name="clock" size={10} /> حجز</span>{/if}
-              {#if c.nextOcc && c.nextOcc.diff <= 14}<span class="badge rose">🎂 {fmtNum(c.nextOcc.diff)} يوم</span>{/if}
-            </div>
-            <div class="muted tiny">
-              {fmtNum(c.orders)} عملية — {fmtNum(c.pieces)} قطعة
-              {#if c.phone}- {c.phone}{/if}
-            </div>
-            <div class="stamps" title="ختم الغزالة: كل 5 عمليات = بطاقة مكتملة">
+              <span class="c-spend">{fmtIQD(c.spent)}</span>
+            </span>
+            <span class="c-stats">
+              {#if c.phone}<span class="c-phone">{c.phone}</span> · {/if}
+              {fmtNum(c.orders)} عملية · {fmtNum(c.pieces)} قطعة
+            </span>
+            <!-- الشارات وآخر زيارة في سطرها — الشارات كانت تزاحم الاسم -->
+            <span class="c-line">
+              <span class="c-badges">
+                {#if c.vip}<span class="badge gold"><Icon name="flame" size={10} /> VIP</span>{/if}
+                {#if c.openRes.length}<span class="badge warn"><Icon name="clock" size={10} /> حجز</span>{/if}
+                {#if c.nextOcc && c.nextOcc.diff <= 14}<span class="badge rose">🎂 {fmtNum(c.nextOcc.diff)} يوم</span>{/if}
+              </span>
+              <span class="c-last">{c.last ? `آخر زيارة ${fmtDate(c.last)}` : 'لا زيارات بعد'}</span>
+            </span>
+            <span class="stamps" title="ختم الغزالة: كل 5 عمليات = بطاقة مكتملة">
               {#each Array(5) as _, si (si)}
                 <i class="stamp" class:on={si < c.stampFill}></i>
               {/each}
               {#if c.stampCards > 0}<b class="st-x">{fmtNum(c.stampCards)} 🦌</b>{/if}
-            </div>
-          </div>
-          <div class="col" style="align-items:flex-end; gap:2px; flex:none">
-            <span class="money small">{fmtIQD(c.spent)}</span>
-            <span class="muted tiny">{c.last ? fmtDate(c.last) : '—'}</span>
-          </div>
+            </span>
+          </span>
         </button>
       </Glass>
     {/each}
@@ -346,7 +350,7 @@
             <div class="sale-items">
               {#each s.items as it, ii (it.sku + '|' + ii)}
                 <div class="sale-item">
-                  <span class="si-t">{it.name || 'قطعة'}{it.color ? ` · ${it.color}` : ''}</span>
+                  <span class="si-t">{saleItemLabel(it)}</span>
                   <span class="si-s">مقاس {it.size || '—'}</span>
                   <span class="si-q">×{fmtNum(it.qty)}</span>
                 </div>
@@ -406,15 +410,18 @@
 <style>
   .more-row { display: flex; justify-content: center; padding: 18px 0 28px; }
   .more-sentinel { height: 1px; width: 100%; }
-  /* رأس الصفحة: نفس معالجة «فاتورة وارد» — خيط ذهبي وشعار نبيتي وملخّص حيّ */
-  :global(.hero) {
+  /* رأس الصفحة: نفس معالجة «فاتورة وارد» — خيط ذهبي وشعار نبيتي وملخّص حيّ.
+     ⚠️ `.cust-hero` لا `.hero`: `:global()` في Svelte ليست محصورة بالمكوّن،
+     فقاعدة `.hero` كانت تتسرّب إلى رأس «دفتر الموردين» وكل صفحة تستعمل
+     الصنف نفسه. الصنف الخاص يمنع التسريب. */
+  :global(.cust-hero) {
     padding: 14px 15px 12px;
     display: flex; flex-direction: column; gap: 12px;
     position: relative; overflow: hidden;
     background: linear-gradient(158deg, rgba(255, 255, 255, 0.94) 0%, rgba(181, 73, 91, 0.07) 62%, rgba(201, 161, 90, 0.13) 100%) !important;
     border-color: rgba(181, 73, 91, 0.18) !important;
   }
-  :global(.hero)::before {
+  :global(.cust-hero)::before {
     content: ''; position: absolute;
     inset-block-start: 0; inset-inline: 0; height: 2px;
     background: linear-gradient(90deg, transparent 4%, var(--gold) 50%, transparent 96%);
@@ -470,21 +477,41 @@
     flex: 1; border: none; background: none; outline: none;
     font-family: inherit; font-size: 13.5px; color: var(--ink); min-width: 0;
   }
+  /* بطاقة الزبونة: زوايا ناعمة، والاسم والمبلغ أول ما يُقرأ، ثم الأرقام،
+     ثم الشارات وآخر زيارة في سطرها (كانت تزاحم الاسم في سطر واحد) */
+  :global(.cust-card) { padding: 12px 14px; border-radius: 27px !important; }
+  :global(.cust-card.is-vip) { border-color: rgba(201, 161, 90, 0.42) !important; }
   .cust {
-    width: 100%; display: flex; align-items: center; gap: 11px;
+    width: 100%; display: flex; align-items: flex-start; gap: 11px;
     background: none; border: none; padding: 0; cursor: pointer;
     font-family: inherit; text-align: right;
   }
   .avatar {
-    width: 42px; height: 42px; border-radius: 50%; flex: none;
+    width: 46px; height: 46px; border-radius: 50%; flex: none;
     display: flex; align-items: center; justify-content: center;
-    font-weight: 800; font-size: 17px; color: var(--burgundy);
+    font-weight: 800; font-size: 18px; color: var(--burgundy);
     background: rgba(181, 73, 91, 0.1);
     border: 1.5px solid rgba(181, 73, 91, 0.22);
   }
-  .avatar.vip { border-color: var(--gold); box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.18); }
-  .c-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .c-name { font-weight: 800; font-size: 14.5px; color: var(--ink); }
+  .avatar.vip {
+    border-color: var(--gold);
+    background: linear-gradient(150deg, rgba(201, 161, 90, 0.2), rgba(181, 73, 91, 0.1));
+    box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.18);
+  }
+  .c-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .c-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .c-name {
+    font-weight: 800; font-size: 15px; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .c-spend {
+    flex: none; font-size: 14.5px; font-weight: 900; color: var(--burgundy);
+    font-variant-numeric: tabular-nums;
+  }
+  .c-stats { font-size: 10.5px; font-weight: 700; color: var(--taupe); font-variant-numeric: tabular-nums; }
+  .c-phone { direction: ltr; unicode-bidi: embed; }
+  .c-badges { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+  .c-last { flex: none; font-size: 10px; font-weight: 700; color: var(--taupe); white-space: nowrap; }
   .badge {
     display: inline-flex; align-items: center; gap: 3px;
     font-size: 9.5px; font-weight: 800; letter-spacing: 0.3px;

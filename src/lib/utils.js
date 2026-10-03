@@ -18,6 +18,18 @@ export function iqd(raw) {
    number of distinct lines — 2× the same shoe is one line with qty 2) */
 export const salePieces = (s) => (s?.items || []).reduce((a, it) => a + (Number(it.qty) || 0), 0);
 
+/* عنوان القطعة داخل عملية بيع. الاسم المخزَّن على القطعة قد يكون السلسلة
+   الكاملة **منتهيةً باللون أصلاً** («بوت كعب 5 أبيض»)، و`it.color` يحمل
+   اللون نفسه — فلصق الاثنين يعطي «بوت كعب 5 أبيض · أبيض»: لون مرّتين.
+   نُلحق اللون فقط إن لم يكن الاسم ينتهي به. */
+export const saleItemLabel = (it) => {
+  const n = String(it?.name || '').trim();
+  const c = String(it?.color || '').trim();
+  if (!c) return n || 'قطعة';
+  if (!n) return c;
+  return n.endsWith(c) ? n : `${n} · ${c}`;
+};
+
 /* ---------- Baghdad time (UTC+3) ----------
    Every clock face and "today" boundary in the app follows Baghdad
    wall-clock time, not the device's timezone. 12-hour display with ص/م. */

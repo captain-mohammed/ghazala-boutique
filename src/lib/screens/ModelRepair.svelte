@@ -17,6 +17,9 @@
   let picked = $state({});    // key → [sku…]            للفصل
   let jpicked = $state({});   // nameKey → { modelId:true } للدمج
   let busy = $state(false);
+  /* كل قسم قابل للطي — الحالتان مفتوحتان افتراضياً حتى لا يخفى شيء */
+  let secOpen = $state({ merged: true, similar: true });
+  function toggleSec(k) { secOpen = { ...secOpen, [k]: !secOpen[k] }; buzz(6); }
 
   /* صور الموديلات — الصورة هي هوية المنتج، وهي في جدول `photos` منذ v7
      (مرة واحدة لكل رقم موديل)، فلا تصل مع قراءة البطاقات.
@@ -156,22 +159,22 @@
 </script>
 
 <div class="stack" style="gap:14px">
-  <Glass class="hero rise">
+  <Glass class="repair-hero rise">
     <div class="h-top">
-      <span class="h-ic"><Icon name="alert" size={20} color="var(--burgundy)" /></span>
-      <div style="flex:1">
+      <span class="h-ic"><Icon name="alert" size={20} color="#fff" /></span>
+      <div class="h-txt">
         <div class="h-title">فحص هوية الموديلات</div>
-        <p class="muted small" style="margin:3px 0 0">
-          موديل واحد = نفس الحذاء بألوانه ومقاساته، فتتفق بطاقاته في التكلفة وسعر البيع،
-          ويحمل رقمه الخاص. هنا نفحص الحالتين المعكوستين: بطاقات انضمّت لموديل غريب،
-          وموديلات متشابهة قد تكون نسخة مكرّرة.
-        </p>
+        <div class="h-sub">موديل واحد = نفس الحذاء بألوانه ومقاساته، ويحمل رقمه الخاص</div>
       </div>
+    </div>
+    <div class="h-stats">
+      <div class="h-stat"><b class:dim={!merged.length}>{fmtNum(merged.length)}</b><span>حالة دمج</span></div>
+      <div class="h-stat"><b class:dim={!similar.length}>{fmtNum(similar.length)}</b><span>مجموعة متشابهة</span></div>
     </div>
   </Glass>
 
   {#if !loaded}
-    <Glass class="pad rise"><span class="muted small">… نفحص الموديلات</span></Glass>
+    <Glass class="rep-pad rise"><span class="muted small">… نفحص الموديلات</span></Glass>
   {:else if !merged.length && !similar.length}
     <EmptyState
       icon="shield"
@@ -180,21 +183,20 @@
     />
   {:else}
     {#if merged.length}
-      <div class="sect">
-        <Icon name="scissors" size={16} color="var(--burgundy)" />
-        <span>بطاقات مدمجة خطأً</span>
-        <span class="sect-n">{fmtNum(merged.length)}</span>
-      </div>
-      <Glass class="note">
-        <span class="muted small">
-          موديلات تختلف بطاقاتها في التكلفة أو سعر البيع، أو تحمل اللون والمقاس نفسه
-          مرتين. اختاري البطاقات الدخيلة ثم افصليها — لا يتغيّر أي شيء قبل ضغط «افصلي».
+      <button type="button" class="sect" onclick={() => toggleSec('merged')} aria-expanded={secOpen.merged}>
+        <span class="sect-ic"><Icon name="scissors" size={16} color="var(--burgundy)" /></span>
+        <span class="sect-txt">
+          <span class="sect-t">بطاقات مدمجة خطأً</span>
+          <span class="sect-s">بطاقات تختلف في التكلفة أو السعر، أو تحمل اللون والمقاس مرتين</span>
         </span>
-      </Glass>
+        <span class="sect-n">{fmtNum(merged.length)}</span>
+        <span class="chev" class:open={secOpen.merged} aria-hidden="true"></span>
+      </button>
 
+      {#if secOpen.merged}
       {#each merged as g (g.key)}
         {@const sel = selOf(g.key)}
-        <Glass class="card rise">
+        <Glass class="rep-card rise">
           <div class="c-head">
             <span class="c-badge"><Icon name="alert" size={14} color="var(--burgundy)" /></span>
             <div style="flex:1; min-width:0">
@@ -237,26 +239,25 @@
           </div>
         </Glass>
       {/each}
+      {/if}
     {/if}
 
     {#if similar.length}
-      <div class="sect">
-        <Icon name="copy" size={16} color="var(--burgundy)" />
-        <span>موديلات متشابهة — قد تكون مكرّرة</span>
-        <span class="sect-n">{fmtNum(similar.length)}</span>
-      </div>
-      <Glass class="note">
-        <span class="muted small">
-          موديلات منفصلة بنفس النوع واللون. إن كانت نسخة مكرّرة بالخطأ، اختاريها وادمجيها —
-          الأساس هو <b class="bold">الأقدم</b>. وإن كانت مختلفة فعلاً (سعر أو صورة أو
-          مقاسات مغايرة) فاتركيها كما هي. صورتا الموديلين معروضتان أمامك للمقارنة.
+      <button type="button" class="sect" onclick={() => toggleSec('similar')} aria-expanded={secOpen.similar}>
+        <span class="sect-ic"><Icon name="copy" size={16} color="var(--burgundy)" /></span>
+        <span class="sect-txt">
+          <span class="sect-t">موديلات متشابهة — قد تكون مكرّرة</span>
+          <span class="sect-s">موديلات منفصلة بنفس النوع واللون — الأساس هو الأقدم</span>
         </span>
-      </Glass>
+        <span class="sect-n">{fmtNum(similar.length)}</span>
+        <span class="chev" class:open={secOpen.similar} aria-hidden="true"></span>
+      </button>
 
+      {#if secOpen.similar}
       {#each similar as g (g.nameKey)}
         {@const js = jselOf(g.nameKey)}
         {@const n = Object.keys(js).length}
-        <Glass class="card rise">
+        <Glass class="rep-card rise">
           <div class="c-head">
             <span class="c-badge"><Icon name="copy" size={14} color="var(--burgundy)" /></span>
             <div style="flex:1; min-width:0">
@@ -300,34 +301,90 @@
           </div>
         </Glass>
       {/each}
+      {/if}
     {/if}
   {/if}
 </div>
 
 <style>
-  :global(.hero) { padding: 14px 15px; }
-  .h-top { display: flex; align-items: flex-start; gap: 11px; }
+  /* ⚠️ أسماء خاصة بالمكوّن لا أسماء عامة: `:global(.hero)` و`:global(.card)`
+     و`:global(.pad)` في Svelte **ليست محصورة بالمكوّن**، فكانت تتسرّب إلى
+     «دفتر الموردين» و«المخزون» وحتى لوحة القفل — وأيّ شاشة تُفتح أخيراً
+     تفوز، فيتغيّر شكل البطاقات حسب ترتيب الزيارة. */
+  :global(.repair-hero) {
+    padding: 14px 15px 12px;
+    display: flex; flex-direction: column; gap: 12px;
+    position: relative; overflow: hidden;
+    background: linear-gradient(158deg, rgba(255, 255, 255, 0.94) 0%, rgba(181, 73, 91, 0.07) 62%, rgba(201, 161, 90, 0.13) 100%) !important;
+    border-color: rgba(181, 73, 91, 0.18) !important;
+  }
+  :global(.repair-hero)::before {
+    content: ''; position: absolute;
+    inset-block-start: 0; inset-inline: 0; height: 2px;
+    background: linear-gradient(90deg, transparent 4%, var(--gold) 50%, transparent 96%);
+    opacity: 0.8;
+  }
+  .h-top { display: flex; align-items: center; gap: 12px; }
   .h-ic {
-    flex: none; width: 38px; height: 38px;
+    flex: none; width: 46px; height: 46px; border-radius: 15px;
     display: flex; align-items: center; justify-content: center;
-    border-radius: 12px; background: var(--accent-soft);
+    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
+    box-shadow: 0 0 0 1px rgba(201, 161, 90, 0.5), 0 8px 18px rgba(122, 46, 58, 0.26);
   }
-  .h-title { font-weight: 900; font-size: 15.5px; color: var(--ink); }
+  .h-txt { flex: 1; min-width: 0; }
+  .h-title { font-weight: 900; font-size: 16px; color: var(--ink); letter-spacing: 0.2px; }
+  .h-sub { font-size: 11.5px; font-weight: 700; color: var(--taupe); margin-top: 2px; line-height: 1.4; }
+  .h-stats {
+    display: flex; align-items: stretch;
+    border-top: 1px dashed rgba(201, 161, 90, 0.5);
+    padding-top: 10px;
+  }
+  .h-stat {
+    flex: 1; min-width: 0;
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    padding: 0 6px;
+    border-inline-end: 1px solid var(--line);
+  }
+  .h-stat:last-child { border-inline-end: none; }
+  .h-stat b { font-size: 15px; font-weight: 900; color: var(--burgundy-deep); font-variant-numeric: tabular-nums; }
+  .h-stat b.dim { color: var(--taupe); opacity: 0.6; }
+  .h-stat span { font-size: 10px; font-weight: 800; color: var(--taupe); }
 
+  /* رأس القسم: زر كامل قابل للطي */
   .sect {
-    display: flex; align-items: center; gap: 8px;
-    padding: 8px 4px 0;
-    font-size: 14.5px; font-weight: 900; color: var(--ink);
+    width: 100%;
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 13px;
+    font-family: inherit; text-align: right; cursor: pointer;
+    border-radius: 18px;
+    border: 1px solid rgba(181, 73, 91, 0.18);
+    background: linear-gradient(140deg, rgba(255, 255, 255, 0.7), rgba(181, 73, 91, 0.06));
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
+  .sect:active { transform: scale(0.99); }
+  .sect-ic {
+    flex: none; width: 32px; height: 32px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--accent-soft);
+  }
+  .sect-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .sect-t { font-size: 14px; font-weight: 900; color: var(--ink); }
+  .sect-s { font-size: 10.5px; font-weight: 700; color: var(--taupe); line-height: 1.35; }
   .sect-n {
-    margin-inline-start: auto;
-    font-size: 11px; font-weight: 800; color: var(--taupe);
-    background: rgba(122, 46, 58, 0.07); border-radius: 999px; padding: 3px 9px;
+    flex: none;
+    font-size: 11.5px; font-weight: 900; color: var(--burgundy-deep);
+    background: rgba(181, 73, 91, 0.1); border-radius: 999px; padding: 3px 10px;
+    font-variant-numeric: tabular-nums;
   }
+  .chev {
+    flex: none; width: 7px; height: 7px;
+    border-inline-end: 2px solid var(--taupe); border-bottom: 2px solid var(--taupe);
+    transform: rotate(-45deg); transition: transform 0.2s ease;
+  }
+  .chev.open { transform: rotate(45deg); }
 
-  :global(.note) { padding: 11px 13px; }
-  :global(.pad) { padding: 14px 15px; }
-  :global(.card) { padding: 13px 14px; display: flex; flex-direction: column; gap: 11px; }
+  :global(.rep-pad) { padding: 14px 15px; }
+  :global(.rep-card) { padding: 13px 14px; display: flex; flex-direction: column; gap: 11px; border-radius: 24px !important; }
 
   .c-head { display: flex; align-items: center; gap: 10px; }
   .c-badge {
