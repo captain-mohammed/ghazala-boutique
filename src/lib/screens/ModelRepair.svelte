@@ -212,8 +212,8 @@
 
           <div class="cards">
             {#each g.items as p (p.sku)}
-              <button type="button" class="pcard" class:on={sel.includes(p.sku)} onclick={() => toggle(g.key, p.sku)}>
-                <span class="pbox">
+              <button type="button" class="rp-card" class:on={sel.includes(p.sku)} onclick={() => toggle(g.key, p.sku)}>
+                <span class="rp-box">
                   {#if p.photo}<img src={p.photo} alt="" />
                   {:else}<span class="pnone"><Icon name="image" size={15} color="var(--taupe)" /><i>بلا صورة</i></span>{/if}
                   {#if sel.includes(p.sku)}<span class="ptick"><Icon name="check" size={13} color="#fff" /></span>{/if}
@@ -268,8 +268,8 @@
 
           <div class="cards">
             {#each g.models as m, mi (m.modelId)}
-              <button type="button" class="pcard" class:on={!!js[m.modelId]} onclick={() => toggleJoin(g.nameKey, m.modelId)}>
-                <span class="pbox">
+              <button type="button" class="rp-card" class:on={!!js[m.modelId]} onclick={() => toggleJoin(g.nameKey, m.modelId)}>
+                <span class="rp-box">
                   {#if m.photo}<img src={m.photo} alt="" />
                   {:else}<span class="pnone"><Icon name="image" size={15} color="var(--taupe)" /><i>بلا صورة</i></span>{/if}
                   {#if js[m.modelId]}<span class="ptick"><Icon name="check" size={13} color="#fff" /></span>{/if}
@@ -407,25 +407,25 @@
   }
 
   .cards { display: flex; flex-direction: column; gap: 7px; }
-  .pcard {
+  .rp-card {
     display: flex; align-items: flex-start; gap: 10px; text-align: start;
     width: 100%; cursor: pointer; font-family: inherit;
     border: 1px solid var(--line-2); border-radius: 14px;
     background: rgba(255, 255, 255, 0.45); padding: 9px 10px;
     transition: border-color 0.18s, background 0.18s, box-shadow 0.18s;
   }
-  .pcard.on {
+  .rp-card.on {
     border-color: rgba(181, 73, 91, 0.5);
     background: rgba(181, 73, 91, 0.07);
     box-shadow: 0 0 0 3px rgba(181, 73, 91, 0.09);
   }
-  .pbox {
+  .rp-box {
     position: relative; flex: none; width: 58px; height: 58px;
     border-radius: 12px; overflow: hidden;
     display: flex; align-items: center; justify-content: center;
     background: rgba(122, 46, 58, 0.06);
   }
-  .pbox img { width: 100%; height: 100%; object-fit: cover; }
+  .rp-box img { width: 100%; height: 100%; object-fit: cover; }
   /* بلا صورة: الصورة هي الهوية، فغيابها يجب أن يبان لا أن يمرّ صامتاً */
   .pnone {
     display: flex; flex-direction: column; align-items: center; gap: 2px;

@@ -144,7 +144,7 @@
       {#each matches as m (m.p.sku)}
         <Glass
           as="button"
-          class="pcard rise"
+          class="ps-card rise"
           onclick={() => addToCart(m)}
         >
           <span class="p-thumb">{#if m.p.photo}<img src={m.p.photo} alt="" />{:else}<Icon name="image" size={16} color="var(--taupe)" />{/if}</span>
@@ -153,7 +153,7 @@
             <VariantBits dense variants={[{ color: m.p.color, size: m.p.size }]} />
           </div>
           <span class="pprice">{fmtIQD(m.p.price)}</span>
-          <span class="add-ic"><Icon name="plus" size={15} color="#fff" /></span>
+          <span class="ps-add"><Icon name="plus" size={15} color="#fff" /></span>
         </Glass>
       {/each}
     </div>
@@ -228,12 +228,12 @@
     margin-top: 10px;
     line-height: 1.7;
   }
-  :global(.pcard) {
+  :global(.ps-card) {
     display: flex; align-items: center; gap: 10px;
     padding: 10px 12px; cursor: pointer; text-align: right;
     transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  :global(.pcard:active) { transform: scale(0.98); }
+  :global(.ps-card:active) { transform: scale(0.98); }
   .pinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .p-thumb {
     flex: none;
@@ -246,7 +246,7 @@
   }
   .p-thumb img { width: 100%; height: 100%; object-fit: cover; }
   .pprice { font-weight: 800; font-size: 13px; color: var(--burgundy); white-space: nowrap; }
-  .add-ic {
+  .ps-add {
     flex: none; width: 30px; height: 30px; border-radius: 50%;
     background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
     display: flex; align-items: center; justify-content: center;

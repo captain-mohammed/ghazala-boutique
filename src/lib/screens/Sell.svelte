@@ -535,7 +535,7 @@
   const savedCustomers = $derived.by(() => {
     const map = new Map();
     for (const s of [...sales].sort((a, b) => new Date(b.date) - new Date(a.date))) {
-      if (s.status === 'returned') continue; /* المرتجعات لا تصنع زبونة محفوظة */
+      if (s.status === 'returned') continue; /* الرواجع لا تصنع زبونة محفوظة */
       const phone = String(s.customerPhone || '').replace(/\D/g, '');
       if (!phone) continue;
       const cur = map.get(phone);
@@ -749,31 +749,32 @@
         {@const gqty = modelQty.get(modelGroupKey(p)) || 0}
         <Glass
           as="button"
-          class="pcard rise {gqty === 0 ? 'oos' : ''}"
+          class="sell-card rise {gqty === 0 ? 'oos' : ''}"
           style="animation-delay:{Math.min(i * 0.04, 0.4)}s"
           onlongpress={(e) => openPickerFor(p)}
           onclick={(e) => addToCart(p, e?.currentTarget)}
         >
-          <!-- الصف العلوي: الصورة والألوان والسعر وخاتم الإضافة -->
-          <span class="p-top">
-            <span class="pthumb">
-              {#if p.photo}<img src={p.photo} alt={p.name} />{:else}<Icon name="box" size={24} color="var(--taupe)" />{/if}
-            </span>
-            <span class="pcolors">
+          <div class="pthumb">
+            {#if p.photo}<img src={p.photo} alt={p.name} />{:else}<Icon name="box" size={24} color="var(--taupe)" />{/if}
+          </div>
+          <div class="pinfo">
+            <!-- سلسلة النوع بعرض كامل وتلتف أسطراً — كل التفاصيل تُقرأ -->
+            <div class="pname">{p.modelChain || p.type || p.name}</div>
+            <div class="pcolors">
               {#each modelColorsOf(p) as cc (cc.label)}
                 <span class="pc-color">
                   <i class="pdot" style="background:{cc.hex}"></i>
                   <span class="pc-qty">{fmtNum(cc.qty)}</span>
                 </span>
               {/each}
-            </span>
-            <!-- السعر بجوار خاتم الإضافة -->
-            <span class="psum"><span class="pprice">{fmtIQD(p.price)}</span></span>
-            <span class="add-ic"><Icon name="plus" size={16} color="#fff" /></span>
-          </span>
-          <!-- سلسلة النوع بعرض البطاقة كاملاً — لا تُقصّ ولا تُضغط بين الصورة والسعر -->
-          <span class="pname">{p.modelChain || p.type || p.name}</span>
-          <span class="psizes muted tiny">مقاسات: {sizesLabel(p)}</span>
+            </div>
+            <div class="psizes muted tiny">مقاسات: {sizesLabel(p)}</div>
+          </div>
+          <!-- السعر بجوار خاتم الإضافة -->
+          <div class="psum">
+            <span class="pprice">{fmtIQD(p.price)}</span>
+          </div>
+          <span class="add-ic"><Icon name="plus" size={16} color="#fff" /></span>
         </Glass>
       {/each}
     </div>
@@ -1100,22 +1101,26 @@
     margin-inline-end: 4px; vertical-align: -1px;
   }
 
-  /* ── بطاقات البيع: صف هادئ بلا خطوط — الصورة والنوع والسعر والخاتم ── */
-  :global(.pcard) {
+  /* ── بطاقات البيع: صف هادئ بلا خطوط — الصورة والنوع والسعر والخاتم ──
+     ⚠️ الصنف `.sell-card` — لا `.pcard` المشترك. كان ثلاثة مكوّنات (بيع،
+     البيع من رسالة، إصلاح الموديلات) تُعرّف `:global(.pcard)`، و`:global()`
+     في Svelte **ليست محصورة بالمكوّن** بل تُطبَّق على التطبيق كله. فما إن
+     تُفتح شاشة أخرى حتى يسري صنفها على بطاقة البيع ويقلب صفّها. لكل شاشة
+     صنفها الخاص — والتصميم هنا هو تصميم v0.25.0 الأصلي بلا أي تغيير:
+     صفّ واحد — الصورة يميناً، ثم النوع والألوان والمقاسات في الوسط،
+     ثم السعر، ثم خاتم الإضافة في أقصى اليسار. */
+  :global(.sell-card) {
     position: relative;
     display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    gap: 7px;
+    align-items: center;
+    gap: 12px;
     padding: 10px 12px;
     cursor: pointer;
     text-align: right;
     transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  .p-top { display: flex; align-items: center; gap: 10px; }
-  .p-top .pcolors { flex: 1; min-width: 0; }
-  :global(.pcard:active) { transform: scale(0.985); }
-  :global(.pcard.oos) { opacity: 0.6; }
+  :global(.sell-card:active) { transform: scale(0.985); }
+  :global(.sell-card.oos) { opacity: 0.6; }
   .pthumb {
     width: 68px; height: 68px;
     border-radius: 14px;
@@ -1127,15 +1132,12 @@
     overflow: hidden;
   }
   .pthumb img { width: 100%; height: 100%; object-fit: cover; }
-  :global(.pcard.oos) .pthumb img { filter: grayscale(0.55); }
+  :global(.sell-card.oos) .pthumb img { filter: grayscale(0.55); }
   .pcolors { display: flex; flex-wrap: wrap; gap: 3px 10px; }
   .pc-color { display: inline-flex; align-items: center; gap: 4px; }
   .pc-qty { font-size: 10.5px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
-  .pname {
-    width: 100%;
-    font-weight: 800; font-size: 14px; color: var(--ink);
-    line-height: 1.5; word-break: break-word;
-  }
+  .pinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .pname { font-weight: 800; font-size: 14px; color: var(--ink); line-height: 1.55; word-break: break-word; }
   .psizes { margin-top: 0; }
   /* السعر بجوار خاتم الإضافة */
   .psum { flex: none; display: flex; flex-direction: column; align-items: flex-end; }
@@ -1151,7 +1153,7 @@
     box-shadow: 0 4px 12px rgba(181, 73, 91, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.28);
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
-  :global(.pcard:active) .add-ic { transform: scale(0.86) rotate(-6deg); }
+  :global(.sell-card:active) .add-ic { transform: scale(0.86) rotate(-6deg); }
 
   .bar-portal { display: contents; }
   .cartbar {

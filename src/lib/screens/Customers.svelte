@@ -225,24 +225,38 @@
         <button class="cust" onclick={() => openDetail(c)}>
           <span class="avatar" class:vip={c.vip}>{c.name.trim().charAt(0)}</span>
           <span class="c-body">
-            <!-- الاسم والمبلغ في سطر واحد: أول ما تقع عليه العين -->
+            <!-- الاسم والمبلغ أول ما تقع عليه العين -->
             <span class="c-line">
               <span class="c-name">{c.name}</span>
               <span class="c-spend">{fmtIQD(c.spent)}</span>
             </span>
-            <span class="c-stats">
-              {#if c.phone}<span class="c-phone">{c.phone}</span> · {/if}
-              {fmtNum(c.orders)} عملية · {fmtNum(c.pieces)} قطعة
+            <!-- ثم ثلاثة صفوف صريحة تحت الاسم، كل صف معلومة واحدة:
+                 ١) الرقم  ٢) العمليات  ٣) آخر زيارة — كان الرقم والعمليات
+                 والعناصر مضغوطة في سطر واحد بـ«·» فما تُقرأ. -->
+            <span class="c-row">
+              <span class="c-k"><Icon name="phone" size={11} color="var(--taupe)" /></span>
+              <span class="c-v c-phone">{c.phone || 'بلا رقم'}</span>
             </span>
-            <!-- الشارات وآخر زيارة في سطرها — الشارات كانت تزاحم الاسم -->
-            <span class="c-line">
+            <span class="c-row">
+              <span class="c-k"><Icon name="cart" size={11} color="var(--taupe)" /></span>
+              <span class="c-v">
+                <b class="c-strong">{fmtNum(c.orders)}</b> عملية
+                <span class="c-sep">·</span>
+                <b class="c-strong">{fmtNum(c.pieces)}</b> قطعة
+              </span>
+            </span>
+            <span class="c-row">
+              <span class="c-k"><Icon name="clock" size={11} color="var(--taupe)" /></span>
+              <span class="c-v">{c.last ? `آخر زيارة ${fmtDate(c.last)}` : 'لا زيارات بعد'}</span>
+            </span>
+            <!-- الشارات في سطرها، وختم الغزالة تحتها -->
+            {#if c.vip || c.openRes.length || (c.nextOcc && c.nextOcc.diff <= 14)}
               <span class="c-badges">
                 {#if c.vip}<span class="badge gold"><Icon name="flame" size={10} /> VIP</span>{/if}
                 {#if c.openRes.length}<span class="badge warn"><Icon name="clock" size={10} /> حجز</span>{/if}
                 {#if c.nextOcc && c.nextOcc.diff <= 14}<span class="badge rose">🎂 {fmtNum(c.nextOcc.diff)} يوم</span>{/if}
               </span>
-              <span class="c-last">{c.last ? `آخر زيارة ${fmtDate(c.last)}` : 'لا زيارات بعد'}</span>
-            </span>
+            {/if}
             <span class="stamps" title="ختم الغزالة: كل 5 عمليات = بطاقة مكتملة">
               {#each Array(5) as _, si (si)}
                 <i class="stamp" class:on={si < c.stampFill}></i>
@@ -267,24 +281,27 @@
 <Sheet open={!!detail} title={detail?.name || ''} onclose={() => (detail = null)}>
   {#if detail}
     <div class="stack" style="gap:12px">
-      <Glass style="padding:14px">
-        <div class="row" style="justify-content:space-between">
-          <div>
-            <div class="bold">{detail.name}{detail.vip ? ' ⭐' : ''}</div>
-            <div class="muted small" dir="ltr" style="text-align:right">{detail.phone || 'بلا رقم'}</div>
+      <Glass class="cust-sheet" style="padding:16px 15px">
+        <!-- رأس الورقة: الاسم والرقم والإجمالي — مساحة كافية بينها -->
+        <div class="cs-head">
+          <div style="min-width:0">
+            <div class="cs-name">{detail.name}{detail.vip ? ' ⭐' : ''}</div>
+            <div class="cs-phone" dir="ltr">{detail.phone || 'بلا رقم'}</div>
           </div>
-          <div class="col" style="align-items:flex-end; gap:2px">
+          <div class="cs-total">
             <span class="money">{fmtIQD(detail.spent)}</span>
-            <span class="muted tiny">إجمالي مشترياتها</span>
+            <span class="cs-total-l">إجمالي مشترياتها</span>
           </div>
         </div>
+
+        <!-- الأرقام الثلاثة في شريطها المفصول -->
         <div class="stats">
           <div><b>{fmtNum(detail.orders)}</b><span>عملية</span></div>
           <div><b>{fmtNum(detail.pieces)}</b><span>قطعة</span></div>
           <div><b>{fmtNum(detail.reservations.length)}</b><span>حجز</span></div>
         </div>
 
-        <!-- شو تحب تشتري: نوعها ولونها ومقاسها الأكثر — ومتوسط عملها -->
+        <!-- شو تحب تشتري: نوعها ولونها ومقاسها الأكثر -->
         {#if detail.topType || detail.topColor || detail.topSize}
           <div class="taste">
             <div class="taste-h"><Icon name="flame" size={12} color="var(--gold)" /> ذوقها</div>
@@ -295,34 +312,47 @@
             </div>
           </div>
         {/if}
-        <div class="kline">
-          <span class="muted small">متوسط العملية</span>
-          <span class="bold small">{fmtIQD(detail.avgOrder)}</span>
+
+        <!-- سطور المعلومات: متوسط العملية وآخر زيارة — بمسافة مريحة -->
+        <div class="cs-lines">
+          <div class="kline">
+            <span class="cs-k">متوسط العملية</span>
+            <span class="cs-v">{fmtIQD(detail.avgOrder)}</span>
+          </div>
+          <div class="kline">
+            <span class="cs-k">آخر زيارة</span>
+            <span class="cs-v">
+              {detail.last ? `${fmtDate(detail.last)}${detail.daysSince !== null ? ` · منذ ${fmtNum(detail.daysSince)} يوم` : ''}` : '—'}
+            </span>
+          </div>
         </div>
-        <div class="kline">
-          <span class="muted small">آخر زيارة</span>
-          <span class="bold small">
-            {detail.last ? `${fmtDate(detail.last)}${detail.daysSince !== null ? ` · منذ ${fmtNum(detail.daysSince)} يوم` : ''}` : '—'}
-          </span>
+
+        <!-- ختم الغزالة: في صندوقه، لا ملتصقاً بالزرّ -->
+        <div class="cs-stampbox">
+          <div class="cs-stamph">ختم الغزالة</div>
+          <div class="stamps big" title="كل 5 عمليات = بطاقة مكتملة">
+            {#each Array(5) as _, si (si)}
+              <i class="stamp" class:on={si < detail.stampFill}></i>
+            {/each}
+            {#if detail.stampCards > 0}<b class="st-x">{fmtNum(detail.stampCards)} بطاقة مكتملة 🦌</b>{/if}
+          </div>
         </div>
-        <div class="stamps big" title="ختم الغزالة: كل 5 عمليات = بطاقة مكتملة">
-          {#each Array(5) as _, si (si)}
-            <i class="stamp" class:on={si < detail.stampFill}></i>
-          {/each}
-          {#if detail.stampCards > 0}<b class="st-x">{fmtNum(detail.stampCards)} بطاقة مكتملة 🦌</b>{/if}
-        </div>
-        {#if detail.phone}
-          <button class="btn gold block" onclick={() => waCustomer(detail)}>
-            <Icon name="whatsapp" size={16} /> واتساب
-          </button>
-        {/if}
-        <div class="row" style="gap:8px">
-          <button class="btn" style="flex:1; min-height:40px" onclick={() => { refOpen = true; refName = ''; refPhone = ''; refPick = null; }}>
-            <Icon name="sparkle" size={14} /> جتني من…
-          </button>
-          <button class="btn" style="flex:1; min-height:40px" onclick={() => { tstOpen = true; tstText = ''; tstStars = 5; }}>
-            <Icon name="flame" size={14} /> أضيفي رأيها
-          </button>
+
+        <!-- الإجراءات: واتساب في صفّها، ثم الزرّان — بفاصل واضح قبلها -->
+        <div class="cs-actions">
+          {#if detail.phone}
+            <button class="btn gold block" onclick={() => waCustomer(detail)}>
+              <Icon name="whatsapp" size={16} /> واتساب
+            </button>
+          {/if}
+          <div class="row" style="gap:8px">
+            <button class="btn" style="flex:1; min-height:42px" onclick={() => { refOpen = true; refName = ''; refPhone = ''; refPick = null; }}>
+              <Icon name="sparkle" size={14} /> جتني من…
+            </button>
+            <button class="btn" style="flex:1; min-height:42px" onclick={() => { tstOpen = true; tstText = ''; tstStars = 5; }}>
+              <Icon name="flame" size={14} /> أضيفي رأيها
+            </button>
+          </div>
         </div>
         {#if (refStats.find((x) => x.fromName === detail.name)?.friends?.length)}
           <div class="ref-ribbon">
@@ -453,9 +483,42 @@
   .h-stat b.dim { color: var(--taupe); opacity: 0.6; }
   .h-stat span { font-size: 10px; font-weight: 800; color: var(--taupe); }
 
+  /* ── ورقة الزبونة: كتل مفصولة بمصاريع رفيعة — لا شيء ملتصق بشيء.
+     كانت كل المعلومات داخل Glass واحد بحشوة ١٤px بلا فواصل، فبدت مزدحمة
+     وزرّ الواتساب فوق النقاط مباشرة. */
+  :global(.cust-sheet) { display: flex; flex-direction: column; }
+  .cs-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 12px; padding-bottom: 13px;
+    border-bottom: 1px dashed rgba(201, 161, 90, 0.45);
+  }
+  .cs-name { font-weight: 900; font-size: 17px; color: var(--ink); line-height: 1.3; }
+  .cs-phone { font-size: 12.5px; font-weight: 700; color: var(--taupe); margin-top: 3px; text-align: right; }
+  .cs-total { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+  .cs-total-l { font-size: 10px; font-weight: 700; color: var(--taupe); }
+  /* سطور المعلومات: مسافة مريحة بينها */
+  .cs-lines { display: flex; flex-direction: column; gap: 9px; margin-top: 13px; }
+  .kline { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .cs-k { font-size: 12px; font-weight: 700; color: var(--taupe); flex: none; }
+  .cs-v { font-size: 12px; font-weight: 800; color: var(--ink); text-align: left; }
+  /* ختم الغزالة في صندوقه الذهبي */
+  .cs-stampbox {
+    margin-top: 13px; padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(201, 161, 90, 0.08);
+    border: 1px dashed rgba(201, 161, 90, 0.35);
+  }
+  .cs-stamph { font-size: 10px; font-weight: 800; color: #8a6a35; margin-bottom: 6px; }
+  /* الإجراءات: مفصولة بخط متقطع قبلها */
+  .cs-actions {
+    display: flex; flex-direction: column; gap: 9px;
+    margin-top: 14px; padding-top: 14px;
+    border-top: 1px dashed rgba(201, 161, 90, 0.45);
+  }
   /* ذوق الزبونة + سطور المعلومات في ورقة التفاصيل */
   .taste {
-    padding: 9px 11px; border-radius: 12px;
+    margin-top: 13px;
+    padding: 10px 12px; border-radius: 12px;
     background: rgba(201, 161, 90, 0.09);
     border: 1px dashed rgba(201, 161, 90, 0.4);
   }
@@ -463,7 +526,6 @@
   .taste-row { display: flex; flex-wrap: wrap; gap: 5px 12px; }
   .taste-c { font-size: 12px; font-weight: 700; color: var(--taupe); }
   .taste-c b { color: var(--ink); font-weight: 800; }
-  .kline { display: flex; justify-content: space-between; align-items: center; }
   .sale-items { display: flex; flex-direction: column; gap: 3px; margin: 7px 0 5px; }
   .sale-item { display: flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 700; color: var(--ink-2); }
   .si-t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -498,8 +560,8 @@
     background: linear-gradient(150deg, rgba(201, 161, 90, 0.2), rgba(181, 73, 91, 0.1));
     box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.18);
   }
-  .c-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-  .c-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .c-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  .c-line { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
   .c-name {
     font-weight: 800; font-size: 15px; color: var(--ink);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -508,10 +570,19 @@
     flex: none; font-size: 14.5px; font-weight: 900; color: var(--burgundy);
     font-variant-numeric: tabular-nums;
   }
-  .c-stats { font-size: 10.5px; font-weight: 700; color: var(--taupe); font-variant-numeric: tabular-nums; }
-  .c-phone { direction: ltr; unicode-bidi: embed; }
-  .c-badges { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
-  .c-last { flex: none; font-size: 10px; font-weight: 700; color: var(--taupe); white-space: nowrap; }
+  /* صفوف المعلومات: أيقونة ثابتة يميناً وقيمة مرنة — الرقم · العمليات · آخر زيارة */
+  .c-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .c-k { flex: none; display: inline-flex; align-items: center; opacity: 0.85; }
+  .c-v {
+    flex: 1; min-width: 0;
+    font-size: 11.5px; font-weight: 700; color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .c-strong { color: var(--burgundy); font-weight: 900; }
+  .c-sep { color: var(--taupe); margin: 0 2px; }
+  .c-phone { direction: ltr; unicode-bidi: embed; text-align: right; }
+  .c-badges { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; margin-top: 2px; }
   .badge {
     display: inline-flex; align-items: center; gap: 3px;
     font-size: 9.5px; font-weight: 800; letter-spacing: 0.3px;

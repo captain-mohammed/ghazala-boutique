@@ -128,6 +128,14 @@ export function baghdadMonthKey(back = 0) {
   while (m < 1) { m += 12; y -= 1; }
   return `${y}-${String(m).padStart(2, '0')}`;
 }
+
+/* 'YYYY-MM' for the Baghdad month that a GIVEN instant falls in.
+   Distinct from baghdadMonthKey(), which counts months back from today —
+   passing a Date there silently returns the wrong month. */
+export function baghdadMonthKeyOf(when) {
+  const p = baghdadWall(new Date(when));
+  return `${p.year}-${String(+p.month).padStart(2, '0')}`;
+}
 /* [year, month] bounds (as Dates) for a 'YYYY-MM' key: [start, nextMonthStart) */
 export function monthRange(key) {
   const [y, m] = key.split('-').map(Number);

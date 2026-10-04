@@ -266,7 +266,7 @@
   {#if totals.returned > 0}
     <Glass class="rise" style="animation-delay:0.3s; padding:14px 16px">
       <button class="ret-toggle" onclick={() => (showReturned = !showReturned)}>
-        <span class="muted"><Icon name="undo" size={15} /> مبيعات راجع (كل الفترات)</span>
+        <span class="muted"><Icon name="undo" size={15} /> رواجع المبيعات (كل الفترات)</span>
         <span class="ret-side"><span class="money">{totals.returned}</span><i class="chev" class:open={showReturned}></i></span>
       </button>
       {#if showReturned}
