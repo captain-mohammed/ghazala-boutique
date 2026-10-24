@@ -224,7 +224,9 @@
         for (const sku of r.touchedSkus || []) {
           const p = await db.products.get(sku);
           if (!p) continue;
-          for (const w of await waitingForModel({ modelId: p.modelId || '', sku, size: p.size || '', color: p.color || '' })) {
+          /* chain ممرَّرة أيضاً: طلبات «حذاء غير موجود» لا موديل لها، فتُطابَق
+             بسلسلة النوع حين يصل أول موديل بنفس السلسلة */
+          for (const w of await waitingForModel({ modelId: p.modelId || '', sku, size: p.size || '', color: p.color || '', chain: typeChain(p) })) {
             if (!matched.some((x) => x.key === w.key)) matched.push(w);
           }
         }

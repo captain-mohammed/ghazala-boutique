@@ -188,6 +188,7 @@
 
   /* ---------- قائمة الانتظار ---------- */
   let capOpen = $state(false);
+  let capMode = $state('model');   // model = مقاس نافد من موديل موجود | request = حذاء غير موجود
   let capName = $state('');
   let capPhone = $state('');
   let capColor = $state('');
@@ -195,11 +196,16 @@
   let capModelId = $state('');
   let capColors = $state([]);
   let capSizes = $state([]);
+  let capChain = $state('');
+  let capQty = $state(1);
+  let capNote = $state('');
 
   function openCap(mid) {
     const m = modelById.get(mid);
     if (!m) return;
+    capMode = 'model';
     capModelId = mid; capName = ''; capPhone = '';
+    capChain = ''; capQty = 1; capNote = '';
     /* قائمة الانتظار تعرض كل ألوان ومقاسات الموديل — حتى المنفودة،
        فالانتظار بالضبط على ما لا يوجد الآن */
     capColors = (m.allColors?.length ? [...m.allColors] : m.colors?.length ? [...m.colors] : []).sort((a, b) => a.localeCompare(b, 'ar'));
@@ -208,19 +214,43 @@
     capSize = capSizes[0] || '';
     capOpen = true;
   }
+  /* طلب حذاء **لم يكن موجوداً أصلاً** — لا موديل ولا مقاس نافد: تُكتب السلسلة
+     واللون والمقاس والكمية يدوياً، ويُطابَق الطلب عند وصول أول موديل بنفس السلسلة */
+  function openRequest() {
+    capMode = 'request';
+    capModelId = '';
+    capName = ''; capPhone = '';
+    capColor = ''; capSize = '';
+    capChain = ''; capQty = 1; capNote = '';
+    capColors = []; capSizes = [];
+    capOpen = true;
+    buzz(8);
+  }
   async function saveCap() {
     if (!capName.trim() && !capPhone.trim()) return toastErr('الاسم أو الرقم مطلوب');
-    const r = await addWaitlistEntry({ customerName: capName, customerPhone: capPhone, modelId: capModelId, sku: '', size: capSize, color: capColor });
+    const isReq = capMode === 'request';
+    if (isReq && !capChain.trim()) return toastErr('اكتبي نوع الحذاء المطلوب');
+    const r = await addWaitlistEntry({
+      customerName: capName, customerPhone: capPhone,
+      modelId: isReq ? '' : capModelId, sku: '',
+      size: capSize, color: capColor,
+      chain: isReq ? capChain : (modelById.get(capModelId)?.chain || ''),
+      qty: capQty, note: capNote,
+      kind: isReq ? 'request' : 'model'
+    });
     if (!r.ok) return toastErr(r.dup ? 'هي موجودة بالانتظار أصلاً' : 'تعذر الحفظ');
     capOpen = false;
-    toastOk('ضامنتِ قائمة الانتظار — ينادى عليها عند التوريد 🌷');
+    buzz([14, 40, 14]);
+    toastOk(isReq ? 'سُجّل الطلب — ينادى عليها عند وصول أي موديل بنفس النوع 🌷' : 'ضامنتِ قائمة الانتظار — ينادى عليها عند التوريد 🌷');
     await load();
   }
+  const isReqWait = (w) => w.kind === 'request' || (!w.modelId && !w.sku);
+  const chainOfWait = (w) => (isReqWait(w) ? (w.chain || 'طلب غير موجود') : (modelById.get(w.modelId)?.chain || w.chain || '—'));
   /* زر «وصل انتظارك» — حملة جاهزة على منتظرة واحدة بنص القالب */
   function waWaiting(w) {
     const m = modelById.get(w.modelId);
     kind = 'waiting';
-    model = { modelId: w.modelId, chain: m?.chain || '—', colors: w.color || mColors(m), sizes: w.size || mSizes(m), price: m?.price || 0 };
+    model = { modelId: w.modelId, chain: m?.chain || w.chain || '—', colors: w.color || mColors(m), sizes: w.size || mSizes(m), price: m?.price || 0 };
     sel = [{ name: w.customerName, phone: w.customerPhone }];
     openWalk();
   }
@@ -313,34 +343,60 @@
       {/if}
     {/if}
   {:else}
-    {#if !models.length}
-      <EmptyState title="لا موديلات بعد" body="سجلي موديلاتك أولاً — وبعدها سجلي منتظرات المقاسات النافدة" icon="box" />
-    {:else}
       <Glass class="rise" style="padding:13px 14px">
-        <b class="small">سجلي زبونة على مقاس نافد</b>
-        <div class="muted tiny" style="margin-top:3px">اختاري الموديل، ثم اسمها ومقاسها — ينادى عليها تلقائياً عند التوريد</div>
-        <div class="cap-pick">
-          <Pick bind:value={capModelId} options={models.map((m) => ({ value: m.modelId, label: m.chain || m.modelId }))} placeholder="اختاري الموديل…" />
+        <b class="small">سجلي زبونة في قائمة الانتظار</b>
+        <div class="muted tiny" style="margin-top:3px">
+          مقاس نافد من موديل موجود، أو حذاء <b>لم يكن موجوداً أصلاً</b> — ينادى عليها عند التوريد
         </div>
-        {#if capModelId}
-          <button class="btn gold block" style="margin-top:8px; min-height:42px" onclick={() => openCap(capModelId)}>
-            <Icon name="plus" size={15} /> سجليها على «{modelById.get(capModelId)?.chain}»
+
+        <div class="seg" style="margin-top:10px">
+          <button class="seg-b" class:on={capMode === 'model'} onclick={() => { capMode = 'model'; buzz(6); }}>موديل موجود</button>
+          <button class="seg-b" class:on={capMode === 'request'} onclick={() => { capMode = 'request'; buzz(6); }}>حذاء غير موجود</button>
+        </div>
+
+        {#if capMode === 'model'}
+          {#if models.length}
+            <div class="cap-pick">
+              <Pick bind:value={capModelId} options={models.map((m) => ({ value: m.modelId, label: m.chain || m.modelId }))} placeholder="اختاري الموديل…" />
+            </div>
+            {#if capModelId}
+              <button class="btn gold block" style="margin-top:8px; min-height:42px" onclick={() => openCap(capModelId)}>
+                <Icon name="plus" size={15} /> سجليها على «{modelById.get(capModelId)?.chain}»
+              </button>
+            {/if}
+          {:else}
+            <div class="muted tiny" style="margin-top:8px">لا موديلات بعد — استعملي «حذاء غير موجود» لتسجيل طلبها.</div>
+          {/if}
+        {:else}
+          <button class="btn gold block" style="margin-top:10px; min-height:42px" onclick={openRequest}>
+            <Icon name="plus" size={15} /> سجلي طلب حذاء جديد
           </button>
         {/if}
       </Glass>
 
       {#if !waits.length}
-        <EmptyState title="القائمة فاضية" body="أول زبونة تسأل عن مقاس نافد — سجليها هنا وتحول النفد لبيع مؤكد" icon="clock" />
+        <EmptyState
+          title="القائمة فاضية"
+          body="أول زبونة تسأل عن مقاس نافد أو عن حذاء غير موجود — سجليها هنا فيتحول السؤال لبيع مؤكد"
+          icon="clock"
+        />
       {:else}
         {#each waits as w, i (w.key)}
-          <Glass class="rise" style="padding:12px 14px; animation-delay:{Math.min(i * 0.04, 0.3)}s">
-            <div class="row" style="justify-content:space-between; align-items:center">
-              <div>
-                <b class="small">{w.customerName}</b>
-                {#if w.color}<span class="badge-rose">{w.color}</span>{/if}
-                {#if w.size}<span class="badge-rose">مقاس {w.size}</span>{/if}
-                <div class="muted tiny">{modelById.get(w.modelId)?.chain || '—'} — منذ {fmtDate(w.createdAt)}</div>
-              </div>
+          <Glass class="rise wl" style="animation-delay:{Math.min(i * 0.04, 0.3)}s">
+            <div class="wl-head">
+              <b class="small">{w.customerName}</b>
+              {#if isReqWait(w)}<span class="wl-new">طلب غير موجود</span>{/if}
+              {#if w.customerPhone}<span class="muted tiny wl-phone">{w.customerPhone}</span>{/if}
+            </div>
+            <div class="wl-chain">{chainOfWait(w)}</div>
+            <div class="wl-bits">
+              {#if w.color}<span class="badge-rose">{w.color}</span>{/if}
+              {#if w.size}<span class="badge-rose">مقاس {w.size}</span>{/if}
+              <span class="badge-rose">{fmtNum(w.qty || 1)} {w.qty > 1 ? 'قطع' : 'قطعة'}</span>
+            </div>
+            {#if w.note}<div class="wl-note">{w.note}</div>{/if}
+            <div class="wl-foot">
+              <span class="muted tiny">منذ {fmtDate(w.createdAt)}</span>
               <div class="row" style="gap:6px">
                 <button class="g-wa" onclick={() => waWaiting(w)}><Icon name="whatsapp" size={12} /> وصل انتظارك</button>
                 <button class="iconbtn" aria-label="حذف" onclick={() => dropWait(w.key)}><Icon name="trash" size={14} /></button>
@@ -349,7 +405,6 @@
           </Glass>
         {/each}
       {/if}
-    {/if}
   {/if}
 </div>
 
@@ -377,21 +432,73 @@
 </Sheet>
 
 <!-- التقاط الانتظار -->
-<Sheet open={capOpen} title="قائمة الانتظار" onclose={() => (capOpen = false)}>
+{#snippet capSaveBtn()}
+  <button class="btn gold block" style="min-height:44px" onclick={saveCap}>
+    <Icon name="check" size={15} /> سجليها
+  </button>
+{/snippet}
+
+<Sheet
+  open={capOpen}
+  title={capMode === 'request' ? 'طلب حذاء غير موجود' : 'قائمة الانتظار'}
+  onclose={() => (capOpen = false)}
+  footer={capSaveBtn}
+>
   <div class="stack" style="gap:10px">
+    {#if capMode === 'request'}
+      <p class="wl-hint">
+        حذاء لم يكن في التطبيق أبداً. اكتبي نوعه كما تقوله الزبونة — وعند وصول أول
+        موديل بنفس النوع يُنبّهها الاستوديو تلقائياً.
+      </p>
+    {/if}
+
     <label class="lab" for="wl-name">اسم الزبونة *</label>
     <input id="wl-name" class="input" bind:value={capName} placeholder="مثال: زينب" />
     <label class="lab" for="wl-phone">رقم الواتساب</label>
     <input id="wl-phone" class="input" bind:value={capPhone} dir="ltr" inputmode="tel" placeholder="07XX XXX XXXX" style="text-align:right" />
-    {#if capColors.length}
-      <label class="lab">اللون المنتظر</label>
-      <Pick bind:value={capColor} options={capColors.map((c) => ({ value: c, label: c }))} />
+
+    {#if capMode === 'request'}
+      <label class="lab" for="wl-chain">نوع الحذاء المطلوب *</label>
+      <input id="wl-chain" class="input" bind:value={capChain} placeholder="مثال: بوت - كعب عالي" />
+      {#if typeChains.length}
+        <div class="row wrap" style="gap:6px">
+          {#each typeChains.slice(0, 6) as tc (tc)}
+            <button type="button" class="chip" class:on={capChain === tc} onclick={() => { capChain = tc; buzz(6); }}>{tc}</button>
+          {/each}
+        </div>
+      {/if}
+      <div class="row" style="gap:8px">
+        <div class="field" style="flex:1">
+          <label class="lab" for="wl-color">اللون</label>
+          <input id="wl-color" class="input" bind:value={capColor} placeholder="أسود، بيج…" />
+        </div>
+        <div class="field" style="flex:1">
+          <label class="lab" for="wl-size">المقاس</label>
+          <input id="wl-size" class="input" bind:value={capSize} inputmode="decimal" placeholder="38" />
+        </div>
+      </div>
+    {:else}
+      {#if capColors.length}
+        <label class="lab">اللون المنتظر</label>
+        <Pick bind:value={capColor} options={capColors.map((c) => ({ value: c, label: c }))} />
+      {/if}
+      {#if capSizes.length}
+        <label class="lab">المقاس المنتظر</label>
+        <Pick bind:value={capSize} options={capSizes.map((s) => ({ value: s, label: s }))} />
+      {/if}
     {/if}
-    {#if capSizes.length}
-      <label class="lab">المقاس المنتظر</label>
-      <Pick bind:value={capSize} options={capSizes.map((s) => ({ value: s, label: s }))} />
-    {/if}
-    <button class="btn gold block" style="min-height:44px" onclick={saveCap}><Icon name="check" size={15} /> سجليها</button>
+
+    <div class="row" style="justify-content:space-between; align-items:center">
+      <span class="lab" style="margin:0">الكمية</span>
+      <div class="qty">
+        <button type="button" class="qbtn" aria-label="نقصان" onclick={() => { capQty = Math.max(1, capQty - 1); buzz(6); }}>−</button>
+        <b class="qn">{fmtNum(capQty)}</b>
+        <button type="button" class="qbtn" aria-label="زيادة" onclick={() => { capQty = Math.min(99, capQty + 1); buzz(6); }}>+</button>
+      </div>
+    </div>
+
+    <label class="lab" for="wl-note">ملاحظة (اختياري)</label>
+    <input id="wl-note" class="input" bind:value={capNote} placeholder="مثال: تريدها للعيد — تستعجل" />
   </div>
 </Sheet>
 
@@ -454,4 +561,40 @@
     padding: 5px 10px; cursor: pointer;
   }
   .g-wa:active { transform: scale(0.95); }
+
+  /* ---- قائمة الانتظار: بطاقة الطلب ---- */
+  :global(.wl) { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .wl-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .wl-new {
+    font-size: 9px; font-weight: 800; color: #8a6a35;
+    background: var(--gold-soft, rgba(201, 162, 75, 0.18));
+    border-radius: 999px; padding: 2px 7px;
+  }
+  .wl-phone { margin-inline-start: auto; font-variant-numeric: tabular-nums; }
+  .wl-chain { font-size: 12.5px; font-weight: 700; color: var(--ink-2); }
+  .wl-bits { display: flex; flex-wrap: wrap; gap: 4px; }
+  .wl-bits .badge-rose { margin-inline-start: 0; }
+  .wl-note {
+    font-size: 11px; color: var(--burgundy-deep); line-height: 1.5;
+    background: rgba(181, 73, 91, 0.07);
+    border-radius: 9px; padding: 6px 9px;
+  }
+  .wl-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
+  .wl-hint {
+    margin: 0; font-size: 11px; line-height: 1.6;
+    color: var(--burgundy-deep);
+    background: var(--gold-soft, rgba(201, 162, 75, 0.12));
+    border-radius: 10px; padding: 8px 10px;
+  }
+
+  /* عدّاد الكمية */
+  .qty { display: inline-flex; align-items: center; gap: 10px; }
+  .qbtn {
+    width: 34px; height: 34px; border-radius: 11px;
+    border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.7);
+    font-size: 17px; font-weight: 800; color: var(--burgundy);
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .qbtn:active { transform: scale(0.94); }
+  .qn { font-size: 15px; font-weight: 800; min-width: 22px; text-align: center; font-variant-numeric: tabular-nums; }
 </style>

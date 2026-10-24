@@ -309,11 +309,27 @@ export async function nextModelId() {
    موجودة أصلاً: الزبونات، المبيعات، الموديلات. لا إدخال يدوي ولا سكيما جديدة
    على السجلات القديمة. */
 
-/* قطعة على قائمة الانتظار — المفتاح المركّب يمنع التكرار لنفس الزبونة على
-   نفس الموديل والمقاس، وإعادة الإضافة بعد الشراء تعيد تنشيطها. */
-export async function addWaitlistEntry({ customerName, customerPhone, sku, modelId, size = '', color = '', note = '' }) {
+/* قطعة على قائمة الانتظار.
+   نوعان:
+   • kind='model'   — مقاس/لون نافد من **موديل موجود** (المفتاح = رقم الموديل).
+   • kind='request' — حذاء **لم يكن موجوداً أصلاً** والزبونة تطلبه (المفتاح من
+     سلسلة النوع واللون) — فيمكن لزبونة واحدة أن تطلب حذاءين مختلفين غير
+     موجودين بلا أن يُدمجا في سطر واحد.
+   المفتاح المركّب يمنع تكرار نفس الزبونة على نفس الطلب، وإعادة الإضافة بعد
+   الشراء تعيد تنشيطها. */
+const waitNorm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+export async function addWaitlistEntry({
+  customerName, customerPhone, sku, modelId,
+  size = '', color = '', note = '', qty = 1, chain = '', kind = 'model'
+}) {
   if (!(customerName || '').trim() && !(customerPhone || '').trim()) return { ok: false };
-  const key = `${modelId || sku}|${(size || '').trim()}|${(customerPhone || '').trim() || (customerName || '').trim()}`;
+  const isReq = kind === 'request' || (!modelId && !sku);
+  const who = (customerPhone || '').trim() || (customerName || '').trim();
+  /* مفتاح «موديل موجود» يبقى بصيغته القديمة تماماً — تغييره كان سيُنشئ نسخة
+     ثانية لنفس الانتظار القائم. طلبات «غير موجود» تُسبق بـ req: فلا تتصادم. */
+  const anchor = isReq ? `req:${waitNorm(chain)}·${waitNorm(color)}` : (modelId || sku);
+  const key = `${anchor}|${(size || '').trim()}|${who}`;
   const existing = await db.waitlists.get(key);
   if (existing && existing.status === 'waiting') return { ok: false, dup: true };
   await db.waitlists.put({
@@ -323,17 +339,25 @@ export async function addWaitlistEntry({ customerName, customerPhone, sku, model
     sku: sku || '', modelId: modelId || '',
     size: (size || '').trim(), color: (color || '').trim(),
     note: (note || '').trim(),
+    qty: Math.max(1, Math.round(Number(qty) || 1)),
+    chain: (chain || '').trim(),
+    kind: isReq ? 'request' : 'model',
     status: 'waiting', createdAt: new Date().toISOString(), notifiedAt: null
   });
   return { ok: true };
 }
 
 /* من ينتظر هذا الموديل؟ — تُنادى عند استلام توريد يطابق الموديل، واللون
-   والمقاس يُطبّقان فقط إن قُيّدا في الانتظار ووُجدا في التوريد. */
-export async function waitingForModel({ modelId = '', sku = '', size = '', color = '' } = {}) {
+   والمقاس يُطبّقان فقط إن قُيّدا في الانتظار ووُجدا في التوريد.
+   طلبات «موديل غير موجود» تُطابَق بسلسلة النوع: أول موديل يصل بنفس السلسلة
+   يُنبّه صاحبته — وإلا بقيت طلباتها صامتة للأبد. */
+export async function waitingForModel({ modelId = '', sku = '', size = '', color = '', chain = '' } = {}) {
   const all = await db.waitlists.where('status').equals('waiting').toArray();
   return all.filter((w) => {
-    const sameModel = modelId ? w.modelId === modelId : sku ? w.sku === sku : false;
+    const isReq = w.kind === 'request' || (!w.modelId && !w.sku);
+    const sameModel = isReq
+      ? !!chain && waitNorm(w.chain) === waitNorm(chain)
+      : (modelId ? w.modelId === modelId : sku ? w.sku === sku : false);
     if (!sameModel) return false;
     if (size && w.size && String(w.size) !== String(size)) return false;
     if (color && w.color && w.color !== color) return false;
