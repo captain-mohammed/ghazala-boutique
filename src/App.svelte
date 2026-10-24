@@ -216,6 +216,25 @@
     justify-content: center; /* العنوان دائماً بمنتصف الصفحة */
     position: relative;
     min-height: 42px;
+    /* مساحة محجوزة لزر الرجوع على الطرفين. كان العنوان متمركزاً على كامل
+       العرض وزر الرجوع فوقه، فتلامسا — وتحت ٤٢٠px دخل العنوان **تحت الزر**
+       (قياس فعلي: ٣٦٠px ⇒ تداخل ٢٧px في «خيارات الموديلات» و٦١px في «حساب
+       الشركات»). الحشو المتماثل يُبقي العنوان في المنتصف ويمنع التصادم. */
+    padding-inline: 108px;
+  }
+  .head .h1 {
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: clamp(16px, 5vw, 24px);
+    line-height: 1.15;
+  }
+  /* على الشاشات الضيقة يصغر زر الرجوع إلى دائرته وحدها — العنوان أولى بالمساحة */
+  @media (max-width: 400px) {
+    .head { padding-inline: 56px; }
+    .head-back :global(.bb-txt) { display: none; }
+    .head-back :global(.bb) { padding: 5px 6px; gap: 0; }
   }
   .head-back {
     position: absolute;
