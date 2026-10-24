@@ -321,14 +321,21 @@ const waitNorm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' '
 
 export async function addWaitlistEntry({
   customerName, customerPhone, sku, modelId,
-  size = '', color = '', note = '', qty = 1, chain = '', kind = 'model'
-}) {
+  size = '', color = '', note = '', qty = 1, chain = '', kind = 'model',
+  type = '', typeSub = '', typeSub2 = '', typeSub3 = ''
+} = {}) {
   if (!(customerName || '').trim() && !(customerPhone || '').trim()) return { ok: false };
   const isReq = kind === 'request' || (!modelId && !sku);
+  /* للطلب على حذاء غير موجود: السلسلة تُبنى من حقول النوع المُهيكَلة تماماً
+     كما تُبنى لقطعة حقيقية (typeChain) — لا نص حر يدوي، فالتطابق عند الوصول
+     يكون دقيقاً حرفياً: نوع + تفصيل + لون + مقاس. */
+  const chainFinal = (isReq
+    ? (chain || [type, typeSub, typeSub2, typeSub3].filter(Boolean).join(' - '))
+    : chain).trim();
   const who = (customerPhone || '').trim() || (customerName || '').trim();
   /* مفتاح «موديل موجود» يبقى بصيغته القديمة تماماً — تغييره كان سيُنشئ نسخة
      ثانية لنفس الانتظار القائم. طلبات «غير موجود» تُسبق بـ req: فلا تتصادم. */
-  const anchor = isReq ? `req:${waitNorm(chain)}·${waitNorm(color)}` : (modelId || sku);
+  const anchor = isReq ? `req:${waitNorm(chainFinal)}·${waitNorm(color)}` : (modelId || sku);
   const key = `${anchor}|${(size || '').trim()}|${who}`;
   const existing = await db.waitlists.get(key);
   if (existing && existing.status === 'waiting') return { ok: false, dup: true };
@@ -340,7 +347,9 @@ export async function addWaitlistEntry({
     size: (size || '').trim(), color: (color || '').trim(),
     note: (note || '').trim(),
     qty: Math.max(1, Math.round(Number(qty) || 1)),
-    chain: (chain || '').trim(),
+    chain: chainFinal,
+    type: (type || '').trim(), typeSub: (typeSub || '').trim(),
+    typeSub2: (typeSub2 || '').trim(), typeSub3: (typeSub3 || '').trim(),
     kind: isReq ? 'request' : 'model',
     status: 'waiting', createdAt: new Date().toISOString(), notifiedAt: null
   });
@@ -363,6 +372,27 @@ export async function waitingForModel({ modelId = '', sku = '', size = '', color
     if (color && w.color && w.color !== color) return false;
     return true;
   });
+}
+
+/* يجمع كل منتظرات وصلن قطعهن بعد توريد فاتورة أو تسجيل موديل جديد في
+   المخزون. يأخذ قائمة أكواد (sku) للموديلات التي مستها العملية، ويعيد بطاقات
+   الانتظار الفريدة التي طابقتها — حسب السلسلة للطلبات «غير الموجودة»، أو حسب
+   الموديل للطلبات العادية. يُستعمَل من فاتورة الاستلام ونموذج تسجيل الموديل
+   في المخزون ليكون السلوك واحداً في المسارين: تسجيل الحذاء نفسه يُعلِم صاحبة
+   الطلب فوراً. */
+export async function findWaitingMatchesForSkus(skus = []) {
+  const matched = [];
+  for (const sku of skus || []) {
+    const p = await db.products.get(sku);
+    if (!p) continue;
+    for (const w of await waitingForModel({
+      modelId: p.modelId || '', sku,
+      size: p.size || '', color: p.color || '', chain: typeChain(p)
+    })) {
+      if (!matched.some((x) => x.key === w.key)) matched.push(w);
+    }
+  }
+  return matched;
 }
 
 export async function markWaitNotified(key, { bought = false } = {}) {

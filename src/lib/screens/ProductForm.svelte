@@ -201,13 +201,18 @@
     'موديل'
   );
 
-  /* القائمة الفرعية تتغير مع النوع — والقيمة القديمة تُمسح إذا خرجت عن القائمة */
+  /* القائمة الفرعية تتغير مع النوع. نمسح التفاصيل التابعة فقط حين يتغيّر الأب
+     فعلاً — لا لمجرد أنها قيمة حرّة غير موجودة في المقترحات، حتى يسعى إدخال
+     نوع أو تفصيل جديد بالنص تماماً كما في طلب قائمة الانتظار. */
   const subsNow = $derived(subsOfType(opts.typeSubs, type));
-  $effect(() => { if (typeSub && !subsNow.includes(typeSub)) typeSub = ''; });
   const subs2Now = $derived(subsOfType2(opts.typeSubs2, type, typeSub));
-  $effect(() => { if (typeSub2 && !subs2Now.includes(typeSub2)) typeSub2 = ''; });
   const subs3Now = $derived(subsOfType3(opts.typeSubs3, type, typeSub, typeSub2));
-  $effect(() => { if (typeSub3 && !subs3Now.includes(typeSub3)) typeSub3 = ''; });
+  let _pt = type, _ps = typeSub, _ps2 = typeSub2;
+  $effect(() => {
+    if (type !== _pt) { _pt = type; typeSub = ''; typeSub2 = ''; typeSub3 = ''; }
+    else if (typeSub !== _ps) { _ps = typeSub; typeSub2 = ''; typeSub3 = ''; }
+    else if (typeSub2 !== _ps2) { _ps2 = typeSub2; typeSub3 = ''; }
+  });
 
   const baseSizes = $derived(SIZE_RUNS[category] || SIZE_RUNS['نسائية']);
   const colorPieces = (c) => Object.values(byColor[c] || {}).reduce((a, n) => a + (Number(n) || 0), 0);
@@ -469,6 +474,30 @@
       if (updated) parts.push(`${updated} بطاقة محفوظة`);
       if (created) parts.push(`${created} جديدة`);
       toastOk(`${editing ? 'تم الحفظ' : 'تمت الإضافة'} — ${totalPieces} قطعة (${parts.join(' - ')})`);
+      /* الأولوية لقائمة الانتظار: زبونة سجّلت طلب حذاء غير موجود بنفس السلسلة
+         فتعرّفه الحين فور تسجيله في المخزون — بيع مضمون قبل «قبل الجميع». */
+      if (created > 0) {
+        try {
+          const { findWaitingMatchesForSkus } = await import('../db.js');
+          const matched = await findWaitingMatchesForSkus([...touched]);
+          if (matched.length) {
+            const firstSku = [...touched][0];
+            const first = firstSku ? await db.products.get(firstSku) : null;
+            campaignContacts.set({
+              kind: 'waiting',
+              model: first ? {
+                modelId: first.modelId,
+                chain: [first.type, first.typeSub, first.typeSub2, first.typeSub3].filter(Boolean).join(' - ') || '—',
+                colors: first.color || '—', sizes: String(first.size || ''), price: first.price
+              } : null,
+              contacts: matched.map((w) => ({ name: w.customerName, phone: w.customerPhone }))
+            });
+            ondone();
+            goto('broadcast');
+            return;
+          }
+        } catch { /* لا تعطل الحفظ أبداً */ }
+      }
       /* «قبل الجميع»: أول تسجيل لموديل واصل بكمية — كبار الزبونات أول من يعرف */
       if (!editing && created > 0 && totalPieces > 0) {
         try {
@@ -560,7 +589,8 @@
         <button type="button" class="chip" class:on={type === t} onclick={() => (type = type === t ? '' : t)}>{t}</button>
       {/each}
     </div>
-    {#if type && subsNow.length}
+    <input class="input" style="margin-top:6px" bind:value={type} placeholder="أو اكتبي نوعاً جديداً لم يُسجَّل بعد" />
+    {#if type}
       <div class="sub-level">
         <label class="sub-label">التفصيل <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— تحت «{type}»</span></label>
         <div class="row wrap" style="gap:6px; {isMissing('التفصيل') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
@@ -568,8 +598,9 @@
             <button type="button" class="chip chip-sub" class:on={typeSub === st} onclick={() => (typeSub = typeSub === st ? '' : st)}>{st}</button>
           {/each}
         </div>
+        <input class="input" style="margin-top:6px" bind:value={typeSub} placeholder="أو اكتبي تفصيلاً جديداً" />
       </div>
-      {#if typeSub && subs2Now.length}
+      {#if typeSub}
         <div class="sub-level">
           <label class="sub-label">تفصيل أدق <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— تحت «{typeSub}»</span></label>
           <div class="row wrap" style="gap:6px; {isMissing('تفصيل أدق') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
@@ -577,8 +608,9 @@
               <button type="button" class="chip chip-sub" class:on={typeSub2 === st2} onclick={() => (typeSub2 = typeSub2 === st2 ? '' : st2)}>{st2}</button>
             {/each}
           </div>
+          <input class="input" style="margin-top:6px" bind:value={typeSub2} placeholder="أو اكتبي تفصيلاً أدق" />
         </div>
-        {#if typeSub2 && subs3Now.length}
+        {#if typeSub2}
           <div class="sub-level">
             <label class="sub-label">تفصيل أخير <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— تحت «{typeSub2}»</span></label>
             <div class="row wrap" style="gap:6px; {isMissing('تفصيل أخير') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
@@ -586,6 +618,7 @@
                 <button type="button" class="chip chip-sub" class:on={typeSub3 === st3} onclick={() => (typeSub3 = typeSub3 === st3 ? '' : st3)}>{st3}</button>
               {/each}
             </div>
+            <input class="input" style="margin-top:6px" bind:value={typeSub3} placeholder="أو اكتبي تفصيلاً أخير" />
           </div>
         {/if}
       {/if}

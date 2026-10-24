@@ -10,9 +10,13 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
   import Pick from '../components/Pick.svelte';
-  import { db, getSetting, addWaitlistEntry, loadProducts } from '../db.js';
+  import ColorSwatches from '../components/ColorSwatches.svelte';
+  import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
+  import { db, getSetting, addWaitlistEntry, loadProducts, modelOptions, subsOfType, subsOfType2, subsOfType3, typeChain, hexForColor, SIZE_RUNS } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz, sendWhatsApp, renderTpl, MKT_TEMPLATES } from '../utils.js';
   import { toastOk, toastErr, campaignContacts } from '../store.js';
+
+  const NOCOLOR = 'بلا لون';
 
   let { goto } = $props();
 
@@ -22,18 +26,21 @@
   let waits = $state([]);
   let tpls = $state({ firstdibs: '', waiting: '', rescue: '', quiet: '' });
   let loading = $state(true);
+  let opts = $state({ categories: [], types: [], seasons: [], materials: [], colors: [], typeSubs: {}, typeSubs2: {}, typeSubs3: {} });
 
   async function load() {
     loading = true;
-    const [sales, prods, wl, t1, t2, t3, t4] = await Promise.all([
+    const [sales, prods, wl, t1, t2, t3, t4, o] = await Promise.all([
       db.sales.toArray(),
       loadProducts(),
       db.waitlists.toArray(),
       getSetting(MKT_TEMPLATES.firstdibs.key, ''),
       getSetting(MKT_TEMPLATES.waiting.key, ''),
       getSetting(MKT_TEMPLATES.rescue.key, ''),
-      getSetting(MKT_TEMPLATES.quiet.key, '')
+      getSetting(MKT_TEMPLATES.quiet.key, ''),
+      modelOptions()
     ]);
+    opts = o;
     products = prods;
     salesCache = sales;
     waits = wl.filter((w) => w.status === 'waiting');
@@ -200,6 +207,34 @@
   let capQty = $state(1);
   let capNote = $state('');
 
+  /* حقول الطلب المُهيكَلة — نفس شجرة النوع في نموذج الموديل تماماً، حتى يطابق
+     الطلب الحذاء حرفياً عند تسجيله لاحقاً في المخزون أو الفاتورة */
+  let reqType = $state('');
+  let reqTypeSub = $state('');
+  let reqTypeSub2 = $state('');
+  let reqTypeSub3 = $state('');
+  let reqSelColors = $state([]);
+  let reqByColor = $state({});
+  const reqSubsNow = $derived(subsOfType(opts.typeSubs, reqType));
+  const reqSubs2Now = $derived(subsOfType2(opts.typeSubs2, reqType, reqTypeSub));
+  const reqSubs3Now = $derived(subsOfType3(opts.typeSubs3, reqType, reqTypeSub, reqTypeSub2));
+  const reqBaseSizes = $derived(SIZE_RUNS['نسائية']);
+  const reqPalette = $derived([
+    ...opts.colors,
+    ...reqSelColors.filter((c) => c !== NOCOLOR && !opts.colors.some((o) => o.label === c)).map((c) => ({ label: c, hex: '#9C7B6B' }))
+  ]);
+  const reqColorPieces = (c) => Object.values(reqByColor[c] || {}).reduce((a, n) => a + (Number(n) || 0), 0);
+  const reqTotalPieces = $derived(reqSelColors.reduce((a, c) => a + reqColorPieces(c), 0));
+  function reqToggleColor(label) {
+    if (reqSelColors.includes(label)) {
+      reqSelColors = reqSelColors.filter((c) => c !== label);
+      const m = { ...reqByColor }; delete m[label]; reqByColor = m;
+    } else {
+      reqSelColors = [...reqSelColors, label];
+      reqByColor = { ...reqByColor, [label]: reqByColor[label] || {} };
+    }
+  }
+
   function openCap(mid) {
     const m = modelById.get(mid);
     if (!m) return;
@@ -214,8 +249,9 @@
     capSize = capSizes[0] || '';
     capOpen = true;
   }
-  /* طلب حذاء **لم يكن موجوداً أصلاً** — لا موديل ولا مقاس نافد: تُكتب السلسلة
-     واللون والمقاس والكمية يدوياً، ويُطابَق الطلب عند وصول أول موديل بنفس السلسلة */
+  /* طلب حذاء **لم يكن موجوداً أصلاً** — نفس حقول الموديل: النوع والتفصيل واللون
+     والمقاس والكمية. يُبنى الطلب بنفس سلسلة النوع تماماً، فيُطابَق الحذاء حرفياً
+     عند وصول أول موديل بنفس النوع في المخزون أو الفاتورة */
   function openRequest() {
     capMode = 'request';
     capModelId = '';
@@ -223,25 +259,51 @@
     capColor = ''; capSize = '';
     capChain = ''; capQty = 1; capNote = '';
     capColors = []; capSizes = [];
+    reqType = ''; reqTypeSub = ''; reqTypeSub2 = ''; reqTypeSub3 = '';
+    reqSelColors = []; reqByColor = {};
     capOpen = true;
     buzz(8);
   }
   async function saveCap() {
     if (!capName.trim() && !capPhone.trim()) return toastErr('الاسم أو الرقم مطلوب');
     const isReq = capMode === 'request';
-    if (isReq && !capChain.trim()) return toastErr('اكتبي نوع الحذاء المطلوب');
+    if (isReq) {
+      if (!reqType.trim()) return toastErr('اختاري أو اكتبي نوع الحذاء المطلوب');
+      if (reqTotalPieces === 0) return toastErr('حدّدي مقاساً واحداً بكمية على الأقل');
+      let saved = 0, dup = 0;
+      for (const c of reqSelColors) {
+        const sizes = reqByColor[c] || {};
+        for (const [s, q] of Object.entries(sizes)) {
+          if (Number(q) > 0) {
+            const r = await addWaitlistEntry({
+              customerName: capName, customerPhone: capPhone,
+              type: reqType, typeSub: reqTypeSub, typeSub2: reqTypeSub2, typeSub3: reqTypeSub3,
+              color: c, size: s, qty: Number(q), note: capNote, kind: 'request'
+            });
+            if (r.ok) saved++; else if (r.dup) dup++;
+          }
+        }
+      }
+      if (saved === 0) return toastErr(dup ? 'هي موجودة بالانتظار أصلاً' : 'تعذر الحفظ');
+      capOpen = false;
+      buzz([14, 40, 14]);
+      toastOk(`سُجّل الطلب — ${fmtNum(saved)} ${saved === 1 ? 'تسجيلة' : 'تسجيلات'} ينادى عليها عند وصول نفس النوع 🌷`);
+      await load();
+      return;
+    }
+    /* وضع الموديل الموجود */
+    if (!capModelId) return toastErr('اختاري الموديل أولاً');
     const r = await addWaitlistEntry({
       customerName: capName, customerPhone: capPhone,
-      modelId: isReq ? '' : capModelId, sku: '',
+      modelId: capModelId, sku: '',
       size: capSize, color: capColor,
-      chain: isReq ? capChain : (modelById.get(capModelId)?.chain || ''),
-      qty: capQty, note: capNote,
-      kind: isReq ? 'request' : 'model'
+      chain: modelById.get(capModelId)?.chain || '',
+      qty: capQty, note: capNote, kind: 'model'
     });
     if (!r.ok) return toastErr(r.dup ? 'هي موجودة بالانتظار أصلاً' : 'تعذر الحفظ');
     capOpen = false;
     buzz([14, 40, 14]);
-    toastOk(isReq ? 'سُجّل الطلب — ينادى عليها عند وصول أي موديل بنفس النوع 🌷' : 'ضامنتِ قائمة الانتظار — ينادى عليها عند التوريد 🌷');
+    toastOk('ضامنتِ قائمة الانتظار — ينادى عليها عند التوريد 🌷');
     await load();
   }
   const isReqWait = (w) => w.kind === 'request' || (!w.modelId && !w.sku);
@@ -458,25 +520,70 @@
     <input id="wl-phone" class="input" bind:value={capPhone} dir="ltr" inputmode="tel" placeholder="07XX XXX XXXX" style="text-align:right" />
 
     {#if capMode === 'request'}
-      <label class="lab" for="wl-chain">نوع الحذاء المطلوب *</label>
-      <input id="wl-chain" class="input" bind:value={capChain} placeholder="مثال: بوت - كعب عالي" />
-      {#if typeChains.length}
-        <div class="row wrap" style="gap:6px">
-          {#each typeChains.slice(0, 6) as tc (tc)}
-            <button type="button" class="chip" class:on={capChain === tc} onclick={() => { capChain = tc; buzz(6); }}>{tc}</button>
+      <!-- شجرة النوع: نفس نموذج الموديل تماماً -->
+      <div class="type-group">
+        <label class="lab">النوع *</label>
+        <div class="row wrap" style="gap:8px">
+          {#each opts.types as t (t)}
+            <button type="button" class="chip" class:on={reqType === t} onclick={() => (reqType = reqType === t ? '' : t)}>{t}</button>
           {/each}
         </div>
-      {/if}
-      <div class="row" style="gap:8px">
-        <div class="field" style="flex:1">
-          <label class="lab" for="wl-color">اللون</label>
-          <input id="wl-color" class="input" bind:value={capColor} placeholder="أسود، بيج…" />
-        </div>
-        <div class="field" style="flex:1">
-          <label class="lab" for="wl-size">المقاس</label>
-          <input id="wl-size" class="input" bind:value={capSize} inputmode="decimal" placeholder="38" />
-        </div>
+        <input class="input" style="margin-top:6px" bind:value={reqType} placeholder="أو اكتبي نوعاً جديداً لم يُسجَّل بعد" />
+
+        {#if reqType}
+          <div class="sub-level">
+            <label class="lab">التفصيل <span class="muted tiny">— تحت «{reqType}»</span></label>
+            <div class="row wrap" style="gap:6px">
+              {#each reqSubsNow as st (st)}
+                <button type="button" class="chip" class:on={reqTypeSub === st} onclick={() => (reqTypeSub = reqTypeSub === st ? '' : st)}>{st}</button>
+              {/each}
+            </div>
+            <input class="input" style="margin-top:6px" bind:value={reqTypeSub} placeholder="أو اكتبي تفصيلاً جديداً" />
+          </div>
+        {/if}
+        {#if reqTypeSub}
+          <div class="sub-level">
+            <label class="lab">تفصيل أدق <span class="muted tiny">— تحت «{reqTypeSub}»</span></label>
+            <div class="row wrap" style="gap:6px">
+              {#each reqSubs2Now as st2 (st2)}
+                <button type="button" class="chip" class:on={reqTypeSub2 === st2} onclick={() => (reqTypeSub2 = reqTypeSub2 === st2 ? '' : st2)}>{st2}</button>
+              {/each}
+            </div>
+            <input class="input" style="margin-top:6px" bind:value={reqTypeSub2} placeholder="أو اكتبي تفصيلاً أدق" />
+          </div>
+        {/if}
+        {#if reqTypeSub2}
+          <div class="sub-level">
+            <label class="lab">تفصيل أخير <span class="muted tiny">— تحت «{reqTypeSub2}»</span></label>
+            <input class="input" bind:value={reqTypeSub3} placeholder="أو اكتبي تفصيلاً أخير" />
+          </div>
+        {/if}
       </div>
+
+      <ColorSwatches
+        colors={reqPalette}
+        multi={true}
+        selected={reqSelColors}
+        onselect={reqToggleColor}
+        label="اللون *"
+        hint="اختاري لوناً أو أكثر للطلب"
+      />
+      {#if reqSelColors.length}
+        <div class="stack" style="gap:12px">
+          {#each reqSelColors as c (c)}
+            <div class="color-block">
+              <div class="cb-head">
+                <i class="cb-dot" style="background:{c === NOCOLOR ? 'transparent' : hexForColor(c, reqPalette)}"></i>
+                <span class="bold">{c}</span>
+                <span class="cb-count" class:has={reqColorPieces(c) > 0}>{reqColorPieces(c) > 0 ? `${reqColorPieces(c)} قطعة` : 'حدّدي الكميات'}</span>
+              </div>
+              <SizeQtyGrid sizes={reqBaseSizes} bind:value={reqByColor[c]} />
+            </div>
+          {/each}
+        </div>
+      {:else}
+        <div class="cb-empty">اختاري لوناً من الدوائر أولاً — ثم تحدّدين مقاسات كل لون وكمياته</div>
+      {/if}
     {:else}
       {#if capColors.length}
         <label class="lab">اللون المنتظر</label>
@@ -488,14 +595,20 @@
       {/if}
     {/if}
 
-    <div class="row" style="justify-content:space-between; align-items:center">
-      <span class="lab" style="margin:0">الكمية</span>
-      <div class="qty">
-        <button type="button" class="qbtn" aria-label="نقصان" onclick={() => { capQty = Math.max(1, capQty - 1); buzz(6); }}>−</button>
-        <b class="qn">{fmtNum(capQty)}</b>
-        <button type="button" class="qbtn" aria-label="زيادة" onclick={() => { capQty = Math.min(99, capQty + 1); buzz(6); }}>+</button>
+    {#if capMode !== 'request'}
+      <div class="row" style="justify-content:space-between; align-items:center">
+        <span class="lab" style="margin:0">الكمية</span>
+        <div class="qty">
+          <button type="button" class="qbtn" aria-label="نقصان" onclick={() => { capQty = Math.max(1, capQty - 1); buzz(6); }}>−</button>
+          <b class="qn">{fmtNum(capQty)}</b>
+          <button type="button" class="qbtn" aria-label="زيادة" onclick={() => { capQty = Math.min(99, capQty + 1); buzz(6); }}>+</button>
+        </div>
       </div>
-    </div>
+    {:else if reqTotalPieces > 0}
+      <div class="sum pop" style="margin-top:2px">
+        <span class="bold">{fmtNum(reqTotalPieces)}</span> قطعة في <span class="bold">{reqSelColors.length}</span> لون — تُحفظ كلها بضغطة واحدة
+      </div>
+    {/if}
 
     <label class="lab" for="wl-note">ملاحظة (اختياري)</label>
     <input id="wl-note" class="input" bind:value={capNote} placeholder="مثال: تريدها للعيد — تستعجل" />
@@ -597,4 +710,21 @@
   }
   .qbtn:active { transform: scale(0.94); }
   .qn { font-size: 15px; font-weight: 800; min-width: 22px; text-align: center; font-variant-numeric: tabular-nums; }
+
+  /* ---- التقاط طلب حذاء غير موجود: شجرة النوع + شبكة المقاسات ---- */
+  .type-group { display: flex; flex-direction: column; gap: 7px; }
+  .sub-level { display: flex; flex-direction: column; gap: 5px; margin-top: 8px; }
+  .color-block {
+    border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.5);
+    border-radius: 14px; padding: 10px 12px;
+  }
+  .cb-head { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+  .cb-dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--sw, var(--taupe)); flex: none; }
+  .cb-count { margin-inline-start: auto; font-size: 11px; font-weight: 800; color: var(--taupe); }
+  .cb-count.has { color: #1f7a44; }
+  .cb-empty {
+    font-size: 11.5px; color: var(--taupe); line-height: 1.6;
+    background: rgba(255, 255, 255, 0.5); border: 1px dashed var(--line-2);
+    border-radius: 12px; padding: 10px 12px;
+  }
 </style>
