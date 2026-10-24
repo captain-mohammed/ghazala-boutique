@@ -121,8 +121,13 @@
   async function markDelivered(s) {
     await setSaleStatus(s.id, 'delivered');
     buzz([20, 40, 20]);
+    /* الصف يتحدّث فوراً: الاعتماد على دورة الجلب (٤ ثوانٍ) كان يُظهر «قيد
+       التوصيل» بعد إغلاق الورقة مباشرة، فتبدو الضغطة بلا أثر. */
+    sales = sales.map((x) => (x.id === s.id ? { ...x, status: 'delivered', updatedAt: new Date().toISOString() } : x));
+    /* الورقة تُغلق تلقائياً: الإجراء انتهى، وإبقاء تفاصيل عملية صارت «مُسلَّمة»
+       على الشاشة كان يفرض لمسة إغلاق زائدة بلا فائدة. التوست هو التأكيد. */
+    detail = null;
     toastOk('تم تحديث الحالة: تم التسليم');
-    if (detail?.id === s.id) detail = { ...detail, status: 'delivered' };
   }
 
   async function doReturn(s) {
@@ -134,8 +139,10 @@
     });
     if (!ok) return;
     await returnSale(s.id);
+    sales = sales.map((x) => (x.id === s.id ? { ...x, status: 'returned', updatedAt: new Date().toISOString() } : x));
+    /* نفس المنطق: العملية صارت «راجع» — لا شيء تبقى لعمله في الورقة */
+    detail = null;
     toastOk('تم الإرجاع وإعادة الكميات للمخزون');
-    if (detail?.id === s.id) detail = { ...detail, status: 'returned' };
   }
 
   /* ---- تسليم جزئي: طلب وصل وفيه قطعة رجعت — تُعلَّم الراجعة وحدها ----
