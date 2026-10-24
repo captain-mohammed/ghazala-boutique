@@ -349,7 +349,7 @@
   </Glass>
 
   <!-- Premium filter card — collapsed until needed; values stay untouched -->
-  <Glass class="filter-card">
+  <Glass class="filter-card" data-dd-host>
     <div class="f-head">
       <button class="f-title f-toggle" aria-expanded={fOpen} onclick={() => { fOpen = !fOpen; buzz(6); }}>
         <Icon name="sliders" size={16} color="var(--burgundy)" /> فلاتر
