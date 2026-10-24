@@ -3,7 +3,7 @@
   import Sheet from '../components/Sheet.svelte';
   import Glass from '../components/Glass.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, adjustQty, deleteProduct, createReservation, RESERVATION_HOURS, addWaitlistEntry, waitingForModel, loadProducts } from '../db.js';
+  import { db, adjustQty, deleteProduct, createReservation, RESERVATION_HOURS, addWaitlistEntry, waitingForModel, loadProducts, lotsOf } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt, invoicePreset } from '../store.js';
 
@@ -33,6 +33,8 @@
   let p = $state(product);
   let moves = $state([]);
   let siblings = $state([]);
+  let lots = $state([]);   /* دفعات هذه البطاقة — المفتوحة فقط */
+  let lotsOpen = $state(false);  /* الدفعات مطويّة افتراضياً */
 
   /* نفس الموديل = نفس الرقم الداخلي ونفس اللون (احتياط: الاسم للقديم) */
   const sameModel = (a, b) =>
@@ -48,6 +50,7 @@
     if (sku) {
       db.movements.where('sku').equals(sku).reverse().toArray().then((m) => (moves = m.slice(0, 12)));
       loadProducts().then((ps) => (siblings = ps.filter((x) => sameModel(x, product))));
+      lotsOf(sku).then((l) => (lots = l));
       loadWaits();
     }
   });
@@ -82,11 +85,20 @@
   }
 
   const profit = $derived((p?.price || 0) - (p?.cost || 0));
+  /* ربح القطعة الحقيقي يخصّ **الدفعة** التي خرجت منها. حين تختلف الدفعات في
+     التكلفة، رقم واحد مسطّح (السعر − متوسط التكلفة) لا يوافق أي بيعة حقيقية —
+     فيُعرض مدى، ويُترك التفصيل الدقيق في سطور الدفعات نفسها. */
+  const lotProfits = $derived(
+    [...new Set(lots.map((l) => (Number(l.price) || 0) - (Number(l.cost) || 0)))].sort((a, b) => a - b)
+  );
+  const profitLo = $derived(lotProfits.length ? lotProfits[0] : profit);
+  const profitHi = $derived(lotProfits.length ? lotProfits[lotProfits.length - 1] : profit);
 
   async function bump(delta) {
     const q = await adjustQty(p.sku, delta);
     p = { ...p, qty: q };
     loadProducts().then((ps) => (siblings = ps.filter((x) => sameModel(x, p))));
+    lotsOf(p.sku).then((l) => (lots = l));
     buzz(10);
     if (delta > 0) celebrateAt(window.innerWidth / 2, window.innerHeight / 2.5, '📦');
     toastOk(delta > 0 ? `+${delta} قطعة` : `−${Math.abs(delta)} قطعة`);
@@ -138,8 +150,21 @@
       </div>
       <div class="muted small">{[p.category, ...(Array.isArray(p.seasons) && p.seasons.length ? p.seasons : (p.season ? [p.season] : [])), p.material].filter(Boolean).join(' - ')}{p.typeSub ? ` - تفصيل: ${p.typeSub}` : ''}{p.typeSub2 ? ` - أدق: ${p.typeSub2}` : ''}{p.typeSub3 ? ` - أخير: ${p.typeSub3}` : ''}</div>
       <div class="sku">{p.sku}</div>
-      {#if p.supplier}
-        <div class="sup"><Icon name="upload" size={12} /> من {p.supplier}{p.supplierAt ? ` - ${fmtDate(p.supplierAt)}` : ''}</div>
+      <!-- الموردون تحت الكود: كل وصول باسم مورّده وتاريخه وتكلفته -->
+      {#if lots.length}
+        <div class="sup-list">
+          {#each lots as l (l.id)}
+            <div class="sup-row">
+              <div class="sup-top">
+                <span class="sup-name">{l.supplier || 'بدون مورد'}</span>
+                <span class="sup-cost">تكلفة {fmtIQD(l.cost)}</span>
+              </div>
+              <div class="sup-time">{fmtDate(l.receivedAt)}</div>
+            </div>
+          {/each}
+        </div>
+      {:else if p.supplier}
+        <div class="sup"><Icon name="upload" size={12} /> من {p.supplier}</div>
       {/if}
     </div>
   </Glass>
@@ -169,17 +194,67 @@
   {/if}
 
   <div class="grid2">
-    <Glass class="cell" radius="var(--r-md)"><span class="muted small">سعر البيع</span><div class="money">{fmtIQD(p.price)}</div></Glass>
-    <Glass class="cell" radius="var(--r-md)"><span class="muted small">التكلفة</span><div class="money">{fmtIQD(p.cost)}</div></Glass>
+    <Glass class="cell" radius="var(--r-md)">
+      <span class="muted small">{lots.length > 1 ? 'سعر أقدم دفعة' : 'سعر البيع'}</span>
+      <div class="money">{fmtIQD(p.price)}</div>
+    </Glass>
+    <Glass class="cell" radius="var(--r-md)">
+      <span class="muted small">{lots.length > 1 ? 'متوسط التكلفة' : 'التكلفة'}</span>
+      <div class="money">{fmtIQD(p.cost)}</div>
+    </Glass>
     <Glass class="cell" radius="var(--r-md)">
       <span class="muted small">الربح للقطعة</span>
-      <div class="money" style="color:{profit >= 0 ? 'var(--good)' : 'var(--burgundy)'}">{fmtIQD(profit)}</div>
+      {#if lotProfits.length > 1}
+        <div class="money" style="color:var(--good); font-size:13px; line-height:1.5">
+          {fmtNum(profitLo)} إلى {fmtNum(profitHi)} <span class="muted tiny">د.ع</span>
+        </div>
+        <span class="muted tiny">حسب الدفعة</span>
+      {:else}
+        <div class="money" style="color:{profit >= 0 ? 'var(--good)' : 'var(--burgundy)'}">{fmtIQD(profit)}</div>
+      {/if}
     </Glass>
     <Glass class="cell" radius="var(--r-md)">
       <span class="muted small">الكمية الحالية</span>
       <div class="money" style="color:{p.qty === 0 ? 'var(--burgundy-deep)' : 'var(--ink)'}">{fmtNum(p.qty)}</div>
     </Glass>
   </div>
+
+  <!-- الدفعات: نفس الحذاء وصل أكثر من مرة من موردين مختلفين بتكلفة وسعر
+       مختلفين — كل وصول دفعة مستقلة، والسعر يُختار عند البيع -->
+  {#if lots.length > 1 || (lots.length === 1 && !lots[0].legacy)}
+    <Glass class="lots" radius="var(--r-md)">
+      <!-- مطويّة افتراضياً: الموردون وتكاليفهم ظاهرة أصلاً تحت الكود،
+           وهذا التفصيل لمن يريد الربح والمتبقي لكل دفعة -->
+      <button type="button" class="lots-head" onclick={() => { lotsOpen = !lotsOpen; buzz(6); }} aria-expanded={lotsOpen}>
+        <span class="bold small"><Icon name="box" size={14} color="var(--burgundy)" /> الدفعات ({fmtNum(lots.length)})</span>
+        <span class="muted tiny">{fmtNum(p.qty)} قطعة · الأقدم أولاً</span>
+        <span class="chev" class:flip={lotsOpen}><Icon name="back" size={12} /></span>
+      </button>
+      {#if lotsOpen}
+      <div class="stack" style="gap:6px">
+        {#each lots as l, i (l.id)}
+          {@const lp = (Number(l.price) || 0) - (Number(l.cost) || 0)}
+          <div class="lot-row">
+            <span class="lot-n">{fmtNum(i + 1)}</span>
+            <div class="lot-body">
+              <div class="lot-top">
+                <b class="small">{l.supplier || 'بدون مورد'}</b>
+                {#if i === 0}<span class="lot-tag">الأقدم</span>{/if}
+                <span class="lot-q"><b>{fmtNum(l.remaining)}</b> من {fmtNum(l.qty)}</span>
+              </div>
+              <div class="lot-money">
+                <span>شراء {fmtIQD(l.cost)}</span>
+                <span>بيع {fmtIQD(l.price)}</span>
+                <span class="lot-profit">ربح {fmtIQD(lp)}</span>
+              </div>
+              <div class="muted tiny">{fmtDate(l.receivedAt)}</div>
+            </div>
+          </div>
+        {/each}
+      </div>
+      {/if}
+    </Glass>
+  {/if}
 
   <div class="row" style="gap:10px">
     <button class="btn" style="flex:1" onclick={() => bump(-1)}>
@@ -303,6 +378,18 @@
   .m-ic.in { background: rgba(78, 138, 95, 0.14); color: var(--good); }
   .m-ic.out { background: var(--accent-soft); color: var(--burgundy); }
 
+  /* الموردون تحت الكود */
+  .sup-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; width: 100%; }
+  .sup-row {
+    display: flex; flex-direction: column; gap: 1px;
+    padding-inline-start: 9px;
+    border-inline-start: 2px solid rgba(201, 162, 75, 0.5);
+  }
+  .sup-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .sup-name { font-size: 11.5px; font-weight: 800; color: #8a6a35; }
+  .sup-cost { font-size: 11px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .sup-time { font-size: 10px; color: var(--taupe); font-variant-numeric: tabular-nums; }
+
   .sup {
     display: inline-flex; align-items: center; gap: 5px;
     margin-top: 4px;
@@ -312,6 +399,7 @@
     border-radius: 999px;
     padding: 3px 9px;
     width: fit-content;
+    max-width: 100%;
   }
   :global(.run) { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
   .run-head { display: flex; align-items: center; justify-content: space-between; }
@@ -336,4 +424,57 @@
     display: flex; align-items: center; gap: 6px;
     font-size: 12px; font-weight: 700; color: var(--burgundy-deep);
   }
+  /* الدفعات */
+  :global(.lots) { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
+  .lots-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    width: 100%;
+    padding: 0; background: none; border: none;
+    color: var(--ink); text-align: right; cursor: pointer;
+  }
+  .chev { flex: none; display: inline-flex; color: var(--taupe); transition: transform 0.22s; }
+  .chev.flip { transform: rotate(-90deg); }
+  .lot-row {
+    display: flex; align-items: flex-start; gap: 9px;
+    padding: 8px 10px;
+    border-radius: 11px;
+    background: rgba(255, 255, 255, 0.45);
+    border: 1px solid var(--line);
+  }
+  .lot-n {
+    flex: none; width: 20px; height: 20px;
+    margin-top: 1px;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 10.5px; font-weight: 800;
+    color: var(--burgundy-deep);
+    background: var(--gold-soft, rgba(201, 162, 75, 0.16));
+  }
+  .lot-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .lot-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .lot-top b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lot-tag {
+    flex: none;
+    font-size: 9px; font-weight: 800;
+    color: #8a6a35;
+    background: var(--gold-soft, rgba(201, 162, 75, 0.18));
+    border-radius: 999px; padding: 1px 7px;
+  }
+  .lot-q {
+    margin-inline-start: auto;
+    flex: none;
+    font-size: 11px;
+    color: var(--taupe);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  .lot-q b { font-size: 13px; font-weight: 800; color: var(--ink); }
+  /* المبالغ في سطرها بلا كسر: «د.ع» لا تُترك وحدها على سطر تالٍ */
+  .lot-money {
+    display: flex; flex-wrap: wrap; gap: 2px 10px;
+    font-size: 11px; color: var(--ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+  .lot-money span { white-space: nowrap; }
+  .lot-profit { color: var(--good); font-weight: 700; }
 </style>

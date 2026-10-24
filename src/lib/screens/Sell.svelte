@@ -12,7 +12,7 @@
   import { longpress, flyToCart, popBadge } from '../motion.js';
   import VariantBits from '../components/VariantBits.svelte';
   import Pick from '../components/Pick.svelte';
-  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType, createReservation, seasonsOf, loadProducts } from '../db.js';
+  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType, createReservation, seasonsOf, loadProducts, openLotIndex, priceOptionsFrom } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters, filtersOpen } from '../store.js';
@@ -22,6 +22,8 @@
   let products = $state([]);
   let sales = $state([]);
   let opts = $state({ types: [], seasons: [], colors: [] });
+  /* sku → [{ price, qty, suppliers }] — سعر كل دفعة مفتوحة على الرف */
+  let lotPrices = $state({});
 
   /* shared filters — the exact same فلاتر state as المخزون, in both directions */
   let f = $state(JSON.parse(JSON.stringify(get(catalogFilters))));
@@ -39,7 +41,7 @@
     let alive = true;
     let lastSig = '';
     const grab = async () => {
-      const [p, s, o] = await Promise.all([loadProducts(), db.sales.toArray(), modelOptions()]);
+      const [p, s, o, lots] = await Promise.all([loadProducts(), db.sales.toArray(), modelOptions(), openLotIndex()]);
       if (!alive) return;
       /* بصمة رخيصة: لا نعيد رسم مئات البطاقات إلا عند تغيّر حقيقي */
       let m = 0;
@@ -47,7 +49,14 @@
       const sig = p.length + ':' + m + ':' + s.length;
       if (sig === lastSig) return;
       lastSig = sig;
-      products = p; sales = s; opts = o;
+      /* خيارات السعر لكل بطاقة: سعر كل دفعة مفتوحة ومورّدها وكميتها.
+         البطاقة الواحدة قد تحمل سعرين — والسعر يُختار عند البيع لا هنا. */
+      const prices = {};
+      for (const x of p) {
+        const list = priceOptionsFrom(lots.get(x.sku) || []);
+        if (list.length) prices[x.sku] = list;
+      }
+      products = p; sales = s; opts = o; lotPrices = prices;
     };
     grab();
     const t = setInterval(grab, 4000);
@@ -310,7 +319,10 @@
   }
   function restoreLast() {
     if (!lastCart) return;
-    cart = lastCart.items.map((c) => ({ ...c }));
+    cart = lastCart.items.map((c) => ({
+      ...c,
+      vsKey: `${c.sku}|${c.color || ''}|${c.size || ''}|${c.price}`
+    }));
     lastCart = null;
     try { localStorage.removeItem(LAST_KEY); } catch {}
     buzz(10);
@@ -425,28 +437,82 @@
     buzz([12, 30, 12]);
   }
 
-  /* one cart line per (sku, color, size) — same-kind pieces merge automatically */
+  /* ---- الدفعات في السلة ----
+     البطاقة قد تحمل أكثر من سعر (دفعة قديمة ودفعة جديدة). الافتراضي هو سعر
+     أقدم دفعة، والكمية تُوزَّع على الدفعات بالأقدم أولاً فيصير لكل سعر سطره،
+     ثم تختار الزبونة السعر عند الإتمام. */
+  function priceGroups(sku) {
+    return lotPrices[sku] || [];
+  }
+  function inCartAt(sku, price, except = null) {
+    return cart
+      .filter((x) => x !== except && x.sku === sku && Number(x.price) === Number(price))
+      .reduce((a, x) => a + x.qty, 0);
+  }
+  function lineCap(c) {
+    const g = priceGroups(c.sku).find((x) => Number(x.price) === Number(c.price));
+    if (!g) return Number(c.max) || 0;
+    return Math.max(0, g.qty - inCartAt(c.sku, c.price, c));
+  }
+  function pushLine(v, price, qty) {
+    const key = `${v.sku}|${v.color || ''}|${v.size || ''}|${price}`;
+    const found = cart.find((c) => c.vsKey === key);
+    if (found) { found.qty += qty; cart = cart; return; }
+    const g = priceGroups(v.sku).find((x) => Number(x.price) === Number(price));
+    const cap = g ? g.qty : (products.find((x) => x.sku === v.sku)?.qty || qty);
+    cart = [...cart, { ...v, price, qty, max: cap, vsKey: key }];
+  }
+  /* one cart line per (sku, color, size, price) — same-kind pieces merge */
   function addLine(v, qty = 1) {
-    /* خُطوة: نبض اللمس يقوى مع امتلاء السلة — يدك تحس باليوم وهو يكبر (6ms → 10ms) */
     const step = 6 + Math.min(4, cartCount);
-    const found = cart.find((c) => c.sku === v.sku && (c.color || '') === (v.color || '') && (c.size || '') === (v.size || ''));
-    const max = products.find((x) => x.sku === v.sku)?.qty || 0;
-    if (found) {
-      if (found.qty + qty > max) { toastErr('وصلت لأقصى الكمية المتوفرة'); return; }
-      found.qty += qty;
-      cart = cart;
+    const groups = priceGroups(v.sku);
+    if (!groups.length) {
+      /* بطاقة بلا دفعات مفتوحة (حالة نادرة) — السعر كما هو */
+      const max = products.find((x) => x.sku === v.sku)?.qty || 0;
+      if (inCartAt(v.sku, v.price) + qty > max) { toastErr('وصلت لأقصى الكمية المتوفرة'); return; }
+      pushLine(v, v.price, qty);
     } else {
-      cart = [...cart, { ...v, qty, max, vsKey: `${v.sku}|${v.color || ''}|${v.size || ''}` }];
+      let left = qty;
+      for (const g of groups) {
+        if (left <= 0) break;
+        const free = g.qty - inCartAt(v.sku, g.price);
+        if (free <= 0) continue;
+        const take = Math.min(left, free);
+        pushLine(v, g.price, take);
+        left -= take;
+      }
+      if (left > 0) { toastErr('وصلت لأقصى الكمية المتوفرة'); buzz([20, 40, 20]); return; }
     }
     buzz(step);
     toast(`${v.name} أُضيف للسلة`);
   }
 
   function setQty(c, d) {
-    if (d > 0 && c.qty >= c.max) { toastErr('أقصى كمية متوفرة'); return; }
+    if (d > 0 && c.qty >= lineCap(c)) { toastErr('أقصى كمية متوفرة بهذا السعر'); return; }
     c.qty += d;
     if (c.qty <= 0) cart = cart.filter((x) => x !== c);
     else cart = cart;
+    buzz(6);
+  }
+
+  /* تغيير سعر السطر = تغيير الدفعة التي تُصرف منها القطعة */
+  function setLinePrice(c, price) {
+    const g = priceGroups(c.sku).find((x) => Number(x.price) === Number(price));
+    if (!g) return;
+    const free = g.qty - inCartAt(c.sku, price, c);
+    if (free < c.qty) {
+      toastErr(`الدفعة بسعر ${fmtIQD(price)} فيها ${fmtNum(Math.max(0, free))} قطعة فقط`);
+      buzz([20, 40, 20]);
+      return;
+    }
+    c.price = Number(price);
+    c.max = g.qty;
+    c.vsKey = `${c.sku}|${c.color || ''}|${c.size || ''}|${c.price}`;
+    const twin = cart.find((x) => x !== c && x.vsKey === c.vsKey);
+    if (twin) {
+      twin.qty = Math.min(twin.qty + c.qty, twin.max);
+      cart = cart.filter((x) => x !== c);
+    } else cart = cart;
     buzz(6);
   }
 
@@ -499,10 +565,14 @@
     }
     c.sku = match.sku;
     c.cost = match.cost ?? c.cost;
-    c.max = match.qty || 0;
     c.color = (match.color || '').trim();
     c.size = String(match.size || '').trim();
-    c.vsKey = `${c.sku}|${c.color}|${c.size}`;
+    /* السعر يتبع دفعات البطاقة الجديدة — إن لم يكن سعر السطر موجوداً فيها
+       (لون/مقاس آخر بدفعات أخرى) يعود إلى سعر أقدم دفعة مفتوحة */
+    const groups = priceGroups(match.sku);
+    if (groups.length && !groups.some((g) => Number(g.price) === Number(c.price))) c.price = groups[0].price;
+    c.max = groups.length ? groups.reduce((a, g) => a + g.qty, 0) : (match.qty || 0);
+    c.vsKey = `${c.sku}|${c.color || ''}|${c.size || ''}|${c.price}`;
     if (c.qty > c.max) { c.qty = c.max; if (!c.qty) cart = cart.filter((x) => x !== c); }
     /* another line already sells this exact variant → merge into it */
     const twin = cart.find((x) => x !== c && x.vsKey === c.vsKey);
@@ -919,6 +989,24 @@
               onchange={() => rekeyLine(c)}
             />
           </div>
+          {#if priceGroups(c.sku).length > 1}
+            <div class="price-opts">
+              <span class="po-lbl">السعر — أي دفعة؟</span>
+              <div class="po-row">
+                {#each priceGroups(c.sku) as g (g.price)}
+                  <button
+                    type="button"
+                    class="pchip"
+                    class:on={Number(c.price) === Number(g.price)}
+                    onclick={() => setLinePrice(c, g.price)}
+                  >
+                    <b>{fmtIQD(g.price)}</b>
+                    <span class="po-sub">{g.suppliers.join(' · ') || 'بدون مورد'} · {fmtNum(g.qty)} قطعة</span>
+                  </button>
+                {/each}
+              </div>
+            </div>
+          {/if}
           <div class="muted small">{fmtIQD(c.price)} × {c.qty} = <span class="money">{fmtIQD(c.price * c.qty)}</span></div>
         </div>
         <div class="stepper">
@@ -1264,6 +1352,30 @@
   .ci-thumb img { width: 100%; height: 100%; object-fit: cover; }
   .ci-variants { display: flex; gap: 6px; }
   .ci-variants > :global(.pk) { flex: 1; min-width: 0; width: auto; }
+  /* اختيار سعر الدفعة عند الإتمام — يظهر فقط حين تختلف الأسعار فعلاً */
+  .price-opts { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; }
+  .po-lbl { font-size: 10.5px; font-weight: 700; color: var(--taupe); }
+  .po-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pchip {
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+    padding: 7px 9px;
+    border-radius: 11px;
+    border: 1.5px solid var(--line);
+    background: rgba(255, 255, 255, 0.55);
+    color: var(--ink);
+    cursor: pointer;
+    transition: border-color 0.18s, background 0.18s, transform 0.15s;
+  }
+  .pchip b { font-size: 12.5px; font-weight: 800; }
+  .pchip .po-sub { font-size: 9.5px; color: var(--taupe); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .pchip.on {
+    border-color: var(--burgundy);
+    background: linear-gradient(150deg, rgba(181, 73, 91, 0.12), rgba(201, 161, 90, 0.14));
+    box-shadow: 0 3px 10px rgba(181, 73, 91, 0.14);
+  }
+  .pchip:active { transform: scale(0.97); }
   :global(.vrow) {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
     padding: 10px 12px;

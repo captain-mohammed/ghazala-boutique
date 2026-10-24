@@ -148,6 +148,23 @@
   const typeMax = $derived(Math.max(1, ...byType.map((t) => t.profit)));
   const typeRevenue = $derived(byType.reduce((a, t) => a + t.revenue, 0));
 
+  /* ---- الربح حسب المورد ----
+     كل سطر بيع يحمل مورّد الدفعة التي خرجت منها القطعة وتكلفتها الحقيقية.
+     فالسؤال «من أي مورد ربحت أكثر؟» له جواب رقمي لا تقدير. */
+  const bySupplier = $derived.by(() => {
+    const m = new Map();
+    for (const s of inPeriod) for (const it of s.items) {
+      const sup = (it.supplier || '').trim() || 'بدون مورد';
+      const cur = m.get(sup) || { supplier: sup, qty: 0, revenue: 0, profit: 0 };
+      cur.qty += it.qty;
+      cur.revenue += it.price * it.qty;
+      cur.profit += (it.price - (it.cost || 0)) * it.qty;
+      m.set(sup, cur);
+    }
+    return [...m.values()].sort((a, b) => b.profit - a.profit);
+  });
+  const supplierMax = $derived(Math.max(1, ...bySupplier.map((t) => Math.abs(t.profit))));
+
 </script>
 
 <div class="stack" style="gap:12px">
@@ -208,6 +225,25 @@
             </div>
             <div class="tp-bar"><i style="width:{Math.max(3, (t.profit / typeMax) * 100)}%"></i></div>
             <div class="muted tiny" style="margin-top:4px">{typeRevenue ? Math.round((t.revenue / typeRevenue) * 100) : 0}% من الإيراد — {fmtIQD(t.revenue)}</div>
+          </div>
+        {/each}
+      </div>
+    </Glass>
+  {/if}
+
+  {#if bySupplier.length > 1}
+    <Glass class="rise" style="animation-delay:0.2s; padding:16px">
+      <h2 class="h2" style="margin-bottom:4px"><Icon name="box" size={17} color="var(--gold)" /> الربح حسب المورد</h2>
+      <p class="muted tiny" style="margin:0 0 10px">كل قطعة تُحسب بتكلفة دفعة مورّدها الحقيقي — لا بمتوسط يخلط الموردين.</p>
+      <div class="stack" style="gap:10px">
+        {#each bySupplier as t (t.supplier)}
+          <div class="tp-row">
+            <div class="row" style="justify-content:space-between; margin-bottom:5px">
+              <span class="bold small">{t.supplier} <span class="muted" style="font-weight:600">- {fmtNum(t.qty)} قطعة</span></span>
+              <span class="money small" style="color:{t.profit >= 0 ? 'var(--good)' : 'var(--burgundy)'}">{fmtIQD(t.profit)}</span>
+            </div>
+            <div class="tp-bar"><i style="width:{Math.max(3, (Math.abs(t.profit) / supplierMax) * 100)}%"></i></div>
+            <div class="muted tiny" style="margin-top:4px">إيراد {fmtIQD(t.revenue)} — ربح {fmtIQD(t.profit)}</div>
           </div>
         {/each}
       </div>

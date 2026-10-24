@@ -34,6 +34,24 @@
     } catch { photoMap = {}; }
   }
 
+  /* دفعات كل بطاقة — تُقرأ مرة واحدة (مثل الصور). الغرض: **تفسير** اختلاف
+     التكلفة بين بطاقات الموديل بدل اعتباره دمجاً خاطئاً. */
+  let lotInfo = {};
+  async function loadLots() {
+    try {
+      const rows = await db.lots.toArray();
+      const m = {};
+      for (const l of rows) {
+        const cur = m[l.sku] || { count: 0, suppliers: [] };
+        cur.count++;
+        const s = (l.supplier || '').trim();
+        if (s && !cur.suppliers.includes(s)) cur.suppliers.push(s);
+        m[l.sku] = cur;
+      }
+      lotInfo = m;
+    } catch { lotInfo = {}; }
+  }
+
   /* إلحاق الصورة بكل بطاقة (الفصل) وكل موديل (الدمج) */
   function decorate(a, b) {
     return {
@@ -43,7 +61,7 @@
   }
 
   async function scan() {
-    await loadPhotos();
+    await Promise.all([loadPhotos(), loadLots()]);
     const [a, b] = await Promise.all([findMergedModels(), findSimilarModels()]);
     const d = decorate(a, b);
     merged = d.merged; similar = d.similar;
@@ -59,8 +77,8 @@
       /* التحديث الدوري لا يلمس اختياراتك — يقرأ الواقع من جديد فقط */
       if (alive) { merged = d.merged; similar = d.similar; loaded = true; }
     };
-    /* الصور أولاً، ثم الاستطلاع — كي تظهر الصورة من أول رسم */
-    loadPhotos().then(() => { if (alive) grab(); });
+    /* الصور والدفعات أولاً، ثم الاستطلاع — كي تظهر الصورة من أول رسم */
+    Promise.all([loadPhotos(), loadLots()]).then(() => { if (alive) grab(); });
     const t = setInterval(grab, 6000);
     return () => { alive = false; clearInterval(t); };
   });
@@ -81,17 +99,20 @@
     buzz(6);
   }
 
-  /* الشواذ: البطاقات التي تختلف تكلفتها أو سعرها أو صورتها عن الأغلبية —
-     عادةً البطاقات الدخيلة التي يجب فصلها */
+  /* الشواذ: البطاقات التي تختلف **هويتها** عن الأغلبية — سلسلة النوع أو
+     الموسم أو المادة. لا تُختار على أساس التكلفة: منذ الدفعات صار اختلاف
+     التكلفة داخل الموديل طبيعياً (موردان، سعران)، والاختيار على أساسها كان
+     يرشّح بطاقات سليمة للفصل. */
   function outliers(g) {
+    const keyOf = (p) =>
+      [p.type, p.typeSub, p.typeSub2, p.typeSub3, p.season,
+       Array.isArray(p.seasons) ? p.seasons.join(',') : '', p.material]
+        .map((x) => String(x || '').trim()).join('|');
     const tally = new Map();
-    for (const p of g.items) {
-      const k = `${p.cost || 0}|${p.price || 0}|${p.photo || ''}`;
-      tally.set(k, (tally.get(k) || 0) + 1);
-    }
+    for (const p of g.items) tally.set(keyOf(p), (tally.get(keyOf(p)) || 0) + 1);
     let best = null, bestN = -1;
     for (const [k, n] of tally) if (n > bestN) { bestN = n; best = k; }
-    return g.items.filter((p) => `${p.cost || 0}|${p.price || 0}|${p.photo || ''}` !== best);
+    return g.items.filter((p) => keyOf(p) !== best);
   }
   function pickOutliers(g) {
     const out = outliers(g);
@@ -187,13 +208,17 @@
         <span class="sect-ic"><Icon name="scissors" size={16} color="var(--burgundy)" /></span>
         <span class="sect-txt">
           <span class="sect-t">بطاقات مدمجة خطأً</span>
-          <span class="sect-s">بطاقات تختلف في التكلفة أو السعر، أو تحمل اللون والمقاس مرتين</span>
+          <span class="sect-s">تكرار اللون والمقاس، أو اختلاف سلسلة النوع داخل الموديل نفسه</span>
         </span>
         <span class="sect-n">{fmtNum(merged.length)}</span>
         <span class="chev" class:open={secOpen.merged} aria-hidden="true"></span>
       </button>
 
       {#if secOpen.merged}
+      <div class="muted tiny rep-note">
+        اختلاف التكلفة أو السعر بين بطاقات الموديل <b>طبيعي</b> — دفعات من موردين مختلفين.
+        الفحص هنا للهوية: تكرار اللون/المقاس، واختلاف سلسلة النوع.
+      </div>
       {#each merged as g (g.key)}
         {@const sel = selOf(g.key)}
         <Glass class="rep-card rise">
@@ -222,6 +247,9 @@
                   <span class="prow"><b class="bold">{p.color || 'بلا لون'}</b> · مقاس {p.size || '—'} <span class="qty-chip">{fmtNum(p.qty || 0)} قطعة</span></span>
                   {#if metaOf(p)}<span class="prow muted tiny">{metaOf(p)}</span>{/if}
                   <span class="prow tiny">تكلفة {fmtIQD(p.cost)} · بيع {fmtIQD(p.price)}</span>
+                  {#if lotInfo[p.sku]?.count > 1}
+                    <span class="prow tiny lots-note">{fmtNum(lotInfo[p.sku].count)} دفعة — {lotInfo[p.sku].suppliers.join('، ') || 'بدون مورد'}</span>
+                  {/if}
                   <span class="prow muted tiny">{p.sku} · وصول {dayOf(p.createdAt || p.updatedAt)}</span>
                   {#if p.supplier}<span class="prow muted tiny">المورد: {p.supplier}</span>{/if}
                 </span>
@@ -452,4 +480,15 @@
 
   .acts { display: flex; gap: 8px; }
   .acts :global(.btn) { flex: 1; min-height: 42px; }
+
+  /* شرح أن اختلاف المال ليس دمجاً — قبل قائمة الحالات */
+  .rep-note {
+    display: block;
+    line-height: 1.6;
+    padding: 9px 12px;
+    border-radius: 11px;
+    background: var(--gold-soft, rgba(201, 162, 75, 0.12));
+    color: var(--burgundy-deep);
+  }
+  .lots-note { color: #8a6a35; font-weight: 700; }
 </style>

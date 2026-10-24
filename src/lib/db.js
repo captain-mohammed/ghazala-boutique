@@ -95,6 +95,54 @@ db.version(7).stores({
   photos: 'modelId'
 });
 
+/* v8: + lots (الدفعات)
+   الحذاء الواحد يُشترى أكثر من مرة، من موردين مختلفين، بتكلفة وسعر بيع
+   مختلفين — وهو **نفس الموديل**. البطاقة (sku) تبقى واحدة، وداخلها «دفعات»:
+   كل وصول دفعة بمورّدها وتكلفتها وسعرها وكميتها المتبقية.
+
+   • المخزون = مجموع المتبقي في الدفعات (لا رقم مسطّح)
+   • تكلفة البطاقة = متوسط مرجّح للدفعات المفتوحة (للعرض والتقدير)
+   • سعر العرض = سعر أقدم دفعة مفتوحة (وهو الافتراضي عند البيع)
+   • البيع يخصم من الدفعة التي بسعرها بيعت، فيُسجَّل الربح بتكلفة الدفعة
+     الحقيقية لا بمتوسط يخلط موردين.
+
+   كانت فاتورة الوارد تدمج السطر في الموديل القائم وتكتب فوق cost/price،
+   فتسقط تكلفة الدفعة القديمة بصمت ويُحسب ربح القطع القديمة بتكلفة المورّد
+   الجديد. هذا الجدول ينهي ذلك: كل وصول يُضاف كدفعة، ولا يُكتب فوق قديم. */
+db.version(8).stores({
+  products: 'sku, modelId, name, category, brand, color, size, qty, updatedAt',
+  sales: '++id, date, status, customerName, customerPhone, barcode, deliveryCompany, settledAt, fromReservation',
+  movements: '++id, sku, date, type',
+  settings: 'key',
+  expenses: '++id, date, category',
+  reservations: '++id, sku, createdAt, expiresAt, status',
+  occasions: '++id, customerName, customerPhone, month, day, date',
+  vault: '++id, date, saleId, kind',
+  waitlists: 'key, status, modelId, sku, createdAt',
+  referrals: '++id, fromKey, toKey, date',
+  testimonials: '++id, customerName, customerPhone, date, modelId',
+  payments: '++id, company, date',
+  photos: 'modelId',
+  lots: '++id, sku, modelId, supplier, receivedAt'
+}).upgrade(async (tx) => {
+  /* كل بطاقة على الرف اليوم = دفعة واحدة ببياناتها الحالية. بلا هذه الترقية
+     تُفتح البطاقة بكمية وبلا دفعات، فيصير المخزون صفراً عند أول جلب. */
+  const products = await tx.table('products').toArray();
+  const rows = [];
+  for (const p of products) {
+    const qty = Number(p.qty) || 0;
+    if (qty <= 0) continue;
+    rows.push({
+      sku: p.sku, modelId: p.modelId || '', supplier: (p.supplier || '').trim(),
+      cost: Number(p.cost) || 0, price: Number(p.price) || 0,
+      qty, remaining: qty,
+      receivedAt: p.restockedAt || p.createdAt || new Date().toISOString(),
+      invoice: '', note: 'رصيد سابق', legacy: true
+    });
+  }
+  if (rows.length) await tx.table('lots').bulkAdd(rows);
+});
+
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
 export const WOMENS_TYPES = ['بوت', 'سلامبر', 'موال', 'كعب عالي'];
 
@@ -243,7 +291,15 @@ export async function nextSku() {
    the identity the user sees, this number is the identity the app knows.
    Never shown anywhere — it lives only inside the records. */
 export async function nextModelId() {
-  const n = (await getSetting('modelIdSeq', 0)) + 1;
+  let n = (await getSetting('modelIdSeq', 0)) + 1;
+  /* ⚠️ العدّاد وحده لا يكفي: نسخة احتياطية قديمة قد تخلو من `modelIdSeq`،
+     أو إعداد ممحو يرجّعه إلى صفر — فيُعاد رقم موديل موجود، فيندمج موديلان
+     مختلفان تحت رقم واحد بصمت. نتحقق من الفراغ فعلياً في البطاقات والدفعات. */
+  const [products, lots] = await Promise.all([db.products.toArray(), db.lots.toArray()]);
+  const used = new Set();
+  for (const p of products) if (p.modelId) used.add(p.modelId);
+  for (const l of lots) if (l.modelId) used.add(l.modelId);
+  while (used.has('M-' + String(n).padStart(4, '0'))) n++;
   await setSetting('modelIdSeq', n);
   return 'M-' + String(n).padStart(4, '0');
 }
@@ -410,6 +466,213 @@ export async function migratePhotosToTable() {
   }
 }
 
+/* ---------------- الدفعات (lots) — محرّك المخزون الحقيقي ----------------
+   كل قطعة على الرف تنتمي إلى دفعة: وصول واحد من مورّد واحد بتكلفة وسعر
+   محدّدين. البطاقة (sku) تعرض المجموع، والدفعات تحتفظ بالتفصيل. */
+
+const lotLeft = (l) => Math.max(0, Number(l.remaining) || 0);
+const oldestFirst = (a, b) =>
+  new Date(a.receivedAt || 0) - new Date(b.receivedAt || 0) || (a.id || 0) - (b.id || 0);
+
+/* دفعات بطاقة واحدة — الأقدم أولاً (الترتيب هو ترتيب الصرف) */
+export async function lotsOf(sku, { openOnly = true } = {}) {
+  const rows = await db.lots.where('sku').equals(sku).toArray();
+  return (openOnly ? rows.filter((l) => lotLeft(l) > 0) : rows).sort(oldestFirst);
+}
+
+/* كل الدفعات المفتوحة في جدول واحد: sku → [lots] — جلب واحد للشاشات
+   (شاشة البيع تعرض سعر كل دفعة بلا استعلام لكل بطاقة) */
+export async function openLotIndex() {
+  const rows = await db.lots.toArray();
+  const map = new Map();
+  for (const l of rows) {
+    if (lotLeft(l) <= 0) continue;
+    if (!map.has(l.sku)) map.set(l.sku, []);
+    map.get(l.sku).push(l);
+  }
+  for (const list of map.values()) list.sort(oldestFirst);
+  return map;
+}
+
+/* خيارات السعر: سعر واحد لكل مجموعة دفعات بنفس السعر. سعران متساويان ليسا
+   خيارين — لا نُرهق المستخدمة باختيار لا فرق فيه. */
+export function priceOptionsFrom(lots) {
+  const open = (lots || []).filter((l) => lotLeft(l) > 0);
+  if (!open.length) return [];
+  const byPrice = new Map();
+  for (const l of open) {
+    const price = Number(l.price) || 0;
+    const cur = byPrice.get(price) || { price, qty: 0, suppliers: [], firstAt: l.receivedAt || '' };
+    cur.qty += lotLeft(l);
+    const sup = (l.supplier || '').trim();
+    if (sup && !cur.suppliers.includes(sup)) cur.suppliers.push(sup);
+    byPrice.set(price, cur);
+  }
+  return [...byPrice.values()].sort((a, b) => new Date(a.firstAt || 0) - new Date(b.firstAt || 0));
+}
+
+export async function priceOptionsFor(sku) {
+  return priceOptionsFrom(await lotsOf(sku));
+}
+
+/* بطاقة قديمة/مرمّمة بلا دفعات؟ نمنحها دفعة واحدة برصيدها الحالي — حتى لا
+   يتحوّل مخزونها إلى صفر عند أول عملية. */
+async function ensureLotsFor(sku) {
+  const p = await db.products.get(sku);
+  if (!p) return null;
+  if (await db.lots.where('sku').equals(sku).count()) return p;
+  const qty = Number(p.qty) || 0;
+  if (qty <= 0) return p;
+  await db.lots.add({
+    sku, modelId: p.modelId || '', supplier: (p.supplier || '').trim(),
+    cost: Number(p.cost) || 0, price: Number(p.price) || 0,
+    qty, remaining: qty,
+    receivedAt: p.restockedAt || p.createdAt || new Date().toISOString(),
+    invoice: '', note: 'رصيد سابق', legacy: true
+  });
+  return p;
+}
+
+/* شبكة أمان: أي بطاقة على الرف بكمية ولا دفعات لها تحصل على دفعة برصيدها
+   الحالي. تعمل عند الاستعادة من نسخة قديمة، وعند أي خلل تاريخي. */
+export async function backfillLots() {
+  const products = await db.products.toArray();
+  const have = new Set((await db.lots.toArray()).map((l) => l.sku));
+  const rows = [];
+  for (const p of products) {
+    const qty = Number(p.qty) || 0;
+    if (qty <= 0 || have.has(p.sku)) continue;
+    rows.push({
+      sku: p.sku, modelId: p.modelId || '', supplier: (p.supplier || '').trim(),
+      cost: Number(p.cost) || 0, price: Number(p.price) || 0,
+      qty, remaining: qty,
+      receivedAt: p.restockedAt || p.createdAt || new Date().toISOString(),
+      invoice: '', note: 'رصيد سابق', legacy: true
+    });
+  }
+  if (rows.length) await db.lots.bulkAdd(rows);
+  return rows.length;
+}
+
+/* وصول دفعة جديدة — لا يُكتب فوق أي دفعة قائمة */
+export async function addLot({ sku, supplier = '', cost = 0, price = 0, qty = 0, receivedAt, invoice = '', note = '' }) {
+  const q = Math.max(0, Math.round(Number(qty) || 0));
+  if (!q) return null;
+  const p = await db.products.get(sku);
+  if (!p) return null;
+  const id = await db.lots.add({
+    sku, modelId: p.modelId || '', supplier: (supplier || '').trim(),
+    cost: Math.max(0, Number(cost) || 0), price: Math.max(0, Number(price) || 0),
+    qty: q, remaining: q,
+    receivedAt: receivedAt || new Date().toISOString(),
+    invoice: invoice || '', note: note || ''
+  });
+  await syncCardFromLots(sku);
+  return id;
+}
+
+/* البطاقة مرآة الدفعات: الكمية = مجموع المتبقي، التكلفة = متوسط مرجّح،
+   والسعر = سعر أقدم دفعة مفتوحة (فيتقدّم السعر وحده حين تنتهي الدفعة القديمة). */
+export async function syncCardFromLots(sku) {
+  const p = await ensureLotsFor(sku);
+  if (!p) return null;
+  const open = await lotsOf(sku);
+  const now = new Date().toISOString();
+  if (!open.length) {
+    if ((Number(p.qty) || 0) !== 0) {
+      await db.products.update(sku, { qty: 0, updatedAt: now });
+      return db.products.get(sku);
+    }
+    return p;
+  }
+  const qty = open.reduce((a, l) => a + lotLeft(l), 0);
+  const value = open.reduce((a, l) => a + lotLeft(l) * (Number(l.cost) || 0), 0);
+  const patch = {
+    qty,
+    cost: qty ? Math.round(value / qty) : (Number(p.cost) || 0),
+    price: Number(open[0].price) || Number(p.price) || 0,
+    updatedAt: now
+  };
+  await db.products.update(sku, patch);
+  return { ...p, ...patch };
+}
+
+/* صرف كمية من دفعات بسعر محدّد (FIFO داخل نفس السعر). السعر غير الموجود
+   (تغيّر يدوي مثلاً) يرتد إلى الأقدم المتاح بدل أن يفشل البيع. */
+export async function consumeAtPrice(sku, price, qty) {
+  const want = Math.max(0, Math.round(Number(qty) || 0));
+  await ensureLotsFor(sku);
+  const all = await lotsOf(sku);
+  if (!all.length || !want) return { alloc: [], cost: 0, unitCost: 0, missing: want };
+  const exact = all.filter((l) => Number(l.price) === Number(price));
+  const ordered = [...exact, ...all.filter((l) => !exact.includes(l))];
+  const left = new Map(all.map((l) => [l.id, lotLeft(l)]));
+  const alloc = [];
+  let need = want;
+  for (const l of ordered) {
+    if (need <= 0) break;
+    const avail = left.get(l.id) || 0;
+    if (avail <= 0) continue;
+    const take = Math.min(need, avail);
+    left.set(l.id, avail - take);
+    await db.lots.update(l.id, { remaining: avail - take });
+    alloc.push({ lotId: l.id, qty: take, cost: Number(l.cost) || 0, supplier: (l.supplier || '').trim() });
+    need -= take;
+  }
+  const cost = alloc.reduce((a, x) => a + x.qty * x.cost, 0);
+  const got = alloc.reduce((a, x) => a + x.qty, 0);
+  return { alloc, cost, unitCost: got ? Math.round(cost / got) : 0, missing: need };
+}
+
+/* صرف بلا سعر محدّد (تعديل يدوي، جرد، حجز) — الأقدم أولاً */
+export async function consumeAny(sku, qty) {
+  await ensureLotsFor(sku);
+  const all = await lotsOf(sku);
+  let need = Math.max(0, Math.round(Number(qty) || 0));
+  const alloc = [];
+  for (const l of all) {
+    if (need <= 0) break;
+    const avail = lotLeft(l);
+    const take = Math.min(need, avail);
+    if (take <= 0) continue;
+    await db.lots.update(l.id, { remaining: avail - take });
+    alloc.push({ lotId: l.id, qty: take, cost: Number(l.cost) || 0, supplier: (l.supplier || '').trim() });
+    need -= take;
+  }
+  return { alloc, missing: need };
+}
+
+/* إرجاع قطع إلى دفعاتها بالضبط (إرجاع بيع) — لا إلى «دفعة جديدة»، فالمخزون
+   يرجع كما خرج. سطر قديم بلا تفصيل دفعات يرجع لدفعة بنفس التكلفة والسعر. */
+export async function restoreLots(items) {
+  for (const it of items || []) {
+    const q = Math.max(0, Math.round(Number(it.qty) || 0));
+    if (!q || !it.sku) continue;
+    if (Array.isArray(it.lots) && it.lots.length) {
+      for (const a of it.lots) {
+        const l = await db.lots.get(a.lotId);
+        if (l) await db.lots.update(a.lotId, { remaining: lotLeft(l) + (Number(a.qty) || 0) });
+      }
+    } else {
+      const rows = await lotsOf(it.sku, { openOnly: false });
+      const twin = rows
+        .filter((l) => Number(l.cost) === (Number(it.cost) || 0) && Number(l.price) === (Number(it.price) || 0))
+        .sort(oldestFirst)[0];
+      if (twin) await db.lots.update(twin.id, { remaining: lotLeft(twin) + q });
+      else await addLot({ sku: it.sku, cost: it.cost, price: it.price, qty: q, note: 'إرجاع بيع' });
+    }
+    await syncCardFromLots(it.sku);
+  }
+}
+
+export async function deleteLotsOf(skus) {
+  const list = Array.isArray(skus) ? skus : [skus];
+  for (const sku of list) {
+    const rows = await db.lots.where('sku').equals(sku).toArray();
+    if (rows.length) await db.lots.bulkDelete(rows.map((r) => r.id));
+  }
+}
+
 export async function addProduct(data, { moveNote } = {}) {
   /* Svelte $state proxies (seasons، sizes grids، سطور الفاتورة) لا تُستنسخ
      إلى IndexedDB — نفس فخ setSetting: جولة JSON تُجرّدها قبل أي put */
@@ -431,9 +694,40 @@ export async function addProduct(data, { moveNote } = {}) {
   /* الصورة تُحفظ مرة لكل موديل في جدولها — لا تُنسخ على كل بطاقة */
   const photoData = p.photo;
   if (photoData) await setModelPhoto(p.modelId, photoData);
+
+  /* حزام أمان ضد البطاقة المكرّرة: الإضافة إلى **موديل قائم** (modelId صريح)
+     لا يجوز أن تُنشئ بطاقة ثانية بنفس اللون والمقاس — بطاقتان لِمتغيّر واحد
+     تضخّمان الكمية وتقسّمان «نفد». المتغيّر الموجود يستقبل دفعة، وهذا ليس
+     دمجاً صامتاً للهوية: الموديل مُعلَن أصلاً من المستدعي. */
+  if (data.modelId) {
+    const twin = await db.products
+      .where('modelId').equals(p.modelId)
+      .filter((x) => (x.color || '').trim() === (p.color || '').trim() && String(x.size || '').trim() === String(p.size || '').trim())
+      .first();
+    if (twin) {
+      if (Number(p.qty) > 0) {
+        await addLot({
+          sku: twin.sku, supplier: p.supplier, cost: p.cost, price: p.price,
+          qty: p.qty, receivedAt: createdAt, note: moveNote || 'دفعة على متغيّر موجود'
+        });
+        await logMovement({ sku: twin.sku, type: 'in', qty: p.qty, note: moveNote || 'دفعة على متغيّر موجود', date: createdAt });
+      }
+      await syncModelOos(twin.sku);
+      const fresh = await db.products.get(twin.sku);
+      return { ...fresh, photo: photoData || fresh.photo };
+    }
+  }
+
   p.photo = null;
   await db.products.put(p);
   p.photo = photoData;   /* تُلحق بالكائن المُرجع للمتصل فقط — غير مخزّنة على البطاقة */
+  /* أول دفعة: تسجيل جديد بكمية = وصول واحد بمورّده وتكلفته وسعره */
+  if (Number(p.qty) > 0) {
+    await addLot({
+      sku, supplier: p.supplier, cost: p.cost, price: p.price,
+      qty: p.qty, receivedAt: createdAt, note: moveNote || 'إضافة أولية'
+    });
+  }
   if (p.qty > 0) await logMovement({ sku, type: 'in', qty: p.qty, note: moveNote || 'إضافة أولية', date: createdAt });
   await syncModelOos(sku);
   return p;
@@ -446,7 +740,7 @@ export async function updateProduct(sku, changes, moveNote) {
   changes = JSON.parse(JSON.stringify(changes ?? {}));
   const now = new Date().toISOString();
   const p = { ...before, ...changes, sku, updatedAt: now };
-  const diff = (Number(changes.qty ?? before.qty) || 0) - before.qty;
+  const diff = (Number(changes.qty ?? before.qty) || 0) - (Number(before.qty) || 0);
   /* pieces went back on the shelf → the راكد clock restarts from here */
   if (diff > 0) p.restockedAt = now;
   /* صورة الموديل إلى جدولها — ولا تُخزَّن على البطاقة */
@@ -455,6 +749,31 @@ export async function updateProduct(sku, changes, moveNote) {
   p.photo = null;
   await db.products.put(p);
   p.photo = photoData;
+  /* الكمية لا تُكتب مباشرة: تُترجم إلى دفعة جديدة (زيادة) أو صرف من الأقدم
+     (نقصان)، ثم تُقرأ البطاقة من الدفعات. كتابة qty وحدها كانت تترك الدفعات
+     والبطاقة يفترقان، فيرجع الفرق للظهور عند أول بيع. */
+  if (diff > 0) {
+    await addLot({
+      sku, supplier: p.supplier, cost: p.cost, price: p.price, qty: diff,
+      receivedAt: p.restockedAt || now, note: moveNote || 'تعديل يدوي — زيادة'
+    });
+  } else if (diff < 0) {
+    await consumeAny(sku, -diff);
+  }
+  /* تعديل صريح للسعر/التكلفة يسري على الدفعات المفتوحة كلها — وإلا لبقي على
+     الرف سعر قديم لا يعرفه أحد. لا يُنفَّذ إلا عند تغيّر حقيقي في الرقم،
+     فحفظ الموديل بلا لمس المال لا يعيد كتابة تاريخ الدفعات. */
+  if (Number(changes.price) !== Number(before.price) || Number(changes.cost) !== Number(before.cost)) {
+    const money = {};
+    if (changes.price !== undefined) money.price = Number(p.price) || 0;
+    if (changes.cost !== undefined) money.cost = Number(p.cost) || 0;
+    const open = await lotsOf(sku);
+    for (const l of open) await db.lots.update(l.id, money);
+  }
+  if (diff !== 0 || Number(changes.price) !== Number(before.price) || Number(changes.cost) !== Number(before.cost)) {
+    const synced = await syncCardFromLots(sku);
+    if (synced) Object.assign(p, { qty: synced.qty, cost: synced.cost, price: synced.price });
+  }
   if (diff !== 0) {
     await logMovement({
       sku, type: diff > 0 ? 'in' : 'out', qty: Math.abs(diff),
@@ -469,20 +788,31 @@ export async function adjustQty(sku, delta, note) {
   const p = await db.products.get(sku);
   if (!p) throw new Error('المنتج غير موجود');
   const q = Math.max(0, (Number(p.qty) || 0) + delta);
-  const patch = { qty: q, updatedAt: new Date().toISOString() };
-  if (delta > 0) patch.restockedAt = patch.updatedAt;
-  await db.products.update(sku, patch);
-  if (delta !== 0) {
+  const real = q - (Number(p.qty) || 0);   /* الكمية الفعلية بعد الحدّ عند صفر */
+  const now = new Date().toISOString();
+  if (real > 0) {
+    await addLot({
+      sku, supplier: p.supplier, cost: p.cost, price: p.price, qty: real,
+      receivedAt: now, note: note || 'إضافة مخزون'
+    });
+    await db.products.update(sku, { restockedAt: now });
+  } else if (real < 0) {
+    await consumeAny(sku, -real);
+  }
+  await syncCardFromLots(sku);
+  if (real !== 0) {
     await logMovement({
-      sku, type: delta > 0 ? 'in' : 'out', qty: Math.abs(delta),
-      note: note || (delta > 0 ? 'إضافة مخزون' : 'خصم مخزون')
+      sku, type: real > 0 ? 'in' : 'out', qty: Math.abs(real),
+      note: note || (real > 0 ? 'إضافة مخزون' : 'خصم مخزون')
     });
   }
   await syncModelOos(sku);
-  return q;
+  const fresh = await db.products.get(sku);
+  return fresh ? fresh.qty : q;
 }
 
 export async function deleteProduct(sku) {
+  await deleteLotsOf(sku);
   await db.products.delete(sku);
 }
 
@@ -504,15 +834,20 @@ export async function backfillModelIds() {
     /* رقم واحد موجود داخل المجموعة ⇒ لا نلمس شيئاً */
     if (members.some((m) => m.modelId)) continue;
     const mid = await nextModelId();
-    for (const m of members) await db.products.update(m.sku, { modelId: mid });
+    for (const m of members) {
+      await db.products.update(m.sku, { modelId: mid });
+      const rows = await db.lots.where('sku').equals(m.sku).toArray();
+      for (const l of rows) await db.lots.update(l.id, { modelId: mid });
+    }
   }
 }
 
 /* ---------------- إصلاح الموديلات المدمجة ----------------
-   الدمج الخاطئ يترك بصمة واضحة: بطاقات تحت رقم موديل واحد تختلف في التكلفة أو
-   سعر البيع — أو تحمل اللون والمقاس نفسه مرتين. الموديل الحقيقي الواحد (نفس
-   الحذاء بألوانه ومقاساته) لا يفعل ذلك أبداً، فوجود أي منها دليل دمج. الفحص
-   للقراءة فقط ولا يعدّل شيئاً.
+   ⚠️ منذ v0.27.0 اختلاف **التكلفة أو السعر** بين بطاقات الموديل ليس دليل
+   دمج: نفس الحذاء يُشترى من موردين بسعرين، وكل بطاقة تحمل متوسط دفعاتها.
+   كان الفحص يعتمد عليه، فصار يرفع كل موديل له أكثر من دفعة كـ«دمج خاطئ»
+   ويقترح فصله — أي يعاقب السلوك الصحيح. البصمتان الباقيتان بنيويتان:
+   تكرار (لون + مقاس) داخل موديل واحد، أو اختلاف سلسلة النوع بين بطاقاته.
 
    ⚠️ لا تفحص الصورة هنا: منذ v7 الصورة تُخزَّن مرة واحدة لكل **رقم موديل**
    (جدول photos)، فكل بطاقات الموديل ترى الصورة نفسها بالضرورة — واختلافها
@@ -539,8 +874,6 @@ export async function findMergedModels() {
       if (seen.has(dk)) dupPairs++; else seen.set(dk, it.sku);
     }
     const reasons = [];
-    if (costs.length > 1) reasons.push(`تكلفة مختلفة (${costs.length})`);
-    if (prices.length > 1) reasons.push(`سعر مختلف (${prices.length})`);
     if (dupPairs) reasons.push(`لون ومقاس مكرر (${dupPairs})`);
     /* بطاقات الموديل تختلف في سلسلة النوع: «بوت - كعب - 3» و«بوت - كعب - 5»
        في موديل واحد. إما موديلان دُمجا خطأً، أو إدخال غير متسق — وكلاهما
@@ -578,6 +911,9 @@ export async function splitModel(skus) {
   for (const sku of list) {
     if (!bySku.has(sku)) continue;
     await db.products.update(sku, { modelId: mid, updatedAt: now });
+    /* الدفعات تتبع بطاقاتها — رقم الموديل فيها مرآة لا مصدر */
+    const rows = await db.lots.where('sku').equals(sku).toArray();
+    for (const l of rows) await db.lots.update(l.id, { modelId: mid });
     moved++;
   }
   /* «نفد» يُحسب على الموديل كله — المجموعتان تغيّرتا معاً (جلب واحد) */
@@ -660,6 +996,8 @@ export async function joinModels(modelIds) {
     absorbed.push(mid);
     for (const p of groups.get(mid)) {
       await db.products.update(p.sku, { modelId: base, updatedAt: now });
+      const rows = await db.lots.where('sku').equals(p.sku).toArray();
+      for (const l of rows) await db.lots.update(l.id, { modelId: base });
       movedSkus.push(p.sku);
     }
   }
@@ -685,6 +1023,7 @@ export async function joinModels(modelIds) {
 
 /* delete a whole model (every color × size card of it) in one go */
 export async function deleteProducts(skus) {
+  await deleteLotsOf(skus);
   await db.products.bulkDelete(skus);
 }
 
@@ -790,11 +1129,12 @@ export async function sweepDuplicateVariants(modelId) {
     if (!seen.has(k)) { seen.set(k, c); continue; }
     const keep = seen.get(k);
     if (await cardIsReferenced(c.sku)) continue;
-    await db.products.update(keep.sku, {
-      qty: (Number(keep.qty) || 0) + (Number(c.qty) || 0),
-      updatedAt: new Date().toISOString()
-    });
+    /* دفعات المكرّر تنتقل إلى البطاقة الباقية — لا تُدمج الكمية يدوياً،
+       وإلا صارت الكمية ضعف مجموع الدفعات وانهار حساب الربح */
+    const rows = await db.lots.where('sku').equals(c.sku).toArray();
+    for (const l of rows) await db.lots.update(l.id, { sku: keep.sku, modelId: keep.modelId || modelId });
     await db.products.delete(c.sku);
+    await syncCardFromLots(keep.sku);
     fixed++;
   }
   return fixed;
@@ -854,6 +1194,8 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
     const fresh = await nextModelId();
     for (const c of bucket.values()) {
       await db.products.update(c.sku, { modelId: fresh });
+      const rows = await db.lots.where('sku').equals(c.sku).toArray();
+      for (const l of rows) await db.lots.update(l.id, { modelId: fresh });
       c.modelId = fresh;
     }
     byModel.delete(key);
@@ -894,10 +1236,18 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
       if (!qty || !sz) continue;
       const twin = bucket.get(modelKey({ name, category: cat, size: sz, color: ln.color }));
       if (twin) {
-        await updateProduct(twin.sku, {
-          qty: (twin.qty || 0) + qty,
+        /* وصول جديد لنفس البطاقة = **دفعة جديدة**، لا كتابة فوق تكلفة القديمة.
+           كان هذا السطر يدمج ويستبدل cost/price، فتسقط تكلفة الدفعة القديمة
+           بصمت ويُحسب ربح القطع القديمة بتكلفة المورّد الجديد. الآن القديم
+           يبقى بتكلفته وسعره، والجديد يدخل بدفعته ومورّدها. */
+        await addLot({
+          sku: twin.sku, supplier: sup,
           cost: Number(ln.cost) || twin.cost,
           price: Number(ln.price) || twin.price,
+          qty, receivedAt: new Date().toISOString(),
+          invoice: invoice || '', note: invNote
+        });
+        await updateProduct(twin.sku, {
           type: ln.type || twin.type || '',
           typeSub: ln.typeSub || twin.typeSub || '',
           typeSub2: ln.typeSub2 || twin.typeSub2 || '',
@@ -909,7 +1259,8 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
           supplierAt: new Date().toISOString(),
           photo: twin.photo || ln.photo || null
         }, invNote + (note ? ` — ${note}` : ''));
-        twin.qty += qty;
+        const after = await db.products.get(twin.sku);
+        twin.qty = after ? Number(after.qty) || 0 : (twin.qty || 0) + qty;
         merged++; pieces += qty; touchedSkus.push(twin.sku);
       } else {
         const p = await addProduct({
@@ -935,14 +1286,32 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
 export async function recordSale({ items, customerName, customerPhone, province, address, deliveryFee, barcode, status, deliveryCompany, fromReservation, stockDeducted }) {
   const now = new Date().toISOString();
   let subtotal = 0, cost = 0;
+  const sold = [];
   for (const it of items) {
-    subtotal += (Number(it.price) || 0) * it.qty;
-    cost += (Number(it.cost) || 0) * it.qty;
+    const qty = Math.max(0, Math.round(Number(it.qty) || 0));
+    const price = Number(it.price) || 0;
+    let unitCost = Number(it.cost) || 0;
+    let lots = Array.isArray(it.lots) ? it.lots : null;
+    let supplier = (it.supplier || '').trim();
+    /* الخصم من الدفعة التي بسعرها بيعت القطعة — لا من رقم مسطّح. الربح بعدها
+       يخصّ الدفعة الحقيقية، وسطر البيع يحمل مورّدها فيظهر في السجل والتقارير. */
+    if (!stockDeducted && qty > 0) {
+      const take = await consumeAtPrice(it.sku, price, qty);
+      if (take.alloc.length) {
+        lots = take.alloc;
+        unitCost = take.unitCost;
+        const sups = [...new Set(take.alloc.map((a) => a.supplier).filter(Boolean))];
+        if (sups.length) supplier = sups.join(' · ');
+      }
+    }
+    subtotal += price * qty;
+    cost += unitCost * qty;
+    sold.push({ ...it, qty, price, cost: unitCost, ...(lots ? { lots } : {}), ...(supplier ? { supplier } : {}) });
   }
   const fee = deliveryFee ?? (await getSetting('deliveryFee', 5000));
   const total = subtotal + fee;
   const sale = {
-    date: now, items, subtotal, cost, profit: subtotal - cost,
+    date: now, items: sold, subtotal, cost, profit: subtotal - cost,
     deliveryFee: fee, total,
     customerName: customerName || '', customerPhone: customerPhone || '',
     province: province || '', address: address || '',
@@ -951,12 +1320,9 @@ export async function recordSale({ items, customerName, customerPhone, province,
     fromReservation: fromReservation ?? null, createdAt: now
   };
   const id = await db.sales.add(sale);
-  for (const it of items) {
-    const p = await db.products.get(it.sku);
-    if (p && !stockDeducted) {
-      const nq = Math.max(0, p.qty - it.qty);
-      await db.products.update(it.sku, { qty: nq, updatedAt: now });
-    }
+  for (const it of sold) {
+    /* الكمية تُقرأ من الدفعات بعد الصرف — لا تُنقص يدوياً فوقها */
+    await syncCardFromLots(it.sku);
     await logMovement({ sku: it.sku, type: 'out', qty: it.qty, note: `بيع #${id}${fromReservation ? ' • من حجز' : ''}` });
   }
   /* نفد على مستوى الموديل — جلب واحد لكل الموديلات التي مستها البيعة */
@@ -1076,11 +1442,10 @@ export async function returnSale(id) {
   const s = await db.sales.get(id);
   if (!s || s.status === 'returned') return;
   const now = new Date().toISOString();
+  /* القطع ترجع إلى **دفعاتها** التي خرجت منها — لا إلى دفعة جديدة برقم
+     مختلف، فالمخزون يرجع كما كان بالضبط */
+  await restoreLots(s.items);
   for (const it of s.items) {
-    const p = await db.products.get(it.sku);
-    if (p) {
-      await db.products.update(it.sku, { qty: p.qty + it.qty, updatedAt: now });
-    }
     await logMovement({ sku: it.sku, type: 'in', qty: it.qty, note: `إرجاع بيع #${id}` });
   }
   /* القطع رجعت للرف — النفد ينمحى إن كان الموديل كامل راجع. مرة واحدة للكل */
@@ -1138,10 +1503,9 @@ export async function returnSaleItems(id, selections, { markDelivered = false } 
   const now = new Date().toISOString();
   const sumOf = (items, pick) => items.reduce((a, it) => a + pick(it) * (Number(it.qty) || 0), 0);
 
-  /* القطع الراجعة تعود للرف — والسجل يشهد */
+  /* القطع الراجعة تعود لدفعاتها — والسجل يشهد */
+  await restoreLots(backItems);
   for (const it of backItems) {
-    const p = await db.products.get(it.sku);
-    if (p) await db.products.update(it.sku, { qty: (Number(p.qty) || 0) + it.qty, updatedAt: now });
     await logMovement({ sku: it.sku, type: 'in', qty: it.qty, note: `إرجاع بيع #${id}` });
   }
   await syncModelsFor(backItems.map((it) => it.sku));
@@ -1371,11 +1735,17 @@ export async function createReservation({ sku, customerName, customerPhone, note
   if (p.qty <= 0) throw new Error('لا توجد قطع متوفرة للحجز');
   const now = new Date();
   const expiresAt = new Date(now.getTime() + hours * 3600000).toISOString();
-  await db.products.update(sku, { qty: p.qty - 1, updatedAt: now.toISOString() });
+  /* الحجز يصرف قطعة من الأقدم — ويُحفظ أيّ دفعة بالتحديد حتى يرجع للرف
+     صحيحاً لو أُلغي أو انتهى */
+  const take = await consumeAny(sku, 1);
+  const held = take.alloc[0] || null;
+  await syncCardFromLots(sku);
   await syncModelOos(sku); /* آخر قطعة حجزت → الموديل كامل صار نافداً */
   await logMovement({ sku, type: 'out', qty: 1, note: `حجز لـ ${customerName || 'زبونة'}` });
   const id = await db.reservations.add({
     sku, name: p.name, price: p.price,
+    cost: held ? held.cost : (Number(p.cost) || 0),
+    lotId: held ? held.lotId : null,
     customerName: customerName || '', customerPhone: customerPhone || '',
     note: note || '',
     createdAt: now.toISOString(), expiresAt, status: 'active'
@@ -1387,7 +1757,16 @@ export async function createReservation({ sku, customerName, customerPhone, note
 async function releaseReservation(r, note) {
   const p = await db.products.get(r.sku);
   if (p) {
-    await db.products.update(r.sku, { qty: p.qty + 1, updatedAt: new Date().toISOString() });
+    if (r.lotId) {
+      const l = await db.lots.get(r.lotId);
+      if (l) await db.lots.update(r.lotId, { remaining: lotLeft(l) + 1 });
+    }
+    /* حجز قديم بلا دفعة محدّدة → قطعة إلى الأقدم المفتوح أو دفعة جديدة */
+    const open = await lotsOf(r.sku);
+    if (!open.length) {
+      await addLot({ sku: r.sku, supplier: p.supplier, cost: p.cost, price: p.price, qty: 1, note });
+    }
+    await syncCardFromLots(r.sku);
     await syncModelOos(r.sku); /* رجعت قطعة للرف — ختم النفد ينمحى إن كان موجوداً */
   }
   await logMovement({ sku: r.sku, type: 'in', qty: 1, note });
@@ -1413,7 +1792,11 @@ export async function convertReservation(id, { deliveryFee, barcode, deliveryCom
   if (!r || r.status !== 'active') throw new Error('الحجز غير صالح');
   const p = await db.products.get(r.sku);
   const sale = await recordSale({
-    items: [{ sku: r.sku, name: r.name, price: r.price, cost: p?.cost ?? 0, qty: 1, color: p?.color || '', size: String(p?.size || '').trim() }],
+    items: [{
+      sku: r.sku, name: r.name, price: r.price, cost: r.cost ?? p?.cost ?? 0, qty: 1,
+      color: p?.color || '', size: String(p?.size || '').trim(),
+      ...(r.lotId ? { lots: [{ lotId: r.lotId, qty: 1, cost: Number(r.cost) || 0 }] } : {})
+    }],
     customerName: r.customerName,
     customerPhone: r.customerPhone,
     province,
@@ -1469,11 +1852,19 @@ export async function stocktakeApply(corrections) {
   for (const c of corrections) {
     const p = await db.products.get(c.sku);
     if (!p) continue;
-    const diff = c.counted - p.qty;
-    const patch = { qty: Math.max(0, c.counted), updatedAt: now };
-    if (diff > 0) patch.restockedAt = now;
-    await db.products.update(c.sku, patch);
+    const diff = (Number(c.counted) || 0) - (Number(p.qty) || 0);
+    /* فرق الجرد يدخل كدفعة «جرد» أو يخرج من الأقدم — البطاقة تبقى مرآة الدفعات */
+    if (diff > 0) {
+      await addLot({
+        sku: c.sku, supplier: p.supplier, cost: p.cost, price: p.price,
+        qty: diff, receivedAt: now, note: 'جرد'
+      });
+      await db.products.update(c.sku, { restockedAt: now });
+    } else if (diff < 0) {
+      await consumeAny(c.sku, -diff);
+    }
     if (diff !== 0) {
+      await syncCardFromLots(c.sku);
       await logMovement({ sku: c.sku, type: diff > 0 ? 'in' : 'out', qty: Math.abs(diff), note: 'جرد' });
     }
   }
@@ -1484,16 +1875,16 @@ export async function stocktakeApply(corrections) {
 /* ---------------- Backup / Restore ---------------- */
 
 export async function backupJSON() {
-  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos] = await Promise.all([
+  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos, lots] = await Promise.all([
     db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray(),
     db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.vault.toArray(),
     db.waitlists.toArray(), db.referrals.toArray(), db.testimonials.toArray(), db.payments.toArray(),
-    db.photos.toArray()
+    db.photos.toArray(), db.lots.toArray()
   ]);
   return {
-    app: 'ghazala-boutique', version: 7, exportedAt: new Date().toISOString(),
+    app: 'ghazala-boutique', version: 8, exportedAt: new Date().toISOString(),
     products, sales, movements, settings, expenses, reservations, occasions, vault,
-    waitlists, referrals, testimonials, payments, photos
+    waitlists, referrals, testimonials, payments, photos, lots
   };
 }
 
@@ -1509,7 +1900,7 @@ export async function restoreJSON(data, { merge = false } = {}) {
 
   const tables = [
     db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions,
-    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos
+    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots
   ];
 
   /* استعادة واحدة ذرّية: إما تنجح كاملة أو لا يُمَس شيء. الكتابة خارج معاملة
@@ -1529,12 +1920,16 @@ export async function restoreJSON(data, { merge = false } = {}) {
     if (settings.length) await db.settings.bulkPut(settings);
   });
 
-  return { products: arr('products').length, sales: arr('sales').length, photos: arr('photos').length };
+  /* نسخة قديمة (v7 وما قبلها) بلا جدول دفعات: كل بطاقة على الرف تصير دفعة
+     واحدة برصيدها الحالي — وإلا رجع المخزون صفراً بعد الاستعادة. */
+  const backfilled = await backfillLots();
+
+  return { products: arr('products').length, sales: arr('sales').length, photos: arr('photos').length, lots: arr('lots').length, backfilled };
 }
 
 export async function wipeAll() {
-  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, async () => {
-    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear()]);
+  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, async () => {
+    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear(), db.lots.clear()]);
   });
 }
 

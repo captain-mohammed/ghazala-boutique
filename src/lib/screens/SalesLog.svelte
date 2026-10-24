@@ -342,7 +342,7 @@
       {/if}
 
       <div class="stack" style="gap:8px">
-        {#each detail.items as it (it.sku)}
+        {#each detail.items as it, ii (it.sku + '|' + ii)}
           {@const ph = photos[it.sku]?.photo}
           {@const ip = photos[it.sku]}
           {@const back = !!backSel[it.sku]}
@@ -355,6 +355,9 @@
                 {/if}
                 <VariantBits variants={[it]} />
                 <div class="muted small">{fmtIQD(it.price)} × {it.qty}</div>
+                {#if it.supplier}
+                  <div class="muted tiny">دفعة {it.supplier} · تكلفة {fmtIQD(it.cost)}</div>
+                {/if}
               </div>
             </div>
             <div class="col" style="align-items:flex-end; gap:5px">
