@@ -5,7 +5,7 @@
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import PhotoSourceSheet from '../components/PhotoSourceSheet.svelte';
-  import { db, addProduct, updateProduct, addLot, modelOptions, modelGroupKey, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf, loadProducts, cardIsReferenced, sweepDuplicateVariants } from '../db.js';
+  import { db, addProduct, updateProduct, addLot, modelOptions, addModelOption, modelGroupKey, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf, loadProducts, cardIsReferenced, sweepDuplicateVariants } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd, fileToPhotoDataUrl, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, celebrateAt, campaignContacts } from '../store.js';
 
@@ -18,7 +18,7 @@
      لغرض تجميع بطاقات نفس الموديل (الألوان × المقاسات) ودمج الاستلامات.
      ملاحظة: الاشتقاق هنا لأن التصنيف يُعبّأ من الموديل إن ترك فارغاً —
      لا يتأثر بحالة «إلغاء تحديد النوع» أثناء التعديل. */
-  let category = $state(product?.category ?? '');
+  let category = $state(product?.category || 'نسائية');
   let type = $state(product?.type ?? '');
   let typeSub = $state(product?.typeSub ?? ''); // القائمة الثانية تحت النوع
   let typeSub2 = $state(product?.typeSub2 ?? ''); // القائمة الثالثة تحت التفصيل
@@ -46,10 +46,10 @@
       const map = new Map();
       for (const p of ps) {
         const mid = modelGroupKey(p);
-      const cur = map.get(mid) || { modelId: mid, chain: '', colors: new Set(), qty: 0, img: '' };
+      const cur = map.get(mid) || { modelId: mid, chain: '', colors: new Set(), qty: 0, photo: '' };
       cur.qty += Number(p.qty) || 0;
       if ((p.color || '').trim()) cur.colors.add(p.color.trim());
-      if (!cur.img && (p.img || '')) cur.img = p.img;
+      if (!cur.photo && (p.photo || '')) cur.photo = p.photo;
       if (!cur.chain) cur.chain = [p.type, p.typeSub, p.typeSub2, p.typeSub3].filter(Boolean).join(' - ') || p.category || 'موديل';
         map.set(mid, cur);
       }
@@ -103,6 +103,29 @@
        التعبئة كانت تعيد كتابة مورد كل بطاقات الموديل عند الحفظ */
     if (!editing && !supplier && suppliers.length) supplier = suppliers[0];
   })();
+
+  /* تحديث قاموس الخيارات بعد إضافة خيار جديد من داخل النموذج */
+  async function refreshOpts() { opts = await modelOptions(); }
+
+  /* إضافة خيار جديد (نوع/تفصيل/مادة/مورد/لون) من داخل نموذج الموديل مباشرة —
+     بلا رحلة إلى الإعدادات. set = دالة تختار القيمة الجديدة فوراً. */
+  let addCtx = $state(null); // { kind, parent, set }
+  let addValue = $state('');
+  let addHex = $state('#9C7B6B');
+  function startAdd(kind, parent, set) { addCtx = { kind, parent, set }; addValue = ''; addHex = '#9C7B6B'; }
+  async function confirmAdd() {
+    if (!addCtx) return;
+    const v = addValue.trim();
+    if (!v) { addCtx = null; return; }
+    const payload = addCtx.kind === 'colors' ? { label: v, hex: addHex || '#9C7B6B' } : v;
+    await addModelOption(addCtx.kind, payload, addCtx.parent);
+    await refreshOpts();
+    if (addCtx.set) addCtx.set(v);
+    addCtx = null; addValue = ''; addHex = '#9C7B6B';
+    buzz(8);
+  }
+  function cancelAdd() { addCtx = null; addValue = ''; }
+
   (async () => {
     opts = await modelOptions();
     if (product) {
@@ -215,7 +238,7 @@
     else if (typeSub2 !== _ps2) { _ps2 = typeSub2; typeSub3 = ''; }
   });
 
-  const baseSizes = $derived(SIZE_RUNS[category] || SIZE_RUNS['نسائية']);
+  const baseSizes = $derived((opts.sizes && opts.sizes[category]) || SIZE_RUNS[category] || SIZE_RUNS['نسائية']);
   const colorPieces = (c) => Object.values(byColor[c] || {}).reduce((a, n) => a + (Number(n) || 0), 0);
   const totalPieces = $derived(selColors.reduce((a, c) => a + colorPieces(c), 0));
   const totalSizes = $derived(selColors.reduce((a, c) => a + Object.values(byColor[c] || {}).filter((n) => n > 0).length, 0));
@@ -518,6 +541,16 @@
 </script>
 
 <div class="stack" style="gap:14px">
+  {#snippet addInline(match, placeholder, withHex)}
+    {#if addCtx && addCtx.kind === match}
+      <div class="add-row">
+        {#if withHex}<input type="color" class="add-hex" bind:value={addHex} aria-label="اختاري لوناً" />{/if}
+        <input class="input" bind:value={addValue} placeholder={placeholder} onkeydown={(e) => { if (e.key === 'Enter') confirmAdd(); }} />
+        <button type="button" class="mini ok" onclick={confirmAdd} aria-label="تأكيد">✓</button>
+        <button type="button" class="mini ghost" onclick={cancelAdd} aria-label="إلغاء">✕</button>
+      </div>
+    {/if}
+  {/snippet}
   <!-- وصول دفعة لموديل موجود: نفس الحذاء من مورّد آخر. الهوية (الصورة/النوع)
        تبقى للموديل المختار، والداخل يُسجَّل دفعةً بمورّدها وتكلفتها وسعرها. -->
   {#if !editing}
@@ -536,7 +569,7 @@
             <div class="batch-grid">
               {#each batchModels as m (m.modelId)}
                 <button type="button" class="batch-mod" class:on={batchModelId === m.modelId} onclick={() => { batchModelId = m.modelId; buzz(6); }}>
-                  <span class="bm-img">{#if m.img}<img src={m.img} alt="" />{:else}<Icon name="image" size={24} color="var(--taupe)" />{/if}</span>
+                  <span class="bm-img">{#if m.photo}<img src={m.photo} alt="" />{:else}<Icon name="image" size={24} color="var(--taupe)" />{/if}</span>
                   <span class="bm-cap">{m.chain}</span>
                   <span class="bm-qty">{fmtNum(m.qty)} قطعة</span>
                 </button>
@@ -591,7 +624,9 @@
       {#each opts.types as t (t)}
         <button type="button" class="chip" class:on={type === t} onclick={() => (type = type === t ? '' : t)}>{t}</button>
       {/each}
+      <button type="button" class="chip add" onclick={() => startAdd('types', null, (v) => (type = v))}>+ نوع</button>
     </div>
+    {@render addInline('types', 'نوع جديد…', false)}
     {#if type && subsNow.length}
       <div class="sub-level">
         <label class="sub-label">التفصيل <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— تحت «{type}»</span></label>
@@ -599,7 +634,9 @@
           {#each subsNow as st (st)}
             <button type="button" class="chip chip-sub" class:on={typeSub === st} onclick={() => (typeSub = typeSub === st ? '' : st)}>{st}</button>
           {/each}
+          <button type="button" class="chip chip-sub add" onclick={() => startAdd('typeSubs', type, (v) => (typeSub = v))}>+ تفصيل</button>
         </div>
+        {@render addInline('typeSubs', 'تفصيل جديد…', false)}
       </div>
       {#if typeSub && subs2Now.length}
         <div class="sub-level">
@@ -608,7 +645,9 @@
             {#each subs2Now as st2 (st2)}
               <button type="button" class="chip chip-sub" class:on={typeSub2 === st2} onclick={() => (typeSub2 = typeSub2 === st2 ? '' : st2)}>{st2}</button>
             {/each}
+            <button type="button" class="chip chip-sub add" onclick={() => startAdd('typeSubs2', typeSub, (v) => (typeSub2 = v))}>+ تفصيل</button>
           </div>
+          {@render addInline('typeSubs2', 'تفصيل أدق جديد…', false)}
           {#if typeSub2 && subs3Now.length}
             <div class="sub-level">
               <label class="sub-label">تفصيل أخير <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— تحت «{typeSub2}»</span></label>
@@ -616,7 +655,9 @@
                 {#each subs3Now as st3 (st3)}
                   <button type="button" class="chip chip-sub" class:on={typeSub3 === st3} onclick={() => (typeSub3 = typeSub3 === st3 ? '' : st3)}>{st3}</button>
                 {/each}
+                <button type="button" class="chip chip-sub add" onclick={() => startAdd('typeSubs3', typeSub2, (v) => (typeSub3 = v))}>+ تفصيل</button>
               </div>
+              {@render addInline('typeSubs3', 'تفصيل أخير جديد…', false)}
             </div>
           {/if}
         </div>
@@ -643,6 +684,8 @@
     label="اللون *"
     hint="اختاري لون أو أكثر"
   />
+  <button type="button" class="chip add" onclick={() => startAdd('colors', null, (v) => toggleColor(v))}>+ لون</button>
+  {@render addInline('colors', 'لون جديد…', true)}
   {#if selColors.includes(NOCOLOR)}
     <div class="row" style="gap:6px">
       <span class="sp-nocolor">
@@ -659,7 +702,9 @@
       {#each opts.materials as m (m)}
         <button type="button" class="chip" class:on={material === m} onclick={() => (material = material === m ? '' : m)}>{m}</button>
       {/each}
+      <button type="button" class="chip add" onclick={() => startAdd('materials', null, (v) => (material = v))}>+ مادة</button>
     </div>
+    {@render addInline('materials', 'مادة جديدة…', false)}
   </div>
 
   <div class="field">
@@ -670,6 +715,8 @@
       <input class="input" bind:value={supplier} style={bad('المورد')} placeholder="مثال: هاي مول — أبو علي" />
       <p class="muted tiny" style="margin:4px 2px 0">سجّلي مورديك من الإعدادات لتظهروا قائمة هنا.</p>
     {/if}
+    <button type="button" class="chip add" style="margin-top:8px" onclick={() => startAdd('suppliers', null, (v) => (supplier = v))}>+ مورد جديد</button>
+    {@render addInline('suppliers', 'مورد جديد…', false)}
   </div>
 
   <div class="field">
@@ -709,6 +756,12 @@
 
   <div class="field">
     <label>المقاسات والكميات * {selColors.length > 1 ? '— لكل لون شبكة مقاساته' : ''}</label>
+    <div class="row" style="gap:8px; margin-bottom:8px">
+      {#if !(addCtx && addCtx.kind === 'sizes')}
+        <button type="button" class="chip add" onclick={() => startAdd('sizes', category, null)}>+ مقاس</button>
+      {/if}
+      {@render addInline('sizes', 'مقاس جديد…', false)}
+    </div>
     {#if selColors.length}
       <div class="stack" style="gap:12px">
         {#each selColors as c (c)}
@@ -928,4 +981,54 @@
     border-radius: 10px;
     padding: 8px 10px;
   }
+  /* خط «أضيفي أثناء الإضافة» — رقاقة منقّطة تفتح حقل إدخال سريع دون الرجوع للإعدادات */
+  .chip.add {
+    border-style: dashed;
+    border-color: var(--burgundy, #B5495B);
+    color: var(--burgundy, #B5495B);
+    background: rgba(181, 73, 91, 0.06);
+    font-size: 12.5px;
+    padding: 7px 13px;
+  }
+  .chip.add:hover { background: rgba(181, 73, 91, 0.12); }
+  .chip-sub.add { font-size: 11.5px; padding: 4px 11px; }
+  /* صف الإضافة السريع — حقل + (لون) + تأكيد/إلغاء */
+  .add-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0 2px;
+  }
+  .add-row .input {
+    flex: 1;
+    min-width: 0;
+    padding: 7px 11px;
+    font-size: 13px;
+  }
+  .add-hex {
+    width: 34px; height: 34px;
+    padding: 0;
+    flex: none;
+    border: 1px solid var(--line-2);
+    border-radius: 9px;
+    background: none;
+    cursor: pointer;
+  }
+  .mini {
+    flex: none;
+    width: 32px; height: 32px;
+    border-radius: 9px;
+    border: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.16s;
+  }
+  .mini.ok { background: var(--good, #2e9e6b); color: #fff; }
+  .mini.ok:active { transform: scale(0.9); }
+  .mini.ghost { background: rgba(0, 0, 0, 0.06); color: var(--ink-2); }
+  .mini.ghost:active { transform: scale(0.9); }
 </style>

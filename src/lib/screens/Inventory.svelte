@@ -171,7 +171,9 @@
         createdAt: Math.max(...items.map((x) => new Date(x.createdAt || 0).getTime())),
         colorRows,
         sizesCount: new Set(items.map((x) => String(x.size || '').trim()).filter(Boolean)).size,
-        supplier: items.find((x) => x.supplier)?.supplier || ''
+        suppliers: [...new Set(items.map((x) => (x.supplier || '').trim()).filter(Boolean))],
+        supplier: items.find((x) => x.supplier)?.supplier || '',
+        notes: [...new Set(items.map((x) => (x.notes || '').trim()).filter(Boolean))]
       });
     }
     /* status filter works on the model's TOTAL stock — «نفد» = zero pieces */
@@ -519,26 +521,40 @@
             <span class="money" style="color:var(--burgundy)">{fmtIQD(g.price)}</span>
             <span class="mv-qty" class:zero={g.qty === 0}>{fmtNum(g.qty)} قطعة</span>
           </div>
-          {#if g.supplier}<div class="mv-sup"><Icon name="upload" size={11} /> من {g.supplier}</div>{/if}
+          {#if g.suppliers?.length}
+            <div class="mv-sups">
+              {#each g.suppliers as s}<span class="mv-sup"><Icon name="upload" size={11} /> من {s}</span>{/each}
+            </div>
+          {/if}
         </div>
       </Glass>
 
-      {#each g.colorRows as cr (cr.color)}
-        <div class="mv-color">
-          <div class="mvc-head">
-            <i class="mvc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
-            <span class="bold">{cr.color || 'بدون لون'}</span>
-            <span class="muted small">{fmtNum(cr.qty)} قطعة</span>
+      <div class="mv-colors">
+        {#each g.colorRows as cr (cr.color)}
+          <div class="mv-color" class:empty={cr.qty === 0}>
+            <div class="mvc-head">
+              <i class="mvc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
+              <span class="mvc-name">{cr.color || 'بدون لون'}</span>
+              <span class="mvc-qty">{fmtNum(cr.qty)} قطعة</span>
+            </div>
+            <div class="mvc-sizes">
+              {#each cr.sizes as sz (sz.size + sz.p.sku)}
+                <button class="szchip" class:hole={sz.qty === 0} onclick={() => { buzz(6); openSku = sz.p; }}>
+                  <span class="sz-num">{sz.size}</span>
+                  <b class="sz-q">{sz.qty || '—'}</b>
+                </button>
+              {/each}
+            </div>
           </div>
-          <div class="mvc-sizes">
-            {#each cr.sizes as sz (sz.size + sz.p.sku)}
-              <button class="szchip" class:hole={sz.qty === 0} onclick={() => { buzz(6); openSku = sz.p; }}>
-                {sz.size}<b>{sz.qty || '—'}</b>
-              </button>
-            {/each}
-          </div>
-        </div>
-      {/each}
+        {/each}
+      </div>
+
+      {#if g.notes?.length}
+        <Glass class="mv-notes">
+          <div class="mv-notes-t"><Icon name="file" size={13} /> ملاحظات الموديل</div>
+          {#each g.notes as n}<p class="mv-note">{n}</p>{/each}
+        </Glass>
+      {/if}
 
       <div class="row" style="gap:10px">
         <button class="btn gold" style="flex:1" onclick={qoRestock}><Icon name="upload" size={16} /> استلام مقاسات</button>
@@ -752,33 +768,51 @@
   .mv-stats { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
   .mv-qty { font-size: 12px; font-weight: 800; color: var(--good); }
   .mv-qty.zero { color: var(--burgundy-deep); }
+  .mv-sups { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
   .mv-sup {
-    display: inline-flex; align-items: center; gap: 4px; margin-top: 2px;
+    display: inline-flex; align-items: center; gap: 4px;
     font-size: 10.5px; font-weight: 800; color: #8a6a35;
+    background: rgba(201, 162, 75, 0.14);
+    border-radius: 999px; padding: 3px 9px;
   }
-  .mv-color { }
-  .mvc-head { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
-  .mvc-dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; }
-  .mvc-head .muted { margin-inline-start: auto; }
+  /* قسم الألوان بعد التصميم: بطاقة أنيقة لكل لون، شبكة مقاسات فيها ثقوب واضحة */
+  .mv-colors { display: flex; flex-direction: column; gap: 10px; }
+  .mv-color {
+    border: 1px solid var(--line-2, rgba(0, 0, 0, 0.1));
+    border-radius: 14px;
+    padding: 10px 12px;
+    background: var(--glass, rgba(255, 255, 255, 0.5));
+  }
+  .mv-color.empty { opacity: 0.72; border-style: dashed; }
+  .mvc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .mvc-dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--line-2, rgba(0,0,0,0.12)); flex: none; box-shadow: 0 0 0 1px rgba(0,0,0,0.04) inset; }
+  .mvc-name { font-weight: 800; font-size: 13.5px; color: var(--ink); }
+  .mvc-qty { margin-inline-start: auto; font-size: 11px; color: var(--taupe); font-variant-numeric: tabular-nums; }
   .mvc-sizes { display: flex; flex-wrap: wrap; gap: 6px; }
   .szchip {
-    display: inline-flex; align-items: center; gap: 5px;
-    font-family: inherit; font-size: 12px; font-weight: 800;
-    color: var(--ink);
-    background: rgba(78, 138, 95, 0.12);
-    border: 1px solid rgba(78, 138, 95, 0.3);
-    border-radius: 10px; padding: 6px 10px;
+    display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
+    min-width: 42px; padding: 5px 8px;
+    font-family: inherit;
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--line-2, rgba(0, 0, 0, 0.12));
+    border-radius: 10px;
     cursor: pointer;
-    transition: transform 0.13s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transition: transform 0.13s cubic-bezier(0.34, 1.56, 0.64, 1), background 0.16s;
   }
-  .szchip:active { transform: scale(0.9); }
-  .szchip b { color: var(--good); }
+  .szchip:hover { background: rgba(255, 255, 255, 0.95); }
+  .szchip:active { transform: scale(0.92); }
+  .sz-num { font-size: 13px; font-weight: 800; color: var(--ink); line-height: 1.1; }
+  .sz-q { font-size: 11px; font-weight: 800; color: var(--good); margin-top: 1px; }
   .szchip.hole {
-    background: rgba(122, 46, 58, 0.06);
+    background: rgba(122, 46, 58, 0.05);
     border: 1.5px dashed rgba(122, 46, 58, 0.45);
-    color: var(--burgundy-deep);
   }
-  .szchip.hole b { color: var(--burgundy); }
+  .szchip.hole .sz-num { color: var(--taupe); }
+  .szchip.hole .sz-q { color: var(--burgundy); }
+  /* ملاحظات الموديل — تظهر الآن في بطاقة «الموديل كامل» */
+  .mv-notes { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; }
+  .mv-notes-t { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: var(--burgundy-deep); }
+  .mv-note { margin: 0; font-size: 12px; line-height: 1.6; color: var(--ink-2); }
 
   .qp-backdrop {
     position: fixed;

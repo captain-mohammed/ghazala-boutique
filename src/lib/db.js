@@ -226,8 +226,56 @@ export async function modelOptions() {
     colors: Array.isArray(s.modelColors) && s.modelColors.length ? s.modelColors : COLOR_SWATCHES,
     typeSubs: s.typeSubs && typeof s.typeSubs === 'object' ? s.typeSubs : {},
     typeSubs2: s.typeSubs2 && typeof s.typeSubs2 === 'object' ? s.typeSubs2 : {},
-    typeSubs3: s.typeSubs3 && typeof s.typeSubs3 === 'object' ? s.typeSubs3 : {}
+    typeSubs3: s.typeSubs3 && typeof s.typeSubs3 === 'object' ? s.typeSubs3 : {},
+    sizes: (s.sizes && typeof s.sizes === 'object' && Object.keys(s.sizes).length) ? s.sizes : JSON.parse(JSON.stringify(SIZE_RUNS))
   };
+}
+
+/* إضافة خيار جديد إلى قاموس الموديل من داخل نموذج إضافة الموديل مباشرة —
+   بلا رحلة إلى الإعدادات. تكتب إلى نفس مفاتيح الإعدادات التي يقرأها
+   modelOptions، فيبقى القاموس موحّداً في كل الشاشات (إضافة موديل، فاتورة،
+   خيارات الموديلات). المواسم والتصنيفات متعمَّدة خارج هذا المسار. */
+export async function addModelOption(kind, value, parent) {
+  if (kind === 'colors') {
+    const label = ((value && value.label) || '').trim();
+    const hex = ((value && value.hex) || '#9C7B6B').trim();
+    if (!label) return;
+    const cur = (await getSetting('modelColors', [])) || [];
+    if (!Array.isArray(cur)) return;
+    if (cur.some((c) => (c.label || '').trim().toLowerCase() === label.toLowerCase())) return;
+    await setSetting('modelColors', [...cur, { label, hex }]);
+    return;
+  }
+  if (kind === 'typeSubs' || kind === 'typeSubs2' || kind === 'typeSubs3') {
+    const label = String(value || '').trim();
+    if (!parent || !label) return;
+    const cur = (await getSetting(kind, {})) || {};
+    const arr = Array.isArray(cur[parent]) ? cur[parent] : [];
+    if (arr.includes(label)) return;
+    cur[parent] = [...arr, label];
+    await setSetting(kind, cur);
+    return;
+  }
+  if (kind === 'sizes') {
+    const label = String(value || '').trim();
+    if (!label) return;
+    const cat = parent && String(parent).trim() ? String(parent).trim() : 'نسائية';
+    let cur = await getSetting('sizes', null);
+    if (!cur || typeof cur !== 'object' || !Object.keys(cur).length) cur = JSON.parse(JSON.stringify(SIZE_RUNS));
+    const arr = Array.isArray(cur[cat]) ? [...cur[cat]] : [];
+    if (arr.includes(label)) return;
+    arr.push(label);
+    arr.sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
+    cur[cat] = arr;
+    await setSetting('sizes', cur);
+    return;
+  }
+  const label = String(value || '').trim();
+  if (!label) return;
+  const cur = (await getSetting(kind, [])) || [];
+  if (!Array.isArray(cur)) return;
+  if (cur.includes(label)) return;
+  await setSetting(kind, [...cur, label]);
 }
 
 /* القائمة الثانية تحت النوع: ['كعب عالي','كعب قصير'] لـ «بوت» */

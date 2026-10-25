@@ -454,7 +454,7 @@
 
         <div class="field">
           <label>المقاسات المستلمة</label>
-          <SizeQtyGrid sizes={SIZE_RUNS[l.category] || SIZE_RUNS['نسائية']} bind:value={l.sizes} />
+          <SizeQtyGrid sizes={(opts.sizes && opts.sizes[l.category]) || SIZE_RUNS[l.category] || SIZE_RUNS['نسائية']} bind:value={l.sizes} />
         </div>
       </div>
       {/if}

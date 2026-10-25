@@ -18,6 +18,7 @@
   let newSub2 = $state('');
   let sub3For = $state('');   // تفصيل أدق المفتوح لتحرير قائمته الرابعة
   let newSub3 = $state('');
+  let newSizes = $state({});  // مقاسات جديدة لكل تصنيف: { 'نسائية': '..' }
 
   (async () => { opts = await modelOptions(); })();
 
@@ -194,6 +195,32 @@
     tree[type] = branch;
     opts = { ...opts, typeSubs3: tree };
     await save('typeSubs3', tree, 'حُذفت من القائمة الرابعة');
+  }
+
+  /* ---- المقاسات: قائمة لكل تصنيف، تُدار من هنا ومن «إضافة موديل» مباشرة ---- */
+  async function addSize(cat) {
+    const n = String(newSizes[cat] || '').trim();
+    if (!n || !cat) return;
+    const cur = { ...(opts.sizes || {}) };
+    const arr = [...(cur[cat] || [])];
+    if (arr.includes(n)) { newSizes[cat] = ''; return; }
+    arr.push(n);
+    arr.sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
+    cur[cat] = arr;
+    opts = { ...opts, sizes: cur };
+    newSizes[cat] = '';
+    await save('sizes', cur, 'أُضيف المقاس');
+  }
+  async function rmSize(cat, sz) {
+    if (!(await askConfirm({
+      title: `حذف المقاس ${sz}`,
+      body: `يُحذف «${sz}» من خيارات «${cat}». الموديلات المسجّلة بهذا المقاس تبقى كما هي ولا تتأثر — لكنه لن يظهر كخيار بعد الآن.`,
+      okLabel: 'احذفي', danger: true
+    }))) return;
+    const cur = { ...(opts.sizes || {}) };
+    cur[cat] = (cur[cat] || []).filter((x) => x !== sz);
+    opts = { ...opts, sizes: cur };
+    await save('sizes', cur, 'حُذف المقاس');
   }
 </script>
 
@@ -383,6 +410,31 @@
       </div>
     </Glass>
 
+    <Glass class="rise" style="padding:16px; animation-delay:0.25s">
+      <h2 class="h2" style="margin-bottom:4px"><Icon name="list" size={17} color="var(--burgundy)" /> المقاسات (لكل تصنيف)</h2>
+      <p class="muted small" style="margin:0 0 10px">مقاسات كل تصنيف — أضيفي مقاساً جديداً من هنا أو مباشرةً من شاشة «إضافة موديل»، فيبقى محفوظاً ويظهر في كل مكان (الإضافة، فاتورة الوارد، والفلاتر).</p>
+      <div class="stack" style="gap:12px">
+        {#each opts.categories as cat (cat)}
+          {@const szs = (opts.sizes && opts.sizes[cat]) || []}
+          <div class="sub-block">
+            <b class="cat-h">{cat}</b>
+            <div class="row wrap" style="gap:6px; margin-top:6px">
+              {#each szs as sz (sz)}
+                <span class="chip on">
+                  {sz}
+                  <button class="opt-x" onclick={() => rmSize(cat, sz)} aria-label="حذف {sz}"><Icon name="x" size={12} color="#fff" /></button>
+                </span>
+              {/each}
+            </div>
+            <div class="row" style="gap:8px; margin-top:7px">
+              <input class="input" style="flex:1" bind:value={newSizes[cat]} placeholder={`مقاس جديد لـ «${cat}»…`} onkeydown={(e) => e.key === 'Enter' && addSize(cat)} />
+              <button class="btn" onclick={() => addSize(cat)}><Icon name="plus" size={15} /> إضافة</button>
+            </div>
+          </div>
+        {/each}
+      </div>
+    </Glass>
+
     <ColorPicker open={pickOpen} hex={pickFrom} onpick={onPick} onclose={() => (pickOpen = false)} />
   </div>
 {:else}
@@ -425,6 +477,7 @@
   .pick-btn:active { transform: scale(0.94); }
 
   .sub-block { display: flex; flex-direction: column; }
+  .cat-h { display: block; font-size: 14px; color: var(--ink); }
   .sub-toggle {
     display: flex; align-items: center; gap: 8px;
     background: rgba(255, 255, 255, 0.4);
