@@ -1,8 +1,9 @@
 <script>
   import Icon from './Icon.svelte';
   import { buzz } from '../utils.js';
+  import { addModelOption } from '../db.js';
 
-  let { sizes = [], value = $bindable({}) } = $props();
+  let { sizes = [], value = $bindable({}), category = 'نسائية', onAddSize = null } = $props();
 
   let custom = $state('');
 
@@ -25,12 +26,18 @@
     buzz(d > 0 ? 6 : 8);
   }
 
-  function addCustom() {
+  async function addCustom() {
     const s = custom.trim();
     if (!s) return;
     if (!shown.includes(s)) value = { ...value, [s]: 0 };
     custom = '';
     buzz(8);
+    /* يحفظ المقاس الجديد في قاموس المقاسات المشترك لكل التطبيق (الإضافة،
+       فاتورة الوارد، وقائمة الانتظار) — وظيفة زر «+ مقاس» دون شريط منفصل */
+    try {
+      await addModelOption('sizes', s, category || 'نسائية');
+      if (typeof onAddSize === 'function') onAddSize();
+    } catch (e) { /* الحفظ غير حرج: يبقى المقاس في هذا المنتج على الأقل */ }
   }
 </script>
 

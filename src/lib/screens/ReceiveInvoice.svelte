@@ -6,7 +6,7 @@
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import PhotoSourceSheet from '../components/PhotoSourceSheet.svelte';
   import { slide } from 'svelte/transition';
-  import { receiveBatch, nextModelId, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, db, waitingForModel, typeChain } from '../db.js';
+  import { receiveBatch, nextModelId, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, db, waitingForModel, typeChain, firstdibsCampaign } from '../db.js';
   import { fmtNum, fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
   import { reducedMotion } from '../motion.js';
   import { get } from 'svelte/store';
@@ -218,7 +218,6 @@
       /* التوريد = أقوى لحظة تسويق. الأولوية لقائمة الانتظار (بيع مضمون)،
          وإلا ف«قبل الجميع» لكبار الزبونات. */
       try {
-        const { firstdibsCampaign } = await import('../db.js');
         /* ١) منتظرات وصلن قطعها؟ */
         const matched = await findWaitingMatchesForSkus(r.touchedSkus || []);
         if (matched.length) {
@@ -454,7 +453,7 @@
 
         <div class="field">
           <label>المقاسات المستلمة</label>
-          <SizeQtyGrid sizes={(opts.sizes && opts.sizes[l.category]) || SIZE_RUNS[l.category] || SIZE_RUNS['نسائية']} bind:value={l.sizes} />
+          <SizeQtyGrid sizes={(opts.sizes && opts.sizes[l.category]) || SIZE_RUNS[l.category] || SIZE_RUNS['نسائية']} bind:value={l.sizes} category={l.category} />
         </div>
       </div>
       {/if}

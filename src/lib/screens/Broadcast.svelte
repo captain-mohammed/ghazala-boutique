@@ -218,7 +218,7 @@
   const reqSubsNow = $derived(subsOfType(opts.typeSubs, reqType));
   const reqSubs2Now = $derived(subsOfType2(opts.typeSubs2, reqType, reqTypeSub));
   const reqSubs3Now = $derived(subsOfType3(opts.typeSubs3, reqType, reqTypeSub, reqTypeSub2));
-  const reqBaseSizes = $derived(SIZE_RUNS['نسائية']);
+  const reqBaseSizes = $derived((opts.sizes && opts.sizes['نسائية']) || SIZE_RUNS['نسائية']);
   const reqPalette = $derived([
     ...opts.colors,
     ...reqSelColors.filter((c) => c !== NOCOLOR && !opts.colors.some((o) => o.label === c)).map((c) => ({ label: c, hex: '#9C7B6B' }))
@@ -578,7 +578,7 @@
                 <span class="bold">{c}</span>
                 <span class="cb-count" class:has={reqColorPieces(c) > 0}>{reqColorPieces(c) > 0 ? `${reqColorPieces(c)} قطعة` : 'حدّدي الكميات'}</span>
               </div>
-              <SizeQtyGrid sizes={reqBaseSizes} bind:value={reqByColor[c]} />
+              <SizeQtyGrid sizes={reqBaseSizes} bind:value={reqByColor[c]} category={'نسائية'} />
             </div>
           {/each}
         </div>

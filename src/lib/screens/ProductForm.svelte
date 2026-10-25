@@ -5,7 +5,7 @@
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import PhotoSourceSheet from '../components/PhotoSourceSheet.svelte';
-  import { db, addProduct, updateProduct, addLot, modelOptions, addModelOption, modelGroupKey, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf, loadProducts, cardIsReferenced, sweepDuplicateVariants } from '../db.js';
+  import { db, addProduct, updateProduct, addLot, modelOptions, addModelOption, modelGroupKey, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf, loadProducts, cardIsReferenced, sweepDuplicateVariants, findWaitingMatchesForSkus, firstdibsCampaign } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd, fileToPhotoDataUrl, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, celebrateAt, campaignContacts } from '../store.js';
 
@@ -502,7 +502,6 @@
          فتعرّفه الحين فور تسجيله في المخزون — بيع مضمون قبل «قبل الجميع». */
       if (created > 0) {
         try {
-          const { findWaitingMatchesForSkus } = await import('../db.js');
           const matched = await findWaitingMatchesForSkus([...touched]);
           if (matched.length) {
             const firstSku = [...touched][0];
@@ -525,7 +524,6 @@
       /* «قبل الجميع»: أول تسجيل لموديل واصل بكمية — كبار الزبونات أول من يعرف */
       if (!editing && created > 0 && totalPieces > 0) {
         try {
-          const { firstdibsCampaign } = await import('../db.js');
           const chain = [type, typeSub, typeSub2, typeSub3].filter(Boolean).join(' - ') || category;
           const colors = selColors.filter((c) => c && c !== 'بلا لون').join('، ') || '—';
           const campaign = await firstdibsCampaign({ modelId: freshId, chain, colors, sizes: '—', price: iqd(price) });
@@ -756,12 +754,6 @@
 
   <div class="field">
     <label>المقاسات والكميات * {selColors.length > 1 ? '— لكل لون شبكة مقاساته' : ''}</label>
-    <div class="row" style="gap:8px; margin-bottom:8px">
-      {#if !(addCtx && addCtx.kind === 'sizes')}
-        <button type="button" class="chip add" onclick={() => startAdd('sizes', category, null)}>+ مقاس</button>
-      {/if}
-      {@render addInline('sizes', 'مقاس جديد…', false)}
-    </div>
     {#if selColors.length}
       <div class="stack" style="gap:12px">
         {#each selColors as c (c)}
@@ -771,7 +763,7 @@
               <span class="bold">{c}</span>
               <span class="cb-count" class:has={colorPieces(c) > 0}>{colorPieces(c) > 0 ? `${colorPieces(c)} قطعة` : 'حدّدي الكميات'}</span>
             </div>
-            <SizeQtyGrid sizes={baseSizes} bind:value={byColor[c]} />
+            <SizeQtyGrid sizes={baseSizes} bind:value={byColor[c]} category={category} onAddSize={refreshOpts} />
           </div>
         {/each}
       </div>

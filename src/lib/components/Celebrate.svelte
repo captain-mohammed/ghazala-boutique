@@ -1,5 +1,6 @@
 <script>
   import { celebrate } from '../store.js';
+  import { spawnSparks } from '../motion.js';
 
   let burst = $state(null);
   const COLORS = ['#B5495B', '#C9A15A', '#7A2E3A', '#E8B4B8', '#D4B276'];
@@ -24,7 +25,7 @@
   });
 
   function sparkFromRectAt(x, y, n) {
-    import('../motion.js').then((m) => m.spawnSparks(x, y, n));
+    spawnSparks(x, y, n);
   }
 </script>
 

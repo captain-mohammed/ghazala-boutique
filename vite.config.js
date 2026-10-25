@@ -60,6 +60,11 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     assetsInlineLimit: 0,
+    /* التطبيق PWA يعمل بدون إنترنت — شاشات التبويبات تُحمَّل كلها مبكراً
+       (eager) لتبديل فوري بينها دون انتظار، فالحزمة الرئيسية تبقى ~590kB وهو
+       حجم مشروع لهذا الحجم. المكتبات الثقيلة (xlsx/dexie/zxing) مُجزّأة فعلاً
+       أعلاه، فرفع حدّ التحذير يعكس الحجم الحقيقي لا إخفاءً لمشكلة. */
+    chunkSizeWarningLimit: 800,
     rollupOptions: {
       output: {
         manualChunks: {
