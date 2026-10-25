@@ -268,7 +268,7 @@
     if (!capName.trim() && !capPhone.trim()) return toastErr('الاسم أو الرقم مطلوب');
     const isReq = capMode === 'request';
     if (isReq) {
-      if (!reqType.trim()) return toastErr('اختاري أو اكتبي نوع الحذاء المطلوب');
+      if (!reqType) return toastErr('اختاري نوع الحذاء المطلوب');
       if (reqTotalPieces === 0) return toastErr('حدّدي مقاساً واحداً بكمية على الأقل');
       let saved = 0, dup = 0;
       for (const c of reqSelColors) {
@@ -509,7 +509,7 @@
   <div class="stack" style="gap:10px">
     {#if capMode === 'request'}
       <p class="wl-hint">
-        حذاء لم يكن في التطبيق أبداً. اكتبي نوعه كما تقوله الزبونة — وعند وصول أول
+        حذاء لم يكن في التطبيق أبداً. اختاري نوعه وتفاصيله من القائمة — وعند وصول أول
         موديل بنفس النوع يُنبّهها الاستوديو تلقائياً.
       </p>
     {/if}
@@ -528,9 +528,8 @@
             <button type="button" class="chip" class:on={reqType === t} onclick={() => (reqType = reqType === t ? '' : t)}>{t}</button>
           {/each}
         </div>
-        <input class="input" style="margin-top:6px" bind:value={reqType} placeholder="أو اكتبي نوعاً جديداً لم يُسجَّل بعد" />
 
-        {#if reqType}
+        {#if reqType && reqSubsNow.length}
           <div class="sub-level">
             <label class="lab">التفصيل <span class="muted tiny">— تحت «{reqType}»</span></label>
             <div class="row wrap" style="gap:6px">
@@ -538,10 +537,9 @@
                 <button type="button" class="chip" class:on={reqTypeSub === st} onclick={() => (reqTypeSub = reqTypeSub === st ? '' : st)}>{st}</button>
               {/each}
             </div>
-            <input class="input" style="margin-top:6px" bind:value={reqTypeSub} placeholder="أو اكتبي تفصيلاً جديداً" />
           </div>
         {/if}
-        {#if reqTypeSub}
+        {#if reqTypeSub && reqSubs2Now.length}
           <div class="sub-level">
             <label class="lab">تفصيل أدق <span class="muted tiny">— تحت «{reqTypeSub}»</span></label>
             <div class="row wrap" style="gap:6px">
@@ -549,13 +547,16 @@
                 <button type="button" class="chip" class:on={reqTypeSub2 === st2} onclick={() => (reqTypeSub2 = reqTypeSub2 === st2 ? '' : st2)}>{st2}</button>
               {/each}
             </div>
-            <input class="input" style="margin-top:6px" bind:value={reqTypeSub2} placeholder="أو اكتبي تفصيلاً أدق" />
           </div>
         {/if}
-        {#if reqTypeSub2}
+        {#if reqTypeSub2 && reqSubs3Now.length}
           <div class="sub-level">
             <label class="lab">تفصيل أخير <span class="muted tiny">— تحت «{reqTypeSub2}»</span></label>
-            <input class="input" bind:value={reqTypeSub3} placeholder="أو اكتبي تفصيلاً أخير" />
+            <div class="row wrap" style="gap:6px">
+              {#each reqSubs3Now as st3 (st3)}
+                <button type="button" class="chip" class:on={reqTypeSub3 === st3} onclick={() => (reqTypeSub3 = reqTypeSub3 === st3 ? '' : st3)}>{st3}</button>
+              {/each}
+            </div>
           </div>
         {/if}
       </div>

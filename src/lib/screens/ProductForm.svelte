@@ -46,10 +46,11 @@
       const map = new Map();
       for (const p of ps) {
         const mid = modelGroupKey(p);
-        const cur = map.get(mid) || { modelId: mid, chain: '', colors: new Set(), qty: 0 };
-        cur.qty += Number(p.qty) || 0;
-        if ((p.color || '').trim()) cur.colors.add(p.color.trim());
-        if (!cur.chain) cur.chain = [p.type, p.typeSub, p.typeSub2, p.typeSub3].filter(Boolean).join(' - ') || p.category || 'موديل';
+      const cur = map.get(mid) || { modelId: mid, chain: '', colors: new Set(), qty: 0, img: '' };
+      cur.qty += Number(p.qty) || 0;
+      if ((p.color || '').trim()) cur.colors.add(p.color.trim());
+      if (!cur.img && (p.img || '')) cur.img = p.img;
+      if (!cur.chain) cur.chain = [p.type, p.typeSub, p.typeSub2, p.typeSub3].filter(Boolean).join(' - ') || p.category || 'موديل';
         map.set(mid, cur);
       }
       batchModels = [...map.values()]
@@ -532,13 +533,15 @@
       {#if batchOpen}
         <div class="batch-body">
           {#if batchModels.length}
-            <Pick
-              bind:value={batchModelId}
-              options={batchModels.map((m) => ({ v: m.modelId, l: `${m.chain} · ${m.colors || 'بلا لون'} · ${fmtNum(m.qty)} قطعة` }))}
-              valOf={(o) => o.v}
-              labelOf={(o) => o.l}
-              placeholder="اختاري الموديل…"
-            />
+            <div class="batch-grid">
+              {#each batchModels as m (m.modelId)}
+                <button type="button" class="batch-mod" class:on={batchModelId === m.modelId} onclick={() => { batchModelId = m.modelId; buzz(6); }}>
+                  <span class="bm-img">{#if m.img}<img src={m.img} alt="" />{:else}<Icon name="image" size={24} color="var(--taupe)" />{/if}</span>
+                  <span class="bm-cap">{m.chain}</span>
+                  <span class="bm-qty">{fmtNum(m.qty)} قطعة</span>
+                </button>
+              {/each}
+            </div>
           {:else}
             <p class="muted tiny" style="margin:0">لا موديلات على الرف بعد — أول تسجيل يفتح موديله.</p>
           {/if}
@@ -589,8 +592,7 @@
         <button type="button" class="chip" class:on={type === t} onclick={() => (type = type === t ? '' : t)}>{t}</button>
       {/each}
     </div>
-    <input class="input" style="margin-top:6px" bind:value={type} placeholder="أو اكتبي نوعاً جديداً لم يُسجَّل بعد" />
-    {#if type}
+    {#if type && subsNow.length}
       <div class="sub-level">
         <label class="sub-label">التفصيل <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— تحت «{type}»</span></label>
         <div class="row wrap" style="gap:6px; {isMissing('التفصيل') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
@@ -598,9 +600,8 @@
             <button type="button" class="chip chip-sub" class:on={typeSub === st} onclick={() => (typeSub = typeSub === st ? '' : st)}>{st}</button>
           {/each}
         </div>
-        <input class="input" style="margin-top:6px" bind:value={typeSub} placeholder="أو اكتبي تفصيلاً جديداً" />
       </div>
-      {#if typeSub}
+      {#if typeSub && subs2Now.length}
         <div class="sub-level">
           <label class="sub-label">تفصيل أدق <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— تحت «{typeSub}»</span></label>
           <div class="row wrap" style="gap:6px; {isMissing('تفصيل أدق') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
@@ -608,19 +609,17 @@
               <button type="button" class="chip chip-sub" class:on={typeSub2 === st2} onclick={() => (typeSub2 = typeSub2 === st2 ? '' : st2)}>{st2}</button>
             {/each}
           </div>
-          <input class="input" style="margin-top:6px" bind:value={typeSub2} placeholder="أو اكتبي تفصيلاً أدق" />
-        </div>
-        {#if typeSub2}
-          <div class="sub-level">
-            <label class="sub-label">تفصيل أخير <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— تحت «{typeSub2}»</span></label>
-            <div class="row wrap" style="gap:6px; {isMissing('تفصيل أخير') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
-              {#each subs3Now as st3 (st3)}
-                <button type="button" class="chip chip-sub" class:on={typeSub3 === st3} onclick={() => (typeSub3 = typeSub3 === st3 ? '' : st3)}>{st3}</button>
-              {/each}
+          {#if typeSub2 && subs3Now.length}
+            <div class="sub-level">
+              <label class="sub-label">تفصيل أخير <span class="req" style="color:var(--burgundy)">*</span> <span class="muted tiny">— تحت «{typeSub2}»</span></label>
+              <div class="row wrap" style="gap:6px; {isMissing('تفصيل أخير') ? 'outline:2px solid rgba(181,73,91,0.5); outline-offset:4px; border-radius:14px' : ''}">
+                {#each subs3Now as st3 (st3)}
+                  <button type="button" class="chip chip-sub" class:on={typeSub3 === st3} onclick={() => (typeSub3 = typeSub3 === st3 ? '' : st3)}>{st3}</button>
+                {/each}
+              </div>
             </div>
-            <input class="input" style="margin-top:6px" bind:value={typeSub3} placeholder="أو اكتبي تفصيلاً أخير" />
-          </div>
-        {/if}
+          {/if}
+        </div>
       {/if}
     {/if}
   </div>
@@ -891,6 +890,35 @@
     flex-direction: column;
     gap: 8px;
   }
+  .batch-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 8px;
+  }
+  .batch-mod {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 6px;
+    border-radius: 12px;
+    border: 2px solid transparent;
+    background: var(--glass, rgba(255, 255, 255, 0.5));
+    cursor: pointer;
+    text-align: center;
+  }
+  .batch-mod.on { border-color: var(--burgundy); background: var(--gold-soft, rgba(201, 162, 75, 0.14)); }
+  .bm-img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    border-radius: 9px;
+    background: var(--ivory, #FBF3EE);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  }
+  .bm-img img { width: 100%; height: 100%; object-fit: cover; }
+  .bm-cap { font-size: 11px; font-weight: 700; color: var(--ink); line-height: 1.25; max-height: 2.5em; overflow: hidden; }
+  .bm-qty { font-size: 10px; color: var(--taupe); }
   .batch-note {
     margin: 0;
     font-size: 11px;
