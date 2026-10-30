@@ -6,11 +6,12 @@
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import PhotoSourceSheet from '../components/PhotoSourceSheet.svelte';
   import { slide } from 'svelte/transition';
-  import { receiveBatch, nextModelId, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, db, waitingForModel, typeChain, firstdibsCampaign } from '../db.js';
+  import { onMount } from 'svelte';
+  import { receiveBatch, nextModelId, modelOptions, SIZE_RUNS, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, db, waitingForModel, typeChain, firstdibsCampaign, saveDraft, loadDraft, clearDraft } from '../db.js';
   import { fmtNum, fmtIQD, buzz, iqd, fileToPhotoDataUrl } from '../utils.js';
   import { reducedMotion } from '../motion.js';
   import { get } from 'svelte/store';
-  import { toastOk, toastErr, toast, celebrateAt, invoicePreset, campaignContacts } from '../store.js';
+  import { toastOk, toastErr, toast, celebrateAt, invoicePreset, campaignContacts, navGuard, askConfirm } from '../store.js';
 
   let { goto } = $props();
 
@@ -42,12 +43,129 @@
      على بطاقة واحدة بدل أن تنشأ كموديلات منفصلة */
   let familySeq = 0;
 
+  /* ---------- حفظ تلقائي للمسودة (لا تعود الفاتورة تضيع) ----------
+     كل تغيير يُحفظ بعد ٦٠٠ms في IndexedDB؛ إن خرجتِ من الشاشة بالخطأ
+     (زر الرصيف، أو زر الرجوع في الجوال، أو قُتل التطبيق) تُستعاد المسودة
+     عند العودة. الصور (data URLs) تذهب لـIndexedDB لا localStorage لتفادي السقف. */
+  let ready = $state(false);       // true بعد استعادة المسودة — يمنع حفظ الفراغ فوقها
+  let saved = $state(false);       // true بعد الاستلام الناجح — يوقف الحفظ والحارس
+  let showRecover = $state(false); // شريط «وجدت فاتورة غير محفوظة»
+  let trapArmed = false;           // فخّ زر الرجوع في الجوال (history.pushState)
+
+  const lineHasContent = (l) =>
+    !!(l && (l.photo || (l.color && String(l.color).trim()) ||
+      (l.cost && String(l.cost).trim()) || (l.price && String(l.price).trim()) ||
+      Object.values(l.sizes || {}).some((n) => Number(n) > 0)));
+  const snapshot = () => ({
+    supplier, invoice, note, openId, familySeq,
+    lines: lines.map((l) => ({
+      id: l.id, category: l.category, type: l.type, typeSub: l.typeSub, typeSub2: l.typeSub2, typeSub3: l.typeSub3,
+      season: l.season, material: l.material, color: l.color, cost: l.cost, price: l.price,
+      sizes: { ...l.sizes }, photo: l.photo, modelId: l.modelId, family: l.family
+    }))
+  });
+  const hasContent = (s) =>
+    (s.lines || []).some(lineHasContent) ||
+    (s.supplier && String(s.supplier).trim()) ||
+    (s.invoice && String(s.invoice).trim()) ||
+    (s.note && String(s.note).trim());
+  const isDirty = () => !saved && hasContent(snapshot());
+
+  function resetForm() {
+    uid = 0;
+    const s = blank();
+    lines = [s]; openId = s.id;
+    supplier = suppliers.length ? suppliers[0] : '';
+    invoice = ''; note = ''; familySeq = 0; saved = false;
+  }
+  async function discardDraft() {
+    await clearDraft('receive').catch(() => {});
+    resetForm();
+    showRecover = false;
+  }
+  function flushDraft() {
+    if (!ready || saved) return;
+    const s = snapshot();
+    if (hasContent(s)) saveDraft('receive', s).catch(() => {});
+  }
+  function onVisibility() { if (document.hidden) flushDraft(); }
+
+  /* فخّ زر الرجوع في الجوال: يمنع الخروج العرضي أثناء وجود مسودة.
+     ملاحظة: هذه الحيلة (pushState + popstate) هي الطريقة المعروفة لحبس
+     زر الرجوع داخل تطبيق الويب/الـPWA — تعمل لكنها تعتمد على نسخة أندرويد.
+     شبكة الأمان الحقيقية هي الحفظ التلقائي أعلاه، لا هذا الفخّ. */
+  function onPop() {
+    if (!isDirty()) { trapArmed = false; return; } // غير متسخة: ندعها تخرج
+    history.pushState({ ghazalaTrap: true }, '');    // نعيد حبسها
+    trapArmed = true;
+    askConfirm({
+      title: 'فاتورة غير محفوظة',
+      body: 'ضغطتِ زر الرجوع — عندك فاتورة وارد فيها أسطر لم تُحفظ. تريدين الخروج بلا حفظ؟',
+      okLabel: 'خروج بلا حفظ', danger: true
+    }).then((ok) => { if (ok) { clearDraft('receive').catch(() => {}); trapArmed = false; goto('home'); } });
+  }
+
   /* سجل الموردين من الإعدادات — والاسم الجديد يُحفظ فيه تلقائياً عند الحفظ.
      أول مورد مُختار سلفاً — لا تُترك القائمة فارغة */
   (async () => {
     suppliers = (await getSetting('suppliers', [])) || [];
     if (!supplier && suppliers.length) supplier = suppliers[0];
+    /* استعادة المسودة المحفوظة تلقائياً (إن وُجدت بها محتوى) */
+    try {
+      const d = await loadDraft('receive');
+      if (d) {
+        const content = (d.lines || []).some(lineHasContent) ||
+          (d.supplier && String(d.supplier).trim()) ||
+          (d.invoice && String(d.invoice).trim()) ||
+          (d.note && String(d.note).trim());
+        if (content) {
+          supplier = d.supplier || supplier;
+          invoice = d.invoice || '';
+          note = d.note || '';
+          familySeq = Number(d.familySeq) || 0;
+          const restored = Array.isArray(d.lines) && d.lines.length ? d.lines.map((l) => ({ ...blank(), ...l })) : [blank()];
+          lines = restored;
+          openId = d.openId != null ? d.openId : (restored[0]?.id ?? null);
+          uid = Math.max(0, ...restored.map((l) => Number(l.id) || 0));
+          showRecover = true;
+        }
+      }
+    } catch { /* لا تعطل الفتح */ }
+    ready = true;
+    navGuard.set(() => isDirty());
   })();
+
+  onMount(() => {
+    window.addEventListener('popstate', onPop);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flushDraft);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flushDraft);
+      navGuard.set(null);
+      if (trapArmed) { try { history.back(); } catch { /* noop */ } trapArmed = false; }
+    };
+  });
+
+  /* الحفظ التلقائي: يكتب المسودة بعد كل تغيير (debounce). لا يكتب إن لم
+     يكن هناك محتوى، ولا بعد الاستلام الناجح. */
+  let saveTimer;
+  $effect(() => {
+    if (!ready || saved) return;
+    const s = snapshot();
+    if (!hasContent(s)) { clearDraft('receive').catch(() => {}); return; }
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => saveDraft('receive', s).catch(() => {}), 600);
+  });
+
+  /* نسلّح فخّ الرجوع فقط حين توجد مسودة متسخة، ونزيله حين تصفو — فلا
+     يُضاف سجلّ زائد عند الفتح الفارغ (خروج بضغطة واحدة). */
+  $effect(() => {
+    const dirty = isDirty();
+    if (dirty && !trapArmed) { history.pushState({ ghazalaTrap: true }, ''); trapArmed = true; }
+    else if (!dirty && trapArmed) { history.back(); trapArmed = false; }
+  });
 
   /* a restock suggestion / size-run hole may arrive pre-filled */
   $effect(() => {
@@ -196,6 +314,8 @@
           modelId: (typeof l.modelId === 'string' && l.modelId.startsWith('M-')) ? l.modelId : familyIds.get(l.family)
         }))
       });
+      saved = true;
+      clearDraft('receive').catch(() => {});
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.6, '📦');
       toastOk(`تم الاستلام — ${fmtNum(r.pieces)} قطعة (${fmtNum(r.added)} بطاقة جديدة${r.merged ? `، ${fmtNum(r.merged)} اندمجت` : ''})`);
@@ -253,6 +373,15 @@
 </script>
 
 <div class="stack" style="gap:12px">
+  {#if showRecover}
+    <Glass class="recover glass-strong">
+      <div class="rc-txt"><b>فاتورة غير محفوظة</b> — وُجدت فاتورة وارد محفوظة تلقائياً. تكملينها أم تتجاهلينها؟</div>
+      <div class="rc-actions">
+        <button class="btn primary" onclick={() => (showRecover = false)}>متابعة</button>
+        <button class="btn ghost" onclick={discardDraft}>تجاهل</button>
+      </div>
+    </Glass>
+  {/if}
   <Glass class="head-card rise">
     <div class="hc-top">
       <span class="h-ic"><Icon name="upload" size={21} color="#fff" /></span>
@@ -649,4 +778,16 @@
     text-align: center;
   }
   .add-line.same { border-color: rgba(201, 162, 75, 0.45); color: #8a6a35; }
+
+  /* شريط استعادة المسودة — يظهر عند فتح الشاشة وفيه فاتورة غير محفوظة */
+  .recover {
+    display: flex; flex-direction: column; gap: 10px;
+    padding: 12px 14px;
+    border-color: rgba(201, 161, 90, 0.6) !important;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.97), rgba(201, 161, 90, 0.16)) !important;
+  }
+  .rc-txt { font-size: 12.5px; font-weight: 800; color: var(--ink); line-height: 1.55; }
+  .rc-txt b { color: var(--burgundy-deep); }
+  .rc-actions { display: flex; gap: 8px; }
+  .rc-actions .btn { flex: 1; min-height: 44px; font-size: 12.5px; }
 </style>

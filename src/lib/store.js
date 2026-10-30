@@ -83,3 +83,8 @@ export const campaignContacts = writable(null); // null | { contacts: [..], temp
 
 /* ---------- Misc ui ---------- */
 export const uiFlags = writable({ sawReportsTip: false });
+
+/* ---------- Navigation guard (حارس الخروج من الشاشات غير المحفوظة) ----------
+   شاشة فاتورة وارد تسجّل دالة تُرجع true حين توجد مسودة متسخة؛ يتحقق goto
+   منها قبل تبديل الشاشة فيسأل المستخدمة «تخرجين بلا حفظ؟». */
+export const navGuard = writable(null); // null | (() => boolean)

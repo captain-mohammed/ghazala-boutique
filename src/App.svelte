@@ -1,6 +1,8 @@
 <script>
   import { onMount } from 'svelte';
+  import { get } from 'svelte/store';
   import { fade } from 'svelte/transition';
+  import { askConfirm, navGuard } from './lib/store.js';
   import { screenIn } from './lib/motion.js';
   import Lock from './lib/components/Lock.svelte';
   import BottomNav from './lib/components/BottomNav.svelte';
@@ -74,8 +76,19 @@
     store: 'متجري'
   };
 
-  function goto(id) {
+  async function goto(id) {
     if (screen === id) return;
+    /* حارس الخروج: إن كانت فاتورة وارد فيها مسودة متسخة، اسأل قبل الرحيل
+       (يغطي أزرار الرصيف والزر الداخلي للرجوع — كلاهما يمرّ بـgoto) */
+    const guard = get(navGuard);
+    if (guard && guard()) {
+      const ok = await askConfirm({
+        title: 'فاتورة غير محفوظة',
+        body: 'عندك فاتورة وارد فيها أسطر لم تُحفظ — تريدين الخروج بلا حفظ؟',
+        okLabel: 'خروج بلا حفظ', danger: true
+      });
+      if (!ok) return;
+    }
     // position-aware: content slides in from the tapped tab's side
     const from = NAV_TABS.findIndex((t) => t.id === screen);
     const to = NAV_TABS.findIndex((t) => t.id === id);

@@ -143,6 +143,26 @@ db.version(8).stores({
   if (rows.length) await tx.table('lots').bulkAdd(rows);
 });
 
+/* v9: + drafts (مسودات الفواتير غير المحفوظة)
+   لا ترقية بيانات — الجدول جديد فارغ. يُضاف إلى backupJSON/restoreJSON/wipeAll
+   لئلا يضيع بصمت عند الاستعادة. */
+db.version(9).stores({
+  drafts: 'key'
+});
+
+/* مسودات الشاشات: تُحفظ تلقائياً في IndexedDB (لا سقف localStorage) وتُستعاد
+   عند العودة. المفتاح يميّز نوع المسودة — حالياً «receive» لفاتورة الوارد. */
+export async function saveDraft(key, data) {
+  await db.drafts.put({ key, data, at: Date.now() });
+}
+export async function loadDraft(key) {
+  const r = await db.drafts.get(key);
+  return r ? r.data : null;
+}
+export async function clearDraft(key) {
+  await db.drafts.delete(key);
+}
+
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
 export const WOMENS_TYPES = ['بوت', 'سلامبر', 'موال', 'كعب عالي'];
 
@@ -1977,16 +1997,16 @@ export async function stocktakeApply(corrections) {
 /* ---------------- Backup / Restore ---------------- */
 
 export async function backupJSON() {
-  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos, lots] = await Promise.all([
+  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos, lots, drafts] = await Promise.all([
     db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray(),
     db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.vault.toArray(),
     db.waitlists.toArray(), db.referrals.toArray(), db.testimonials.toArray(), db.payments.toArray(),
-    db.photos.toArray(), db.lots.toArray()
+    db.photos.toArray(), db.lots.toArray(), db.drafts.toArray()
   ]);
   return {
-    app: 'ghazala-boutique', version: 8, exportedAt: new Date().toISOString(),
+    app: 'ghazala-boutique', version: 9, exportedAt: new Date().toISOString(),
     products, sales, movements, settings, expenses, reservations, occasions, vault,
-    waitlists, referrals, testimonials, payments, photos, lots
+    waitlists, referrals, testimonials, payments, photos, lots, drafts
   };
 }
 
@@ -2002,7 +2022,7 @@ export async function restoreJSON(data, { merge = false } = {}) {
 
   const tables = [
     db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions,
-    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots
+    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts
   ];
 
   /* استعادة واحدة ذرّية: إما تنجح كاملة أو لا يُمَس شيء. الكتابة خارج معاملة
@@ -2030,8 +2050,8 @@ export async function restoreJSON(data, { merge = false } = {}) {
 }
 
 export async function wipeAll() {
-  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, async () => {
-    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear(), db.lots.clear()]);
+  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, async () => {
+    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear(), db.lots.clear(), db.drafts.clear()]);
   });
 }
 
