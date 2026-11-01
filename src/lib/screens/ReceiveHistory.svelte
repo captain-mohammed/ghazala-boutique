@@ -240,7 +240,7 @@
               <span class="rc-date">{dateLabel(r.day)}</span>
               <span class="rc-title">
                 <span class="rc-sup">{r.sup || 'بدون مورد'}</span>
-                <span class="rc-sub">{r.no}{r.inv ? ` · فاتورة #${r.inv}` : ''}</span>
+                <span class="rc-sub">{r.inv ? `فاتورة المورد #${r.inv}` : (r.no || 'بلا رقم')}</span>
               </span>
               <span class="rc-pieces">{fmtNum(r.pieces)} قطعة</span>
               <span class="chev" class:flip={openKey === r.key}><Icon name="back" size={13} /></span>
@@ -257,8 +257,11 @@
               <div class="stat"><span class="k">الربح</span><b class:good={r.profit > 0} class:bad={r.profit < 0}>{fmtIQD(r.profit)}</b></div>
             </div>
 
-            {#if r.note}
-              <div class="rc-note"><Icon name="file" size={11} /> <span>{r.note}</span></div>
+            {#if (r.inv && r.no) || r.note}
+              <div class="rc-foot">
+                {#if r.inv && r.no}<span class="rc-auto">{r.no}</span>{/if}
+                {#if r.note}<span class="rc-note"><Icon name="file" size={11} /> <span>{r.note}</span></span>{/if}
+              </div>
             {/if}
 
             {#if openKey === r.key}
@@ -396,7 +399,9 @@
   .rc-stats b.good { color: var(--good); }
   .rc-stats b.bad { color: var(--burgundy); }
 
-  .rc-note { display: flex; align-items: center; gap: 5px; margin-top: 9px; font-size: 10.5px; font-weight: 600; color: var(--taupe); }
+  .rc-foot { display: flex; align-items: center; gap: 10px; margin-top: 9px; flex-wrap: wrap; }
+  .rc-auto { flex: none; font-size: 9.5px; font-weight: 800; color: var(--taupe); background: rgba(156, 123, 107, 0.1); border-radius: 999px; padding: 3px 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rc-note { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 10.5px; font-weight: 600; color: var(--taupe); }
   .rc-note span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .lines { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 5px; }
