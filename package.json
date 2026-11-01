@@ -1,7 +1,7 @@
 {
   "name": "ghazala-boutique",
   "private": true,
-  "version": "0.31.2",
+  "version": "0.31.3",
   "type": "module",
   "description": "بوتيك غزالة — نظام إدارة المخزون والمبيعات — offline-first PWA",
   "scripts": {

@@ -282,19 +282,22 @@
     {:else}
       <div class="stack" style="gap:8px; padding-bottom:80px">
         {#each suppliersFiltered as s (s.sup)}
-          <Glass class="sup" style="padding:13px 15px; border-radius:var(--r-md)">
-            <div class="row" style="justify-content:space-between; align-items:center">
-              <span class="bold">{s.sup}</span>
-              <span class="muted tiny">{fmtNum(s.invoices.size)} فاتورة · آخرها {s.last ? fmtDate(s.last) : '—'}</span>
+          <Glass class="sup">
+            <div class="sup-head">
+              <span class="sup-avatar">{(s.sup || '?').trim().charAt(0)}</span>
+              <div class="sup-id">
+                <span class="sup-name">{s.sup}</span>
+                <span class="sup-meta">{fmtNum(s.invoices.size)} فاتورة{s.last ? ` · آخرها ${fmtDate(s.last)}` : ''}</span>
+              </div>
             </div>
             <div class="rc-sell"><div class="rc-bar"><i style="width:{pct(s.sold, s.pieces)}%"></i></div><span class="rc-pct">{pct(s.sold, s.pieces)}% مُباع</span></div>
-            <div class="grid2">
-              <span>القطع <b>{fmtNum(s.pieces)}</b></span>
-              <span>المتبقي <b>{fmtNum(s.remaining)}</b></span>
-              <span>تكلفة الشراء <b>{fmtIQD(s.cost)}</b></span>
-              <span>الربح <b class="good">{fmtIQD(s.profit)}</b></span>
-              <span>رأس مال راكد <b class="warn">{fmtIQD(s.tied)}</b></span>
+            <div class="sup-stats">
+              <div class="stat"><span class="k">القطع</span><b>{fmtNum(s.pieces)}</b></div>
+              <div class="stat"><span class="k">المتبقي</span><b>{fmtNum(s.remaining)}</b></div>
+              <div class="stat"><span class="k">تكلفة الشراء</span><b>{fmtIQD(s.cost)}</b></div>
+              <div class="stat"><span class="k">الربح</span><b class:good={s.profit > 0} class:bad={s.profit < 0}>{fmtIQD(s.profit)}</b></div>
             </div>
+            <div class="sup-foot"><span class="muted tiny">رأس مال راكد</span><b class="warn">{fmtIQD(s.tied)}</b></div>
           </Glass>
         {/each}
       </div>
@@ -305,28 +308,34 @@
     {:else}
       <div class="stack" style="gap:8px; padding-bottom:80px">
         {#each modelsFiltered as m (m.mid)}
-          <Glass class="mdl" style="padding:13px 15px; border-radius:var(--r-md)">
-            <div class="row" style="justify-content:space-between; align-items:center">
-              <span class="bold small">{m.label}</span>
-              <span class="muted tiny">{fmtNum(m.qty)} قطعة · متبقٍّ {fmtNum(m.remaining)}</span>
+          <Glass class="mdl">
+            <div class="mdl-head">
+              <span class="mdl-ic"><Icon name="box" size={16} color="var(--burgundy)" /></span>
+              <div class="mdl-id">
+                <span class="mdl-name">{m.label}</span>
+                <span class="mdl-meta">{fmtNum(m.qty)} قطعة · متبقٍّ {fmtNum(m.remaining)}</span>
+              </div>
+              <span class="mdl-profit"><span class="k">الربح</span><b class:good={m.profit > 0} class:bad={m.profit < 0}>{fmtIQD(m.profit)}</b></span>
             </div>
             <div class="rc-sell"><div class="rc-bar"><i style="width:{pct(m.sold, m.qty)}%"></i></div><span class="rc-pct">{pct(m.sold, m.qty)}% مُباع</span></div>
-            <div class="row wrap" style="gap:8px; margin-top:8px">
-              <span class="tag">تكلفة أولى {fmtIQD(m.firstCost)}</span>
-              <span class="tag">آخر تكلفة {fmtIQD(m.lastCost)}</span>
+            <div class="mdl-cost">
+              <span class="k">التكلفة</span>
+              <span class="cost-from">{fmtIQD(m.firstCost)}</span>
+              <span class="arrow">←</span>
+              <span class="cost-to">{fmtIQD(m.lastCost)}</span>
               {#if m.costChange !== 0}
-                <span class="tag" class:up={m.costChange > 0} class:down={m.costChange < 0}>{m.costChange > 0 ? '▲' : '▼'} {fmtNum(Math.abs(m.costChange))}%</span>
+                <span class="delta" class:up={m.costChange > 0} class:down={m.costChange < 0}>{m.costChange > 0 ? '▲' : '▼'} {fmtNum(Math.abs(m.costChange))}%</span>
               {/if}
-              <span class="tag good-tag">ربح {fmtIQD(m.profit)}</span>
             </div>
             {#if m.supList.length > 1}
               <div class="cmp">
                 <div class="cmp-title">مقارنة الموردين لنفس الموديل</div>
-                {#each m.supList as sp (sp.sup)}
-                  <div class="cmp-row" class:best={sp === m.supList[0]}>
-                    <span>{sp.sup}</span>
-                    <span class="muted tiny">{fmtNum(sp.qty)} قطعة</span>
+                {#each m.supList as sp, i (sp.sup)}
+                  <div class="cmp-row" class:best={i === 0}>
+                    <span class="cmp-sup">{sp.sup}</span>
+                    <span class="cmp-qty">{fmtNum(sp.qty)} قطعة</span>
                     <span class="cmp-cost">{fmtIQD(sp.last)}</span>
+                    {#if i === 0}<span class="cmp-best">الأرخص</span>{/if}
                   </div>
                 {/each}
               </div>
@@ -397,20 +406,52 @@
   .ln-cost { flex: none; font-weight: 800; color: var(--burgundy); }
 
   /* ---------- الموردون / الموديلات ---------- */
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin-top: 8px; font-size: 11.5px; color: var(--taupe); }
-  .grid2 b { color: var(--ink); }
+  :global(.sup), :global(.mdl) {
+    position: relative; padding: 13px 14px; border-radius: var(--r-md);
+    border: 1px solid var(--line-2); overflow: hidden;
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.7), rgba(251, 243, 238, 0.5));
+  }
+  :global(.sup)::before, :global(.mdl)::before {
+    content: ''; position: absolute; inset-inline-start: 0; top: 0; bottom: 0; width: 3px;
+    background: linear-gradient(180deg, var(--gold), var(--burgundy)); opacity: 0.7;
+  }
+  .sup-head, .mdl-head { display: flex; align-items: center; gap: 10px; }
+  .sup-avatar { flex: none; width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 16px; color: #fff; background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep)); }
+  .mdl-ic { flex: none; width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: rgba(181, 73, 91, 0.1); border: 1px solid rgba(181, 73, 91, 0.16); }
+  .sup-id, .mdl-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .sup-name, .mdl-name { font-weight: 800; font-size: 13.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sup-meta, .mdl-meta { font-size: 10px; font-weight: 700; color: var(--taupe); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .sup-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 12px; margin-top: 11px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .sup-stats .stat { display: flex; flex-direction: column; gap: 1px; }
+  .sup-stats .k { font-size: 9.5px; font-weight: 700; color: var(--taupe); }
+  .sup-stats b { font-size: 12.5px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .sup-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--line); }
+  .sup-foot b { font-size: 12.5px; font-weight: 800; }
+
+  .mdl-profit { flex: none; display: flex; flex-direction: column; gap: 1px; text-align: center; }
+  .mdl-profit .k { font-size: 9px; font-weight: 700; color: var(--taupe); }
+  .mdl-profit b { font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .mdl-cost { display: flex; align-items: center; gap: 7px; margin-top: 9px; font-size: 11px; color: var(--taupe); }
+  .mdl-cost .k { font-weight: 700; }
+  .cost-from, .cost-to { font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .mdl-cost .arrow { color: var(--gold); font-weight: 900; }
+  .delta { margin-inline-start: auto; font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px; }
+  .delta.up { color: var(--burgundy); background: rgba(181, 73, 91, 0.1); }
+  .delta.down { color: var(--good); background: rgba(78, 138, 95, 0.12); }
+
   .good { color: var(--good) !important; }
+  .bad { color: var(--burgundy) !important; }
   .warn { color: var(--warn) !important; }
-  .tag { font-size: 10.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px; background: rgba(156,123,107,0.13); color: var(--taupe); }
-  .tag.up { background: rgba(181,73,91,0.12); color: var(--burgundy); }
-  .tag.down { background: rgba(78,138,95,0.14); color: var(--good); }
-  .tag.good-tag { background: rgba(78,138,95,0.14); color: var(--good); }
+
   .cmp { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
-  .cmp-title { font-size: 10.5px; font-weight: 800; color: var(--taupe); margin-bottom: 5px; }
-  .cmp-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; padding: 4px 6px; border-radius: 8px; }
-  .cmp-row.best { background: rgba(78,138,95,0.1); }
-  .cmp-row span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cmp-cost { font-weight: 800; color: var(--burgundy); }
+  .cmp-title { font-size: 10.5px; font-weight: 800; color: var(--taupe); margin-bottom: 6px; }
+  .cmp-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; padding: 5px 7px; border-radius: 8px; }
+  .cmp-row.best { background: rgba(78, 138, 95, 0.1); }
+  .cmp-sup { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cmp-qty { flex: none; font-size: 10px; color: var(--taupe); }
+  .cmp-cost { font-weight: 800; color: var(--burgundy); font-variant-numeric: tabular-nums; }
+  .cmp-best { flex: none; font-size: 9px; font-weight: 800; color: var(--good); background: rgba(78, 138, 95, 0.14); border-radius: 999px; padding: 2px 7px; }
 
   .btn { font-family: inherit; font-size: 12.5px; font-weight: 700; border-radius: var(--r-md); padding: 0 12px; cursor: pointer; border: 1px solid var(--line); background: rgba(255,255,255,0.6); color: var(--ink); display: inline-flex; align-items: center; gap: 5px; }
   .btn.ghost { background: transparent; }
