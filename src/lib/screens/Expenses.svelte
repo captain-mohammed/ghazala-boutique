@@ -5,7 +5,7 @@
   import Sheet from '../components/Sheet.svelte';
   import { db, addExpense, updateExpense, deleteExpense, EXPENSE_CATEGORIES } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, isSameDay, startOfToday, daysAgoStart, buzz, iqd, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
-  import { toastOk, toastErr } from '../store.js';
+  import { toastOk, toastErr, askConfirm } from '../store.js';
 
   let expenses = $state([]);
   let amount = $state('');
@@ -66,6 +66,12 @@
   }
 
   async function remove(e) {
+    const ok = await askConfirm({
+      title: `حذف مصروف ${e.category}؟`,
+      body: `سيُحذف المصروف بمبلغ ${fmtIQD(e.amount)} نهائياً.`,
+      okLabel: 'حذف', danger: true
+    });
+    if (!ok) return;
     await deleteExpense(e.id);
     buzz(10);
   }

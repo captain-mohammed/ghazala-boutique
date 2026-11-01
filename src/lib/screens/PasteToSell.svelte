@@ -3,9 +3,13 @@
   import Glass from '../components/Glass.svelte';
   import Pick from '../components/Pick.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, recordSale, piecesSoldToday, typeChain, loadProducts } from '../db.js';
+  import { db, recordSale, piecesSoldToday, typeChain, loadProducts, clearDraft } from '../db.js';
   import { fmtIQD, fmtNum, parseOrderText, buzz } from '../utils.js';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor } from '../store.js';
+  import { useDraft } from '../draftGuard.svelte.js';
+  import RecoverBanner from '../components/RecoverBanner.svelte';
+
+  let { goto } = $props();
 
   /* العراق 18 محافظة */
   const PROVINCES = ['بغداد', 'البصرة', 'نينوى', 'أربيل', 'السليمانية', 'دهوك', 'كركوك', 'الأنبار', 'بابل', 'كربلاء', 'النجف', 'القادسية', 'ذي قار', 'ميسان', 'مثنى', 'واسط', 'ديالى', 'صلاح الدين'];
@@ -19,6 +23,23 @@
   let customerAddress = $state('');
   let saving = $state(false);
   let tried = $state(false);
+
+  /* ---------- حفظ تلقائي لمسودة البيع من رسالة ---------- */
+  const draft = useDraft({
+    key: 'pastesell',
+    snapshot: () => ({ text, cart: cart.map((c) => ({ ...c })), customerName, customerPhone, customerProvince, customerAddress }),
+    hasContent: (s) => !!(s.text?.trim() || (s.cart && s.cart.length) || s.customerName?.trim() || s.customerPhone?.trim() || s.customerProvince?.trim() || s.customerAddress?.trim()),
+    restore: (s) => {
+      text = s.text || '';
+      cart = Array.isArray(s.cart) ? s.cart.map((c) => ({ ...c })) : [];
+      customerName = s.customerName || ''; customerPhone = s.customerPhone || '';
+      customerProvince = s.customerProvince || ''; customerAddress = s.customerAddress || '';
+    },
+    reset: () => { text = ''; cart = []; customerName = ''; customerPhone = ''; customerProvince = ''; customerAddress = ''; tried = false; },
+    goto, exitTo: 'sell',
+    confirmTitle: 'بيع من رسالة غير محفوظ',
+    confirmBody: 'عندك رسالة وسلة لم تُحفظ. تريدين الخروج بلا حفظ؟'
+  });
 
   /* الاسم والهاتف والمحافظة مطلوبة */
   const clientValid = $derived(customerName.trim().length > 0 && customerPhone.trim().length >= 7 && customerProvince !== '');
@@ -94,6 +115,7 @@
       customerProvince = '';
       customerAddress = '';
       tried = false;
+      clearDraft('pastesell').catch(() => {});
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.8, '🛍️');
       toastOk(`تم البيع — ${fmtIQD(sale.subtotal)}`);
@@ -116,6 +138,14 @@
 </script>
 
 <div class="stack" style="gap:12px">
+  {#if draft.showRecover}
+    <RecoverBanner
+      title="بيع من رسالة غير محفوظ"
+      body="وجدت رسالة وسلة لم تُحفظ — تابعينها أو تجاهليها"
+      onDiscard={draft.discard}
+      onContinue={draft.dismiss}
+    />
+  {/if}
   <Glass class="rise" style="animation-delay:0.03s; padding:14px 16px">
     <div class="f-head">
       <span class="f-title"><Icon name="chat" size={16} color="var(--burgundy)" /> الصق رسالة الزبونة</span>

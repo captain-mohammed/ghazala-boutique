@@ -4,9 +4,11 @@
   import Pick from '../components/Pick.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
-  import { db, addOccasion, deleteOccasion, upcomingOccasions, loadProducts } from '../db.js';
+  import { db, addOccasion, deleteOccasion, upcomingOccasions, loadProducts, clearDraft } from '../db.js';
   import { fmtNum, buzz, sendWhatsApp } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
+  import { useDraft } from '../draftGuard.svelte.js';
+  import RecoverBanner from '../components/RecoverBanner.svelte';
 
   let occasions = $state([]); // upcoming (already sorted, with inDays)
   let later = $state([]); // the rest
@@ -24,6 +26,26 @@
   const LABELS = ['عيد ميلاد', 'ذكرى زواج', 'مناسبة خاصة'];
   const MONTHS = ['كانون2/يناير', 'شباط/فبراير', 'آذار/مارس', 'نيسان/أبريل', 'أيار/مايو', 'حزيران/يونيو', 'تموز/يوليو', 'آب/أغسطس', 'أيلول/سبتمبر', 'تشرين1/أكتوبر', 'تشرين2/نوفمبر', 'كانون1/ديسمبر'];
   const DAYS_IN = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+  /* ---------- حفظ تلقائي لمسودة المناسبة ---------- */
+  const draft = useDraft({
+    key: 'occasion',
+    snapshot: () => ({ fName, fPhone, fLabel, fMonth, fDay, fNote }),
+    hasContent: (s) => !!(s.fName?.trim() || s.fPhone?.trim() || s.fNote?.trim()),
+    restore: (s) => {
+      fName = s.fName || ''; fPhone = s.fPhone || ''; fLabel = s.fLabel || 'عيد ميلاد';
+      fMonth = s.fMonth ?? 1; fDay = s.fDay ?? 1; fNote = s.fNote || '';
+    },
+    reset: () => {
+      fName = ''; fPhone = ''; fLabel = 'عيد ميلاد';
+      fMonth = new Date().getMonth() + 1; fDay = new Date().getDate(); fNote = '';
+    },
+    onExit: () => { formOpen = false; },
+    confirmTitle: 'مناسبة غير محفوظة',
+    confirmBody: 'عندك مناسبة فيها بيانات لم تُحفظ. تريدين إغلاقها بلا حفظ؟',
+    okLabel: 'إغلاق بلا حفظ'
+  });
+  function continueDraft() { draft.dismiss(); formOpen = true; }
 
   let refresh = () => {};
   $effect(() => {
@@ -59,6 +81,7 @@
 
   function openAdd() {
     editing = null;
+    draft.dismiss();
     fName = ''; fPhone = ''; fLabel = 'عيد ميلاد';
     fMonth = new Date().getMonth() + 1; fDay = new Date().getDate();
     fNote = '';
@@ -67,6 +90,7 @@
 
   function openEdit(o) {
     editing = o;
+    draft.dismiss();
     fName = o.customerName; fPhone = o.customerPhone || '';
     fLabel = o.label; fMonth = o.month; fDay = o.day; fNote = o.note || '';
     formOpen = true;
@@ -90,6 +114,7 @@
       }
       formOpen = false;
       refresh();
+      clearDraft('occasion').catch(() => {});
     } catch (e) {
       console.error(e);
       toastErr('تعذر الحفظ');
@@ -194,6 +219,14 @@
 </script>
 
 <div class="stack" style="gap:12px">
+  {#if draft.showRecover}
+    <RecoverBanner
+      title="مناسبة غير محفوظة"
+      body="وجدت مناسبة كتبتِها ولم تُحفظ — تابعينها أو تجاهليها"
+      onDiscard={draft.discard}
+      onContinue={continueDraft}
+    />
+  {/if}
   <button class="btn gold block" onclick={() => { buzz(8); openAdd(); }}>
     <Icon name="calendar" size={18} /> إضافة مناسبة
   </button>

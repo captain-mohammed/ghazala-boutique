@@ -14,7 +14,8 @@
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import { db, getSetting, addWaitlistEntry, loadProducts, modelOptions, subsOfType, subsOfType2, subsOfType3, typeChain, hexForColor, SIZE_RUNS } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, buzz, sendWhatsApp, renderTpl, MKT_TEMPLATES } from '../utils.js';
-  import { toastOk, toastErr, campaignContacts } from '../store.js';
+  import { toastOk, toastErr, campaignContacts, askConfirm } from '../store.js';
+  import { useDraft } from '../draftGuard.svelte.js';
 
   const NOCOLOR = 'بلا لون';
 
@@ -215,6 +216,39 @@
   let reqTypeSub3 = $state('');
   let reqSelColors = $state([]);
   let reqByColor = $state({});
+
+  /* ---------- حفظ تلقائي لطلب قائمة الانتظار ---------- */
+  const draft = useDraft({
+    key: 'broadcast',
+    snapshot: () => ({
+      capMode, capModelId, capName, capPhone, capChain, capQty, capNote,
+      capColors: [...capColors], capSizes: [...capSizes], capColor, capSize,
+      reqType, reqTypeSub, reqTypeSub2, reqTypeSub3,
+      reqSelColors: [...reqSelColors], reqByColor: JSON.parse(JSON.stringify(reqByColor))
+    }),
+    hasContent: (s) => !!(s.capName?.trim() || s.capPhone?.trim() || s.capNote?.trim() || s.reqType || (s.reqSelColors && s.reqSelColors.length) || (s.capMode === 'model' && s.capModelId)),
+    restore: (s) => {
+      capMode = s.capMode || 'model';
+      capModelId = s.capModelId || ''; capName = s.capName || ''; capPhone = s.capPhone || '';
+      capChain = s.capChain || ''; capQty = s.capQty ?? 1; capNote = s.capNote || '';
+      capColors = Array.isArray(s.capColors) ? [...s.capColors] : [];
+      capSizes = Array.isArray(s.capSizes) ? [...s.capSizes] : [];
+      capColor = s.capColor || ''; capSize = s.capSize || '';
+      reqType = s.reqType || ''; reqTypeSub = s.reqTypeSub || ''; reqTypeSub2 = s.reqTypeSub2 || ''; reqTypeSub3 = s.reqTypeSub3 || '';
+      reqSelColors = Array.isArray(s.reqSelColors) ? [...s.reqSelColors] : [];
+      reqByColor = s.reqByColor && typeof s.reqByColor === 'object' ? JSON.parse(JSON.stringify(s.reqByColor)) : {};
+      capOpen = true;
+    },
+    reset: () => {
+      capOpen = false; capMode = 'model'; capModelId = ''; capName = ''; capPhone = '';
+      capChain = ''; capQty = 1; capNote = ''; capColors = []; capSizes = []; capColor = ''; capSize = '';
+      reqType = ''; reqTypeSub = ''; reqTypeSub2 = ''; reqTypeSub3 = ''; reqSelColors = []; reqByColor = {};
+    },
+    onExit: () => { capOpen = false; },
+    confirmTitle: 'طلب انتظار غير محفوظ',
+    confirmBody: 'عندك طلب قائمة انتظار لم يُحفظ. تريدين إغلاقه بلا حفظ؟',
+    okLabel: 'إغلاق بلا حفظ'
+  });
   const reqSubsNow = $derived(subsOfType(opts.typeSubs, reqType));
   const reqSubs2Now = $derived(subsOfType2(opts.typeSubs2, reqType, reqTypeSub));
   const reqSubs3Now = $derived(subsOfType3(opts.typeSubs3, reqType, reqTypeSub, reqTypeSub2));
@@ -285,7 +319,7 @@
         }
       }
       if (saved === 0) return toastErr(dup ? 'هي موجودة بالانتظار أصلاً' : 'تعذر الحفظ');
-      capOpen = false;
+      await draft.discard();
       buzz([14, 40, 14]);
       toastOk(`سُجّل الطلب — ${fmtNum(saved)} ${saved === 1 ? 'تسجيلة' : 'تسجيلات'} ينادى عليها عند وصول نفس النوع 🌷`);
       await load();
@@ -301,7 +335,7 @@
       qty: capQty, note: capNote, kind: 'model'
     });
     if (!r.ok) return toastErr(r.dup ? 'هي موجودة بالانتظار أصلاً' : 'تعذر الحفظ');
-    capOpen = false;
+    await draft.discard();
     buzz([14, 40, 14]);
     toastOk('ضامنتِ قائمة الانتظار — ينادى عليها عند التوريد 🌷');
     await load();
@@ -317,6 +351,12 @@
     openWalk();
   }
   async function dropWait(key) {
+    const ok = await askConfirm({
+      title: 'إزالة من قائمة الانتظار؟',
+      body: 'ستُحذف هذه التسجيلة من قائمة الانتظار.',
+      okLabel: 'إزالة', danger: true
+    });
+    if (!ok) return;
     await db.waitlists.delete(key);
     await load();
   }

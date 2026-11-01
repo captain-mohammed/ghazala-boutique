@@ -5,9 +5,11 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, sweepExpiredReservations, cancelReservation, convertReservation, piecesSoldToday } from '../db.js';
+  import { db, sweepExpiredReservations, cancelReservation, convertReservation, piecesSoldToday, clearDraft } from '../db.js';
   import { fmtIQD, fmtDate, fmtNum, buzz, iqd } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt, milestoneFor } from '../store.js';
+  import { useDraft } from '../draftGuard.svelte.js';
+  import RecoverBanner from '../components/RecoverBanner.svelte';
 
   let reservations = $state([]);
   let converting = $state(null); // reservation in the convert sheet
@@ -64,7 +66,30 @@
   let tried = $state(false);
   const clientValid = $derived(cName.trim().length > 0 && cPhone.trim().length >= 7 && cProvince !== '');
 
+  /* ---------- حفظ تلقائي لبيانات التحويل لبيع ---------- */
+  const draft = useDraft({
+    key: 'reservation',
+    snapshot: () => ({ cName, cPhone, cProvince, cAddress, fee, reservationId: converting?.id ?? null }),
+    hasContent: (s) => !!(s.cName?.trim() || s.cPhone?.trim() || s.cProvince?.trim() || s.cAddress?.trim()),
+    restore: (s) => {
+      cName = s.cName || ''; cPhone = s.cPhone || ''; cProvince = s.cProvince || '';
+      cAddress = s.cAddress || ''; fee = s.fee ?? 5000;
+      if (s.reservationId) {
+        db.reservations.get(s.reservationId).then((r) => {
+          if (r && r.status === 'active') { converting = r; tried = false; }
+        });
+      }
+    },
+    reset: () => { cName = ''; cPhone = ''; cProvince = ''; cAddress = ''; fee = 5000; converting = null; },
+    onExit: () => { converting = null; },
+    confirmTitle: 'تحويل غير محفوظ',
+    confirmBody: 'عندك بيانات تحويل لبيع لم تُحفظ. تريدين إغلاقها بلا حفظ؟',
+    okLabel: 'إغلاق بلا حفظ'
+  });
+  function continueDraft() { draft.dismiss(); }
+
   async function openConvert(r) {
+    draft.dismiss();
     converting = r;
     cName = r.customerName || '';
     cPhone = r.customerPhone || '';
@@ -79,6 +104,7 @@
     try {
       const sale = await convertReservation(converting.id, { deliveryFee: iqd(fee), province: cProvince, address: cAddress });
       converting = null;
+      clearDraft('reservation').catch(() => {});
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.8, '🛍️');
       toastOk(`تم البيع — ${fmtIQD(sale.subtotal)}`);
@@ -99,6 +125,14 @@
 </script>
 
 <div class="stack" style="gap:12px">
+  {#if draft.showRecover && !converting}
+    <RecoverBanner
+      title="تحويل غير محفوظ"
+      body="وجدت بيانات تحويل لبيع كتبتِها ولم تُحفظ — تابعينها أو تجاهليها"
+      onDiscard={draft.discard}
+      onContinue={continueDraft}
+    />
+  {/if}
   {#if active.length === 0}
     <EmptyState
       title="لا حجوزات نشطة"

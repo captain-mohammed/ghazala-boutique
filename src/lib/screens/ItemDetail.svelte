@@ -28,9 +28,20 @@
     toastOk('سُجّلت في قائمة الانتظار — ينادى عليها عند التوريد 🌷');
     loadWaits();
   }
-  async function dropWait(key) { await db.waitlists.delete(key); loadWaits(); }
+  async function dropWait(key) {
+    const ok = await askConfirm({
+      title: 'إزالة من قائمة الانتظار؟',
+      body: 'ستُحذف هذه التسجيلة من قائمة الانتظار لهذا الموديل.',
+      okLabel: 'إزالة', danger: true
+    });
+    if (!ok) return;
+    await db.waitlists.delete(key);
+    loadWaits();
+  }
 
-  let p = $state(product);
+  /* القيمة الابتدائية عبر دالة — $effect أدناه يزامن p مع product عند تغيّره */
+  const _initialProduct = () => product;
+  let p = $state(_initialProduct());
   let moves = $state([]);
   let siblings = $state([]);
   let lots = $state([]);   /* دفعات هذه البطاقة — المفتوحة فقط */

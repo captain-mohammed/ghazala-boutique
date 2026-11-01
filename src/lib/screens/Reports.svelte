@@ -4,7 +4,7 @@
   import VariantBits from '../components/VariantBits.svelte';
   import { db, allSettings, getSetting, WOMENS_TYPES, modelGroupKey, loadProducts } from '../db.js';
   import Glass from '../components/Glass.svelte';
-  import { fmtIQD, fmtNum, fmtDate, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR, shelfAgeDays, stockArrival, baghdadWeekday, baghdadDayPart } from '../utils.js';
+  import { fmtIQD, fmtNum, fmtDate, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR, shelfAgeDays, stockArrival, baghdadWeekday, baghdadDayPart, isoFromBaghdadLocal } from '../utils.js';
 
   let products = $state([]);
   let sales = $state([]);
@@ -14,13 +14,29 @@
   let closings = $state([]);
   let settings = $state(null);
   let period = $state('today');
+  let customFrom = $state('');
+  let customTo = $state('');
 
   const PERIODS = [
     { id: 'today', label: 'اليوم' },
     { id: 'week', label: '7 أيام' },
     { id: 'month', label: '30 يوم' },
-    { id: 'all', label: 'الكل' }
+    { id: 'all', label: 'الكل' },
+    { id: 'custom', label: 'مخصص' }
   ];
+
+  /* نطاق مخصص — حدود بتوقيت بغداد، و«إلى» شامل يومه كاملاً */
+  function customFromDate() {
+    if (!customFrom) return null;
+    const iso = isoFromBaghdadLocal(`${customFrom}T00:00`);
+    return iso ? new Date(iso) : null;
+  }
+  function customToExclusive() {
+    if (!customTo) return null;
+    const iso = isoFromBaghdadLocal(`${customTo}T00:00`);
+    if (!iso) return null;
+    return new Date(new Date(iso).getTime() + 86400000);
+  }
 
   $effect(() => {
     let alive = true;
@@ -39,8 +55,15 @@
     return () => { alive = false; clearInterval(t); };
   });
 
-  const from = $derived(period === 'today' ? startOfToday() : period === 'week' ? daysAgoStart(6) : period === 'month' ? daysAgoStart(29) : new Date(0));
-  const inPeriod = $derived(sales.filter((s) => s.status !== 'returned' && new Date(s.date) >= from));
+  const from = $derived(
+    period === 'today' ? startOfToday()
+      : period === 'week' ? daysAgoStart(6)
+        : period === 'month' ? daysAgoStart(29)
+          : period === 'custom' ? (customFromDate() ?? new Date(0))
+            : new Date(0)
+  );
+  const to = $derived(period === 'custom' ? (customToExclusive() ?? new Date(8640000000000000)) : new Date(8640000000000000));
+  const inPeriod = $derived(sales.filter((s) => s.status !== 'returned' && new Date(s.date) >= from && new Date(s.date) < to));
 
   /* خرائط بحث تُبنى مرة واحدة — كانت كل صفحة تستدعي products.find داخل حلقة
      العرض (صفوف × منتجات)، فمع ٣٠٠ موديل صار العرض يبطؤ بلا داعٍ. */
@@ -56,7 +79,7 @@
     revenue: inPeriod.reduce((a, s) => a + s.subtotal, 0),
     profit: inPeriod.reduce((a, s) => a + s.profit, 0),
     fees: inPeriod.reduce((a, s) => a + (s.deliveryFee || 0), 0),
-    expenses: expenses.filter((e) => new Date(e.date) >= from).reduce((a, e) => a + (Number(e.amount) || 0), 0),
+    expenses: expenses.filter((e) => new Date(e.date) >= from && new Date(e.date) < to).reduce((a, e) => a + (Number(e.amount) || 0), 0),
     returned: sales.filter((s) => s.status === 'returned').length
   });
 
@@ -173,6 +196,19 @@
       <button class="chip" class:on={period === p.id} onclick={() => (period = p.id)}>{p.label}</button>
     {/each}
   </div>
+
+  {#if period === 'custom'}
+    <Glass class="rise" style="padding:10px 12px; display:flex; align-items:center; gap:8px">
+      <div class="field" style="flex:1">
+        <label>من</label>
+        <input class="input" type="date" bind:value={customFrom} />
+      </div>
+      <div class="field" style="flex:1">
+        <label>إلى</label>
+        <input class="input" type="date" bind:value={customTo} />
+      </div>
+    </Glass>
+  {/if}
 
   <section class="cards">
     <Glass class="stat rise" style="animation-delay:0s; padding:13px 15px; display:flex; flex-direction:column; gap:3px"><span class="muted small">الإيرادات</span><div class="big"><Ticker value={totals.revenue} /> <span class="cur">د.ع</span></div></Glass>

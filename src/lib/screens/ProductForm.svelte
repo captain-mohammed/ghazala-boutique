@@ -5,9 +5,11 @@
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import PhotoSourceSheet from '../components/PhotoSourceSheet.svelte';
-  import { db, addProduct, updateProduct, addLot, modelOptions, addModelOption, modelGroupKey, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf, loadProducts, cardIsReferenced, sweepDuplicateVariants, findWaitingMatchesForSkus, firstdibsCampaign } from '../db.js';
+  import { db, addProduct, updateProduct, addLot, modelOptions, addModelOption, modelGroupKey, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf, loadProducts, cardIsReferenced, sweepDuplicateVariants, findWaitingMatchesForSkus, firstdibsCampaign, clearDraft } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd, fileToPhotoDataUrl, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, celebrateAt, campaignContacts } from '../store.js';
+  import { useDraft } from '../draftGuard.svelte.js';
+  import RecoverBanner from '../components/RecoverBanner.svelte';
 
   let { product = null, photo = null, ondone = () => {}, goto = () => {} } = $props();
 
@@ -178,9 +180,54 @@
   ]);
 
   let img = $state(photo || product?.photo || null);
-  let camInput;
-  let galInput;
+  let camInput = $state();
+  let galInput = $state();
   let photoSrcOpen = $state(false);
+
+  /* ---------- حفظ تلقائي لمسودة موديل جديد ----------
+     التعديل لا يُحفظ كمسودة (الأصل موجود؛ واستعادتها في نموذج «جديد» تخلط
+     البيانات) — الحارس يعمل للإضافة فقط. */
+  const draft = useDraft({
+    key: 'product',
+    snapshot: () => ({
+      category, type, typeSub, typeSub2, typeSub3, brand,
+      seasons: [...seasons], material, cost, price, notes, supplier,
+      ts, tsIsNow,
+      selColors: [...selColors],
+      byColor: JSON.parse(JSON.stringify(byColor)),
+      img
+    }),
+    hasContent: (s) => !editing && !!(
+      s.img ||
+      (s.selColors && s.selColors.length) ||
+      (s.cost && String(s.cost).trim()) || (s.price && String(s.price).trim()) || (s.notes && String(s.notes).trim()) ||
+      s.type || s.typeSub || s.typeSub2 || s.typeSub3 || s.material ||
+      (s.seasons && s.seasons.length) || s.brand
+    ),
+    restore: (s) => {
+      category = s.category || 'نسائية';
+      type = s.type ?? ''; typeSub = s.typeSub ?? ''; typeSub2 = s.typeSub2 ?? ''; typeSub3 = s.typeSub3 ?? '';
+      brand = s.brand ?? '';
+      seasons = Array.isArray(s.seasons) ? [...s.seasons] : [];
+      material = s.material ?? '';
+      cost = s.cost ?? ''; price = s.price ?? ''; notes = s.notes ?? ''; supplier = s.supplier ?? '';
+      ts = s.ts || baghdadLocalInput(); tsIsNow = s.tsIsNow ?? true;
+      selColors = Array.isArray(s.selColors) ? [...s.selColors] : [];
+      byColor = s.byColor && typeof s.byColor === 'object' ? JSON.parse(JSON.stringify(s.byColor)) : {};
+      img = s.img ?? null;
+    },
+    reset: () => {
+      category = 'نسائية'; type = ''; typeSub = ''; typeSub2 = ''; typeSub3 = ''; brand = '';
+      seasons = []; material = ''; cost = ''; price = ''; notes = '';
+      supplier = suppliers.length ? suppliers[0] : '';
+      ts = baghdadLocalInput(); tsIsNow = true;
+      selColors = []; byColor = {}; img = null;
+    },
+    onExit: () => ondone(),
+    confirmTitle: 'موديل غير محفوظ',
+    confirmBody: 'عندك موديل جديد فيه بيانات لم يُحفظ. تريدين إغلاقه بلا حفظ؟',
+    okLabel: 'إغلاق بلا حفظ'
+  });
 
   /* اختيار مصدر الصورة: كاميرا أو معرض. الكاميرا وحدها كانت مفروضة بـ
      capture="environment"، فلا سبيل لاختيار صورة موجودة في الهاتف. */
@@ -358,6 +405,7 @@
     }
     if (!lots) { toastErr('ما فيه كميات لإضافتها'); return; }
     buzz([20, 50, 20]);
+    clearDraft('product').catch(() => {});
     celebrateAt(window.innerWidth / 2, window.innerHeight / 2.5, '📦');
     toastOk(`دفعة جديدة داخل «${lead.name || 'الموديل'}» — ${fmtNum(pieces)} قطعة${cards ? ` (${fmtNum(cards)} بطاقة جديدة)` : ''}`);
     ondone();
@@ -493,6 +541,7 @@
       }
 
       buzz([20, 50, 20]);
+      clearDraft('product').catch(() => {});
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.5, '👠');
       const parts = [];
       if (updated) parts.push(`${updated} بطاقة محفوظة`);
@@ -539,6 +588,14 @@
 </script>
 
 <div class="stack" style="gap:14px">
+  {#if draft.showRecover && !editing}
+    <RecoverBanner
+      title="موديل غير محفوظ"
+      body="وجدت موديلاً جديداً كتبتِه ولم يُحفظ — تابعينه أو تجاهليه"
+      onDiscard={draft.discard}
+      onContinue={draft.dismiss}
+    />
+  {/if}
   {#snippet addInline(match, placeholder, withHex)}
     {#if addCtx && addCtx.kind === match}
       <div class="add-row">

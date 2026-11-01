@@ -150,6 +150,11 @@ db.version(9).stores({
   drafts: 'key'
 });
 
+/* v10: + trash (سلة المحذوفات — استرجاع الموديلات والمصاريف المحذوفة) */
+db.version(10).stores({
+  trash: '++id, kind, deletedAt'
+});
+
 /* مسودات الشاشات: تُحفظ تلقائياً في IndexedDB (لا سقف localStorage) وتُستعاد
    عند العودة. المفتاح يميّز نوع المسودة — حالياً «receive» لفاتورة الوارد. */
 export async function saveDraft(key, data) {
@@ -161,6 +166,29 @@ export async function loadDraft(key) {
 }
 export async function clearDraft(key) {
   await db.drafts.delete(key);
+}
+
+/* ---------------- سلة المحذوفات (recycle bin) ----------------
+   الحذف لا يمحو: يُنقل العنصر إلى جدول trash مع بياناته الكاملة (والموديل
+   بدفعاته)، فتُستعاد بحالة سليمة. تُفرَّغ تلقائياً من شاشة السلة. */
+export async function listTrash() {
+  return db.trash.orderBy('deletedAt').reverse().toArray();
+}
+export async function purgeTrash(id) { await db.trash.delete(id); }
+export async function purgeAllTrash() { await db.trash.clear(); }
+
+export async function restoreTrash(id) {
+  const row = await db.trash.get(id);
+  if (!row) return false;
+  const d = row.data || {};
+  if (row.kind === 'product') {
+    if (d.product) await db.products.put(d.product);
+    if (Array.isArray(d.lots) && d.lots.length) await db.lots.bulkPut(d.lots);
+  } else if (row.kind === 'expense') {
+    if (d.expense) await db.expenses.put(d.expense);
+  }
+  await db.trash.delete(id);
+  return true;
 }
 
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
@@ -934,6 +962,12 @@ export async function adjustQty(sku, delta, note) {
 }
 
 export async function deleteProduct(sku) {
+  /* ننقل البطاقة ودفعاتها لسلة المحذوفات قبل الحذف — استرجاع كامل */
+  const product = await db.products.get(sku);
+  if (product) {
+    const lots = await db.lots.where('sku').equals(sku).toArray();
+    await db.trash.add({ kind: 'product', deletedAt: new Date().toISOString(), data: { product, lots } });
+  }
   await deleteLotsOf(sku);
   await db.products.delete(sku);
 }
@@ -1964,6 +1998,9 @@ export async function updateExpense(id, { amount, note, date }) {
 }
 
 export async function deleteExpense(id) {
+  /* يُنقل المصروف لسلة المحذوفات — استرجاع بضغطة */
+  const expense = await db.expenses.get(id);
+  if (expense) await db.trash.add({ kind: 'expense', deletedAt: new Date().toISOString(), data: { expense } });
   await db.expenses.delete(id);
 }
 
@@ -1997,16 +2034,16 @@ export async function stocktakeApply(corrections) {
 /* ---------------- Backup / Restore ---------------- */
 
 export async function backupJSON() {
-  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos, lots, drafts] = await Promise.all([
+  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos, lots, drafts, trash] = await Promise.all([
     db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray(),
     db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.vault.toArray(),
     db.waitlists.toArray(), db.referrals.toArray(), db.testimonials.toArray(), db.payments.toArray(),
-    db.photos.toArray(), db.lots.toArray(), db.drafts.toArray()
+    db.photos.toArray(), db.lots.toArray(), db.drafts.toArray(), db.trash.toArray()
   ]);
   return {
-    app: 'ghazala-boutique', version: 9, exportedAt: new Date().toISOString(),
+    app: 'ghazala-boutique', version: 10, exportedAt: new Date().toISOString(),
     products, sales, movements, settings, expenses, reservations, occasions, vault,
-    waitlists, referrals, testimonials, payments, photos, lots, drafts
+    waitlists, referrals, testimonials, payments, photos, lots, drafts, trash
   };
 }
 
@@ -2022,7 +2059,7 @@ export async function restoreJSON(data, { merge = false } = {}) {
 
   const tables = [
     db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions,
-    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts
+    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash
   ];
 
   /* استعادة واحدة ذرّية: إما تنجح كاملة أو لا يُمَس شيء. الكتابة خارج معاملة
@@ -2050,8 +2087,8 @@ export async function restoreJSON(data, { merge = false } = {}) {
 }
 
 export async function wipeAll() {
-  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, async () => {
-    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear(), db.lots.clear(), db.drafts.clear()]);
+  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash, async () => {
+    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear(), db.lots.clear(), db.drafts.clear(), db.trash.clear()]);
   });
 }
 

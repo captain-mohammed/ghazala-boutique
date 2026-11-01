@@ -30,6 +30,7 @@
   import StoryStudio from './lib/screens/StoryStudio.svelte';
   import ModelRepair from './lib/screens/ModelRepair.svelte';
   import MyStore from './lib/screens/MyStore.svelte';
+  import Trash from './lib/screens/Trash.svelte';
   import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable, sweepAllDuplicateVariants } from './lib/db.js';
 
   let locked = $state(true);
@@ -73,7 +74,8 @@
     suppliers: 'دفتر الموردين',
     customers: 'دفتر الزبونات',
     repair: 'إصلاح الموديلات',
-    store: 'متجري'
+    store: 'متجري',
+    trash: 'سلة المحذوفات'
   };
 
   async function goto(id) {
@@ -181,7 +183,7 @@
         {:else if screen === 'ledger'}<DeliveryLedger />
         {:else if screen === 'expenses'}<Expenses />
         {:else if screen === 'reservations'}<Reservations />
-        {:else if screen === 'pastesell'}<PasteToSell />
+        {:else if screen === 'pastesell'}<PasteToSell {goto} />
         {:else if screen === 'receive'}<ReceiveInvoice {goto} />
         {:else if screen === 'modelopts'}<ModelOptions />
         {:else if screen === 'suppliers'}<Suppliers {goto} />
@@ -191,6 +193,7 @@
         {:else if screen === 'studio'}<StoryStudio />
         {:else if screen === 'repair'}<ModelRepair />
         {:else if screen === 'store'}<MyStore />
+        {:else if screen === 'trash'}<Trash />
         {/if}
       </div>
     {/key}
