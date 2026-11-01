@@ -4,15 +4,97 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, stocktakeApply, typeChain, loadProducts } from '../db.js';
+  import { onMount } from 'svelte';
+  import { db, stocktakeApply, typeChain, loadProducts, saveDraft, loadDraft, clearDraft } from '../db.js';
   import { fmtNum, buzz } from '../utils.js';
-  import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
+  import { toastOk, toastErr, askConfirm, celebrateAt, navGuard } from '../store.js';
+
+  let { goto } = $props();
 
   let products = $state([]);
   let counts = $state({}); // sku -> counted qty (string while typing)
   let q = $state('');
   let scanOpen = $state(false);
   let applying = $state(false);
+
+  /* ---------- حفظ تلقائي لمسودة الجرد (لا يضيع العدّ) ----------
+     كل عدّة تُحفظ بعد ٦٠٠ms في IndexedDB؛ إن خرجتِ بالخطأ (زر الرصيف،
+     أو زر الرجوع في الجوال، أو قُتل التطبيق) تُستعاد عند العودة. */
+  let ready = $state(false);       // true بعد استعادة المسودة — يمنع حفظ الفراغ فوقها
+  let showRecover = $state(false); // شريط «وجدت جرداً غير محفوظ»
+  let trapArmed = false;           // فخّ زر الرجوع في الجوال
+
+  const snapshot = () => ({ counts: { ...counts }, q });
+  const hasContent = (s) => !!(s && s.counts && Object.values(s.counts).some((v) => v !== '' && v !== null));
+  const isDirty = () => ready && hasContent(snapshot());
+
+  function resetForm() { counts = {}; q = ''; }
+  async function discardDraft() {
+    await clearDraft('stocktake').catch(() => {});
+    resetForm();
+    showRecover = false;
+  }
+  function flushDraft() {
+    if (!ready) return;
+    const s = snapshot();
+    if (hasContent(s)) saveDraft('stocktake', s).catch(() => {});
+  }
+  function onVisibility() { if (document.hidden) flushDraft(); }
+
+  /* فخّ زر الرجوع في الجوال — يمنع الخروج العرضي أثناء وجود عدّ غير محفوظ. */
+  function onPop() {
+    if (!isDirty()) { trapArmed = false; return; }
+    history.pushState({ ghazalaTrap: true }, '');
+    trapArmed = true;
+    askConfirm({
+      title: 'جرد غير محفوظ',
+      body: 'ضغطتِ زر الرجوع — عندك عدّ جرد فيه فروقات لم تُحفظ. تريدين الخروج بلا حفظ؟',
+      okLabel: 'خروج بلا حفظ', danger: true
+    }).then((ok) => { if (ok) { clearDraft('stocktake').catch(() => {}); trapArmed = false; goto('more'); } });
+  }
+
+  (async () => {
+    try {
+      const d = await loadDraft('stocktake');
+      if (d && d.counts && Object.values(d.counts).some((v) => v !== '' && v !== null)) {
+        counts = { ...(d.counts || {}) };
+        q = d.q || '';
+        showRecover = true;
+      }
+    } catch { /* لا تعطل الفتح */ }
+    ready = true;
+    navGuard.set(() => isDirty());
+  })();
+
+  onMount(() => {
+    window.addEventListener('popstate', onPop);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('pagehide', flushDraft);
+    return () => {
+      window.removeEventListener('popstate', onPop);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('pagehide', flushDraft);
+      navGuard.set(null);
+      if (trapArmed) { try { history.back(); } catch { /* noop */ } trapArmed = false; }
+    };
+  });
+
+  /* الحفظ التلقائي: يكتب المسودة بعد كل تغيير (debounce). */
+  let saveTimer;
+  $effect(() => {
+    if (!ready) return;
+    const s = snapshot();
+    if (!hasContent(s)) { clearDraft('stocktake').catch(() => {}); return; }
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => saveDraft('stocktake', s).catch(() => {}), 600);
+  });
+
+  /* نسلّح فخّ الرجوع فقط حين توجد مسودة متسخة. */
+  $effect(() => {
+    const dirty = isDirty();
+    if (dirty && !trapArmed) { history.pushState({ ghazalaTrap: true }, ''); trapArmed = true; }
+    else if (!dirty && trapArmed) { history.back(); trapArmed = false; }
+  });
 
   $effect(() => {
     let alive = true;
@@ -68,6 +150,7 @@
       );
       counts = {};
       q = '';
+      clearDraft('stocktake').catch(() => {});
       buzz([30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.6, '✅');
       toastOk('تم تطبيق الجرد بنجاح');
@@ -78,6 +161,17 @@
 </script>
 
 <div class="stack" style="gap:12px">
+  {#if showRecover}
+    <Glass class="recover" radius="var(--r-md)" style="padding:12px 14px; display:flex; align-items:center; gap:10px">
+      <Icon name="alert" size={20} color="var(--warn)" />
+      <div style="flex:1; min-width:0">
+        <div class="bold small">وجدت جرداً غير محفوظ</div>
+        <div class="muted small">لديك عدّة جرد محفوظة تلقائياً — تابعي منها أو تجاهليها</div>
+      </div>
+      <button class="btn ghost" style="min-height:40px" onclick={discardDraft}>تجاهل</button>
+      <button class="btn primary" style="min-height:40px" onclick={() => (showRecover = false)}>متابعة</button>
+    </Glass>
+  {/if}
   {#if products.length === 0}
     <EmptyState
       title="مخزونك فارغ"
@@ -159,6 +253,10 @@
     color: var(--ink);
   }
   :global(.row.mark) { border-color: rgba(181, 73, 91, 0.35); background: rgba(181, 73, 91, 0.05); }
+  :global(.recover) { border-color: rgba(201, 162, 75, 0.45); background: rgba(201, 162, 75, 0.08); }
+  .btn { font-family: inherit; font-size: 13.5px; font-weight: 700; border-radius: var(--r-md); padding: 0 14px; cursor: pointer; border: 1px solid var(--line); background: rgba(255,255,255,0.6); color: var(--ink); }
+  .btn.primary { background: var(--burgundy); border-color: var(--burgundy); color: #fff; }
+  .btn.ghost { background: transparent; }
   .st-thumb {
     flex: none;
     width: 42px; height: 42px;

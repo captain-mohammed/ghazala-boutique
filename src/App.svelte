@@ -174,7 +174,7 @@
         {:else if screen === 'reports'}<Reports />
         {:else if screen === 'more'}<More {goto} />
         {:else if screen === 'saleslog'}<SalesLog />
-        {:else if screen === 'stocktake'}<Stocktake />
+        {:else if screen === 'stocktake'}<Stocktake {goto} />
         {:else if screen === 'settings'}<Settings {goto} />
         {:else if screen === 'backup'}<Backup />
         {:else if screen === 'about'}<About />
