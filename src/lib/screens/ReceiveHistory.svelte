@@ -45,6 +45,12 @@
     if (!p) return sku;
     return [typeChain(p), p.color, p.size].filter(Boolean).join(' · ') || p.name || sku;
   }
+  /* التاريخ بلا سنة إن كان في السنة الحالية، ومع السنة إن كان قديماً */
+  function dateLabel(key) {
+    const y = String(key).slice(0, 4);
+    const nowY = baghdadDayKey(new Date()).slice(0, 4);
+    return dayLabelFromKey(key) + (y !== nowY ? ` ${y}` : '');
+  }
 
   /* ---------- الوارد: تجميع الدفعات في «استلامات» ---------- */
   const receipts = $derived.by(() => {
@@ -189,21 +195,25 @@
 </script>
 
 <div class="stack" style="gap:12px">
-  <div class="row" style="justify-content:space-between; align-items:center">
-    <button class="btn ghost" style="min-height:36px" onclick={onback}><Icon name="back" size={15} /> التقارير</button>
+  <div class="hist-top">
+    <button class="btn ghost" style="min-height:36px" onclick={onback}><Icon name="back" size={15} /> رجوع</button>
+    <span class="hist-title">سجل الوارد</span>
     <button class="btn ghost" style="min-height:36px" onclick={exportExcel}><Icon name="download" size={15} /> Excel</button>
   </div>
 
-  <div class="row noscroll" style="gap:8px; overflow-x:auto; padding-bottom:2px">
+  <div class="tabs">
     {#each TABS as t (t.id)}
-      <button class="chip" class:on={tab === t.id} onclick={() => { tab = t.id; openKey = null; buzz(5); }}>{t.label}</button>
+      <button class="tab" class:on={tab === t.id} onclick={() => { tab = t.id; openKey = null; buzz(5); }}>{t.label}</button>
     {/each}
   </div>
 
-  <Glass style="padding:12px 14px; display:flex; align-items:center; gap:10px">
-    <Icon name="wallet" size={18} color="var(--burgundy)" />
-    <span class="small muted" style="flex:1">رأس المال الراكد في المخزون (تكلفة المتبقي)</span>
-    <b class="money">{fmtIQD(capitalTied)}</b>
+  <Glass class="cap-card">
+    <span class="cap-ic"><Icon name="wallet" size={19} color="var(--burgundy)" /></span>
+    <span class="cap-body">
+      <span class="cap-k">رأس المال الراكد في المخزون</span>
+      <span class="cap-v">{fmtIQD(capitalTied)}</span>
+    </span>
+    <span class="cap-hint">تكلفة المتبقي</span>
   </Glass>
 
   {#if alerts.length}
@@ -225,22 +235,32 @@
     {:else}
       <div class="stack" style="gap:8px; padding-bottom:80px">
         {#each receiptsFiltered as r (r.key)}
-          <Glass class="rc" style="padding:12px 14px; border-radius:var(--r-md)">
+          <Glass class="rc">
             <button class="rc-head" onclick={() => { openKey = openKey === r.key ? null : r.key; buzz(5); }}>
-              <span class="rc-date">{dayLabelFromKey(r.day)}</span>
-              <span class="rc-sup">{r.sup || 'بدون مورد'}{r.inv ? ` · #${r.inv}` : ''}</span>
+              <span class="rc-date">{dateLabel(r.day)}</span>
+              <span class="rc-title">
+                <span class="rc-sup">{r.sup || 'بدون مورد'}</span>
+                <span class="rc-sub">{r.no}{r.inv ? ` · فاتورة #${r.inv}` : ''}</span>
+              </span>
               <span class="rc-pieces">{fmtNum(r.pieces)} قطعة</span>
               <span class="chev" class:flip={openKey === r.key}><Icon name="back" size={13} /></span>
             </button>
-            {#if r.no || r.note}
-              <div class="rc-meta">{r.no}{r.no && r.note ? ' — ' : ''}{r.note}</div>
-            {/if}
-            <div class="rc-bar"><i style="width:{pct(r.sold, r.pieces)}%"></i><span>{pct(r.sold, r.pieces)}% مُباع</span></div>
-            <div class="rc-stats">
-              <span>تكلفة <b>{fmtIQD(r.cost)}</b></span>
-              <span>متبقٍّ <b>{fmtNum(r.remaining)}</b></span>
-              <span>ربح <b class="good">{fmtIQD(r.profit)}</b></span>
+
+            <div class="rc-sell">
+              <div class="rc-bar"><i style="width:{pct(r.sold, r.pieces)}%"></i></div>
+              <span class="rc-pct">{pct(r.sold, r.pieces)}% مُباع</span>
             </div>
+
+            <div class="rc-stats">
+              <div class="stat"><span class="k">التكلفة</span><b>{fmtIQD(r.cost)}</b></div>
+              <div class="stat"><span class="k">المتبقي</span><b>{fmtNum(r.remaining)}</b></div>
+              <div class="stat"><span class="k">الربح</span><b class:good={r.profit > 0} class:bad={r.profit < 0}>{fmtIQD(r.profit)}</b></div>
+            </div>
+
+            {#if r.note}
+              <div class="rc-note"><Icon name="file" size={11} /> <span>{r.note}</span></div>
+            {/if}
+
             {#if openKey === r.key}
               <div class="lines">
                 {#each r.lines as l (l.id)}
@@ -267,7 +287,7 @@
               <span class="bold">{s.sup}</span>
               <span class="muted tiny">{fmtNum(s.invoices.size)} فاتورة · آخرها {s.last ? fmtDate(s.last) : '—'}</span>
             </div>
-            <div class="rc-bar" style="margin-top:8px"><i style="width:{pct(s.sold, s.pieces)}%"></i><span>{pct(s.sold, s.pieces)}% مُباع</span></div>
+            <div class="rc-sell"><div class="rc-bar"><i style="width:{pct(s.sold, s.pieces)}%"></i></div><span class="rc-pct">{pct(s.sold, s.pieces)}% مُباع</span></div>
             <div class="grid2">
               <span>القطع <b>{fmtNum(s.pieces)}</b></span>
               <span>المتبقي <b>{fmtNum(s.remaining)}</b></span>
@@ -290,7 +310,7 @@
               <span class="bold small">{m.label}</span>
               <span class="muted tiny">{fmtNum(m.qty)} قطعة · متبقٍّ {fmtNum(m.remaining)}</span>
             </div>
-            <div class="rc-bar" style="margin-top:8px"><i style="width:{pct(m.sold, m.qty)}%"></i><span>{pct(m.sold, m.qty)}% مُباع</span></div>
+            <div class="rc-sell"><div class="rc-bar"><i style="width:{pct(m.sold, m.qty)}%"></i></div><span class="rc-pct">{pct(m.sold, m.qty)}% مُباع</span></div>
             <div class="row wrap" style="gap:8px; margin-top:8px">
               <span class="tag">تكلفة أولى {fmtIQD(m.firstCost)}</span>
               <span class="tag">آخر تكلفة {fmtIQD(m.lastCost)}</span>
@@ -319,25 +339,68 @@
 </div>
 
 <style>
-  .rc-head { width: 100%; display: flex; align-items: center; gap: 8px; background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; text-align: start; }
-  .rc-date { flex: none; font-size: 12px; font-weight: 900; color: var(--burgundy); background: rgba(181,73,91,0.1); border-radius: 999px; padding: 3px 9px; }
-  .rc-sup { flex: 1; min-width: 0; font-weight: 800; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rc-pieces { flex: none; font-size: 12px; font-weight: 800; color: var(--taupe); }
-  .rc-meta { font-size: 10.5px; font-weight: 700; color: var(--taupe); margin-top: 4px; }
-  .rc-bar { position: relative; height: 16px; border-radius: 999px; background: rgba(156,123,107,0.16); margin-top: 9px; overflow: hidden; }
+  /* ---------- شريط أعلى + تبويبات ---------- */
+  .hist-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .hist-title { font-weight: 900; font-size: 15px; color: var(--ink); letter-spacing: 0.2px; }
+  .tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; padding: 4px; border-radius: 999px; background: rgba(156, 123, 107, 0.1); border: 1px solid var(--line); }
+  .tab { border: none; background: none; font-family: inherit; font-size: 13px; font-weight: 800; color: var(--taupe); padding: 9px 0; border-radius: 999px; cursor: pointer; transition: background 0.18s, color 0.18s, box-shadow 0.18s; }
+  .tab.on { background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep)); color: #fff; box-shadow: 0 4px 12px rgba(122, 46, 58, 0.28); }
+
+  /* ---------- بطاقة رأس المال ---------- */
+  :global(.cap-card) { padding: 12px 14px; display: flex; align-items: center; gap: 12px; border-radius: var(--r-md); }
+  .cap-ic { flex: none; width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: rgba(181, 73, 91, 0.1); border: 1px solid rgba(181, 73, 91, 0.16); }
+  .cap-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .cap-k { font-size: 11px; font-weight: 700; color: var(--taupe); }
+  .cap-v { font-size: 17px; font-weight: 900; color: var(--burgundy); font-variant-numeric: tabular-nums; }
+  .cap-hint { flex: none; font-size: 9.5px; font-weight: 700; color: var(--taupe); background: rgba(156, 123, 107, 0.1); border-radius: 999px; padding: 3px 8px; }
+
+  /* ---------- بطاقة الاستلام ---------- */
+  :global(.rc) {
+    position: relative; padding: 13px 14px; border-radius: var(--r-md);
+    border: 1px solid var(--line-2);
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.72), rgba(251, 243, 238, 0.55));
+    overflow: hidden;
+  }
+  :global(.rc)::before {
+    content: ''; position: absolute; inset-inline-start: 0; top: 0; bottom: 0; width: 3px;
+    background: linear-gradient(180deg, var(--gold), var(--burgundy)); opacity: 0.75;
+  }
+  .rc-head { width: 100%; display: flex; align-items: center; gap: 10px; background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; text-align: start; }
+  .rc-date { flex: none; font-size: 11px; font-weight: 900; color: var(--burgundy); background: rgba(181, 73, 91, 0.09); border: 1px solid rgba(181, 73, 91, 0.16); border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+  .rc-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .rc-sup { font-weight: 800; font-size: 13.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rc-sub { font-size: 10px; font-weight: 700; color: var(--taupe); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .rc-pieces { flex: none; font-size: 11px; font-weight: 800; color: var(--taupe); background: rgba(156, 123, 107, 0.1); border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
+  .chev { flex: none; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.2s; color: var(--taupe); }
+  .chev.flip { transform: rotate(-90deg); }
+
+  .rc-sell { display: flex; align-items: center; gap: 10px; margin-top: 11px; }
+  .rc-bar { position: relative; flex: 1; height: 7px; border-radius: 999px; background: rgba(156, 123, 107, 0.16); overflow: hidden; }
   .rc-bar i { position: absolute; inset-inline-start: 0; top: 0; bottom: 0; background: linear-gradient(90deg, var(--gold), var(--burgundy)); border-radius: 999px; }
-  .rc-bar span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 800; color: #3A1A20; }
-  .rc-stats { display: flex; gap: 14px; margin-top: 8px; font-size: 11.5px; color: var(--taupe); flex-wrap: wrap; }
-  .rc-stats b { color: var(--ink); }
-  .good { color: var(--good) !important; }
-  .warn { color: var(--warn) !important; }
+  .rc-pct { flex: none; font-size: 10.5px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
+
+  .rc-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; margin-top: 11px; border-top: 1px solid var(--line); padding-top: 10px; }
+  .rc-stats .stat { display: flex; flex-direction: column; gap: 2px; text-align: center; border-inline-start: 1px solid var(--line); }
+  .rc-stats .stat:first-child { border-inline-start: none; }
+  .rc-stats .k { font-size: 9.5px; font-weight: 700; color: var(--taupe); }
+  .rc-stats b { font-size: 12px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .rc-stats b.good { color: var(--good); }
+  .rc-stats b.bad { color: var(--burgundy); }
+
+  .rc-note { display: flex; align-items: center; gap: 5px; margin-top: 9px; font-size: 10.5px; font-weight: 600; color: var(--taupe); }
+  .rc-note span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
   .lines { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 5px; }
   .line { display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
   .ln-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
   .ln-q { flex: none; color: var(--taupe); font-variant-numeric: tabular-nums; }
   .ln-cost { flex: none; font-weight: 800; color: var(--burgundy); }
+
+  /* ---------- الموردون / الموديلات ---------- */
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin-top: 8px; font-size: 11.5px; color: var(--taupe); }
   .grid2 b { color: var(--ink); }
+  .good { color: var(--good) !important; }
+  .warn { color: var(--warn) !important; }
   .tag { font-size: 10.5px; font-weight: 800; padding: 3px 9px; border-radius: 999px; background: rgba(156,123,107,0.13); color: var(--taupe); }
   .tag.up { background: rgba(181,73,91,0.12); color: var(--burgundy); }
   .tag.down { background: rgba(78,138,95,0.14); color: var(--good); }
@@ -348,8 +411,7 @@
   .cmp-row.best { background: rgba(78,138,95,0.1); }
   .cmp-row span:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cmp-cost { font-weight: 800; color: var(--burgundy); }
+
   .btn { font-family: inherit; font-size: 12.5px; font-weight: 700; border-radius: var(--r-md); padding: 0 12px; cursor: pointer; border: 1px solid var(--line); background: rgba(255,255,255,0.6); color: var(--ink); display: inline-flex; align-items: center; gap: 5px; }
   .btn.ghost { background: transparent; }
-  .chev { flex: none; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.2s; color: var(--taupe); }
-  .chev.flip { transform: rotate(-90deg); }
 </style>

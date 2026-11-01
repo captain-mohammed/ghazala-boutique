@@ -1385,7 +1385,7 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
   const sup = supplier.trim();
   const invNote = sup ? `فاتورة وارد${invoice ? ` #${invoice.trim()}` : ''} — ${sup}` : 'فاتورة وارد';
   /* استلام واحد لهذه الفاتورة — كل دفعاتها تشير إليه */
-  const receipt = await createReceipt({ supplier: sup, invoice: invoice || '', date: new Date().toISOString(), note: invNote + (note ? ` — ${note}` : ''), source: 'receive' });
+  const receipt = await createReceipt({ supplier: sup, invoice: invoice || '', date: new Date().toISOString(), note: note || '', source: 'receive' });
   const all = await db.products.toArray();
   /* البحث صار **داخل كل موديل على حِدة**، لا خريطة واحدة للجدول كله.
      منذ 0.21.3 صار ممكناً أن يتقاسَم موديلان المفتاح نفسه (بوت أسود ×2 بصورة
