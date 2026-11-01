@@ -318,7 +318,7 @@
       clearDraft('receive').catch(() => {});
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.6, '📦');
-      toastOk(`تم الاستلام — ${fmtNum(r.pieces)} قطعة (${fmtNum(r.added)} بطاقة جديدة${r.merged ? `، ${fmtNum(r.merged)} اندمجت` : ''})`);
+      toastOk(`تم الاستلام — ${fmtNum(r.pieces)} قطعة (${fmtNum(r.added)} بطاقة جديدة${r.merged ? `، ${fmtNum(r.merged)} اندمجت` : ''})${r.receiptNo ? ` · ${r.receiptNo}` : ''}`, 'success', 5200);
       /* سطر غامض: أكثر من موديل بنفس النوع واللون — لم نخمّن أبداً، ونسجّله
          منفصلاً ونُبلّغ.
          ⚠️ الصياغة القديمة كانت تقول «عندك ٢٥ موديلات باسم «بوت أسود» —

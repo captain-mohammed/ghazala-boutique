@@ -1494,8 +1494,9 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
       }
     }
   }
-  if (!added && !merged) await deleteReceipt(receipt.id);
-  return { added, merged, pieces, touchedSkus, splitOff };
+  const kept = added || merged;
+  if (!kept) await deleteReceipt(receipt.id);
+  return { added, merged, pieces, touchedSkus, splitOff, receiptNo: kept ? receipt.no : null, receiptId: kept ? receipt.id : null };
 }
 
 /* ---------------- Sales ---------------- */
