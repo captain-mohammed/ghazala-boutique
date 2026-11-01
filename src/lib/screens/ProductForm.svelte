@@ -5,7 +5,7 @@
   import ColorSwatches from '../components/ColorSwatches.svelte';
   import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
   import PhotoSourceSheet from '../components/PhotoSourceSheet.svelte';
-  import { db, addProduct, updateProduct, addLot, modelOptions, addModelOption, modelGroupKey, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf, loadProducts, cardIsReferenced, sweepDuplicateVariants, findWaitingMatchesForSkus, firstdibsCampaign, clearDraft } from '../db.js';
+  import { db, addProduct, updateProduct, addLot, modelOptions, addModelOption, modelGroupKey, hexForColor, SIZE_RUNS, modelKey, nextModelId, subsOfType, subsOfType2, subsOfType3, getSetting, setSetting, seasonsOf, loadProducts, cardIsReferenced, sweepDuplicateVariants, findWaitingMatchesForSkus, firstdibsCampaign, clearDraft, createReceipt, deleteReceipt } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd, fileToPhotoDataUrl, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, celebrateAt, campaignContacts } from '../store.js';
   import { useDraft } from '../draftGuard.svelte.js';
@@ -359,7 +359,7 @@
      البطاقة التي تجمع (لون+مقاس) موجودة؟ تُضاف دفعة على كودها — لا بطاقة
      جديدة ولا كتابة فوق تكلفة قديمة. اللون غير الموجود بعد يصير بطاقة جديدة
      في الموديل نفسه (لون آخر لنفس الحذاء). */
-  async function saveAsBatch() {
+  async function saveAsBatch(receiptId = null) {
     const all = await loadProducts();
     const mates = all.filter((x) => x.modelId === batchModelId);
     if (!mates.length) { toastErr('الموديل المختار لم يعد موجوداً'); return; }
@@ -378,7 +378,7 @@
         if (!q) continue;
         const twin = mates.find((x) => (x.color || '').trim() === color && String(x.size || '').trim() === sz);
         if (twin) {
-          await addLot({ sku: twin.sku, supplier: sup, cost: c, price: pr, qty: q, receivedAt: arrivalIso, note });
+          await addLot({ sku: twin.sku, supplier: sup, cost: c, price: pr, qty: q, receivedAt: arrivalIso, note, receiptId });
           await updateProduct(twin.sku, {
             supplier: sup, supplierAt: nowIso,
             notes: notes.trim() || twin.notes || '',
@@ -397,13 +397,13 @@
             cost: c, price: pr, qty: q, supplier: sup, supplierAt: nowIso,
             color, size: sz, notes: notes.trim(), modelId: batchModelId,
             photo: img && !lead.photo ? img : null
-          }, { moveNote: note });
+          }, { moveNote: note, receiptId });
           cards++;
         }
         lots++; pieces += q;
       }
     }
-    if (!lots) { toastErr('ما فيه كميات لإضافتها'); return; }
+    if (!lots) { toastErr('ما فيه كميات لإضافتها'); if (receiptId) await deleteReceipt(receiptId); return; }
     buzz([20, 50, 20]);
     clearDraft('product').catch(() => {});
     celebrateAt(window.innerWidth / 2, window.innerHeight / 2.5, '📦');
@@ -422,6 +422,19 @@
       firstBad?.scrollIntoView({ behavior: 'smooth', block: 'center' });
       return;
     }
+    /* استلام واحد لهذه العملية — كل بطاقاتها الجديدة تشير إليه */
+    let receiptId = null;
+    if (!editing) {
+      try {
+        const r = await createReceipt({
+          supplier: (supplier || '').trim(), invoice: '',
+          date: tsIsNow ? new Date().toISOString() : (isoFromBaghdadLocal(ts) || new Date().toISOString()),
+          note: batchModelId ? 'دفعة من نموذج الموديل' : 'تسجيل موديل جديد',
+          source: 'product'
+        });
+        receiptId = r.id;
+      } catch { receiptId = null; }
+    }
     /* دفعة داخل موديل قائم — مسار مستقل تماماً عن تسجيل موديل جديد */
     if (!editing && batchModelId) {
       try {
@@ -430,8 +443,9 @@
           const reg = (await getSetting('suppliers', [])) || [];
           if (!reg.includes(supName)) await setSetting('suppliers', [...reg, supName]);
         }
-        await saveAsBatch();
+        await saveAsBatch(receiptId);
       } catch (e) {
+        if (receiptId) deleteReceipt(receiptId);
         toastErr('حدث خطأ أثناء حفظ الدفعة');
         console.error(e);
       }
@@ -535,10 +549,11 @@
 
       /* ما لم يجد بطاقة يُعاد استخدامها (إضافة، أو زيادة عدد المتغيّرات) */
       for (const n of pending) {
-        const p = await addProduct({ ...base, color: n.color, size: n.sz, qty: n.q, ...withArrival });
+        const p = await addProduct({ ...base, color: n.color, size: n.sz, qty: n.q, ...withArrival }, { receiptId });
         touched.add(p.sku);
         created++;
       }
+      if (!editing && created === 0 && !batchModelId && receiptId) { await deleteReceipt(receiptId); receiptId = null; }
 
       buzz([20, 50, 20]);
       clearDraft('product').catch(() => {});
@@ -581,6 +596,7 @@
       }
       ondone();
     } catch (e) {
+      if (receiptId) deleteReceipt(receiptId);
       toastErr('حدث خطأ أثناء الحفظ');
       console.error(e);
     }

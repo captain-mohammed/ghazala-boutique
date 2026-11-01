@@ -31,7 +31,7 @@
   import ModelRepair from './lib/screens/ModelRepair.svelte';
   import MyStore from './lib/screens/MyStore.svelte';
   import Trash from './lib/screens/Trash.svelte';
-  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable, sweepAllDuplicateVariants } from './lib/db.js';
+  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable, sweepAllDuplicateVariants, backfillReceipts } from './lib/db.js';
 
   let locked = $state(true);
   let screen = $state('home');
@@ -116,6 +116,8 @@
     /* حارس المتغيّرات: موديل واحد لا يحمل بطاقتين بنفس اللون والمقاس.
        تُدمج المكرّرة بلا سجل في أختها — وإن كان لها سجل تُترك للإصلاح اليدوي */
     sweepAllDuplicateVariants();
+    /* الاستلامات: اربطي الدفعات القديمة باستلاماتها حتى تظهر في سجل الوارد */
+    backfillReceipts();
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredInstall = e;

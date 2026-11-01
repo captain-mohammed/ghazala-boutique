@@ -10,6 +10,7 @@
 
   let lots = $state([]);
   let products = $state([]);
+  let receiptsById = $state(new Map());
   let loading = $state(true);
   let tab = $state('receipts'); // receipts | suppliers | models
   let q = $state('');
@@ -24,10 +25,11 @@
   $effect(() => {
     let alive = true;
     (async () => {
-      const [l, p] = await Promise.all([db.lots.toArray(), loadProducts()]);
+      const [l, p, recs] = await Promise.all([db.lots.toArray(), loadProducts(), db.receipts.toArray()]);
       if (!alive) return;
       lots = l;
       products = p;
+      receiptsById = new Map(recs.map((x) => [x.id, x]));
       loading = false;
     })();
     return () => { alive = false; };
@@ -49,13 +51,16 @@
     const map = new Map();
     for (const l of lots) {
       if (l.legacy) continue;
-      const day = baghdadDayKey(l.receivedAt);
-      const sup = (l.supplier || '').trim();
-      const inv = (l.invoice || '').trim();
-      const key = `${day}|${sup}|${inv}`;
+      /* هوية الاستلام تُقرأ من receiptId (مُنحت عند الحفظ). الدفعات القديمة
+         بلا رقم استلام ترتد إلى تجميع (تاريخ+مورد+فاتورة) كما كانت. */
+      const rec = l.receiptId ? receiptsById.get(l.receiptId) : null;
+      const day = baghdadDayKey(rec?.date || l.receivedAt);
+      const sup = (rec?.supplier || l.supplier || '').trim();
+      const inv = (rec?.invoice || l.invoice || '').trim();
+      const key = rec ? `r:${l.receiptId}` : `f:${day}|${sup}|${inv}`;
       let r = map.get(key);
       if (!r) {
-        r = { key, day, sup, inv, lines: [], pieces: 0, cost: 0, retail: 0, sold: 0, remaining: 0, profit: 0, skus: new Set() };
+        r = { key, rec, no: rec?.no || '', day, sup, inv, note: rec?.note || '', lines: [], pieces: 0, cost: 0, retail: 0, sold: 0, remaining: 0, profit: 0, skus: new Set() };
         map.set(key, r);
       }
       const qty = Number(l.qty) || 0;
@@ -138,7 +143,7 @@
 
   /* ---------- البحث ---------- */
   const qNorm = $derived(q.trim().toLowerCase());
-  const receiptsFiltered = $derived(receipts.filter((r) => !qNorm || [r.sup, r.inv, ...r.lines.map((l) => modelLabel(l.sku))].join(' ').toLowerCase().includes(qNorm)));
+  const receiptsFiltered = $derived(receipts.filter((r) => !qNorm || [r.no, r.sup, r.inv, r.note, ...r.lines.map((l) => modelLabel(l.sku))].join(' ').toLowerCase().includes(qNorm)));
   const suppliersFiltered = $derived(suppliers.filter((s) => !qNorm || s.sup.toLowerCase().includes(qNorm)));
   const modelsFiltered = $derived(models.filter((m) => !qNorm || [m.label, ...m.supList.map((s) => s.sup)].join(' ').toLowerCase().includes(qNorm)));
 
@@ -151,9 +156,9 @@
     const wb = XLSX.utils.book_new();
     if (tab === 'receipts') {
       const rows = receiptsFiltered.map((r) => ({
-        'التاريخ': r.day, 'المورد': r.sup || '—', 'الفاتورة': r.inv || '—',
+        'رقم الاستلام': r.no || '—', 'التاريخ': r.day, 'المورد': r.sup || '—', 'الفاتورة': r.inv || '—',
         'عدد الموديلات': r.skus.size, 'القطع': r.pieces, 'التكلفة': r.cost, 'قيمة البيع': r.retail,
-        'مُباع': r.sold, 'المتبقي': r.remaining, 'الربح': r.profit, 'التصريف %': pct(r.sold, r.pieces)
+        'مُباع': r.sold, 'المتبقي': r.remaining, 'الربح': r.profit, 'التصريف %': pct(r.sold, r.pieces), 'ملاحظة': r.note || ''
       }));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows.length ? rows : [{ 'التاريخ': '' }]), 'الوارد');
     } else if (tab === 'suppliers') {
@@ -227,6 +232,9 @@
               <span class="rc-pieces">{fmtNum(r.pieces)} قطعة</span>
               <span class="chev" class:flip={openKey === r.key}><Icon name="back" size={13} /></span>
             </button>
+            {#if r.no || r.note}
+              <div class="rc-meta">{r.no}{r.no && r.note ? ' — ' : ''}{r.note}</div>
+            {/if}
             <div class="rc-bar"><i style="width:{pct(r.sold, r.pieces)}%"></i><span>{pct(r.sold, r.pieces)}% مُباع</span></div>
             <div class="rc-stats">
               <span>تكلفة <b>{fmtIQD(r.cost)}</b></span>
@@ -315,6 +323,7 @@
   .rc-date { flex: none; font-size: 12px; font-weight: 900; color: var(--burgundy); background: rgba(181,73,91,0.1); border-radius: 999px; padding: 3px 9px; }
   .rc-sup { flex: 1; min-width: 0; font-weight: 800; font-size: 13px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .rc-pieces { flex: none; font-size: 12px; font-weight: 800; color: var(--taupe); }
+  .rc-meta { font-size: 10.5px; font-weight: 700; color: var(--taupe); margin-top: 4px; }
   .rc-bar { position: relative; height: 16px; border-radius: 999px; background: rgba(156,123,107,0.16); margin-top: 9px; overflow: hidden; }
   .rc-bar i { position: absolute; inset-inline-start: 0; top: 0; bottom: 0; background: linear-gradient(90deg, var(--gold), var(--burgundy)); border-radius: 999px; }
   .rc-bar span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 9.5px; font-weight: 800; color: #3A1A20; }

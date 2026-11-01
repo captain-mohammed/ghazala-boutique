@@ -1,5 +1,5 @@
 import Dexie from 'dexie';
-import { startOfToday, baghdadMonthKey, monthRange, salePieces, TEMPLATE_KEYS } from './utils.js';
+import { startOfToday, baghdadMonthKey, monthRange, salePieces, TEMPLATE_KEYS, baghdadDayKey } from './utils.js';
 
 export const db = new Dexie('ghazala_boutique');
 
@@ -155,6 +155,14 @@ db.version(10).stores({
   trash: '++id, kind, deletedAt'
 });
 
+/* v11: + receipts (استلامات كسجلات أولى) وربط كل دفعة باستلامها.
+   الهوية تُمنَح عند الحفظ لا تُستنتج من (تاريخ+مورد+فاتورة) — فاستلامان
+   لنفس المورد في نفس اليوم يبقيان منفصلين. */
+db.version(11).stores({
+  receipts: '++id, no, supplier, date',
+  lots: '++id, sku, modelId, supplier, receivedAt, receiptId'
+});
+
 /* مسودات الشاشات: تُحفظ تلقائياً في IndexedDB (لا سقف localStorage) وتُستعاد
    عند العودة. المفتاح يميّز نوع المسودة — حالياً «receive» لفاتورة الوارد. */
 export async function saveDraft(key, data) {
@@ -189,6 +197,56 @@ export async function restoreTrash(id) {
   }
   await db.trash.delete(id);
   return true;
+}
+
+/* ---------------- الاستلامات (receipts) ----------------
+   كل عملية حفظ (فاتورة وارد أو نموذج موديل) تُنشئ استلاماً واحداً برقم
+   تلقائي، وكل دفعة تُنتجها تشير إليه بـ receiptId. */
+export async function createReceipt({ supplier = '', invoice = '', date, note = '', source = '' } = {}) {
+  const now = new Date().toISOString();
+  const id = await db.receipts.add({
+    supplier: (supplier || '').trim(),
+    invoice: (invoice || '').trim(),
+    date: date || now,
+    note: note || '',
+    source: source || '',
+    createdAt: now
+  });
+  const year = baghdadDayKey(date || now).slice(0, 4);
+  const no = `وارد #${year}-${String(id).padStart(4, '0')}`;
+  await db.receipts.update(id, { no });
+  return { id, no };
+}
+export async function deleteReceipt(id) { if (id) await db.receipts.delete(id); }
+
+/* ترحيل لمرة واحدة: الدفعات القديمة بلا استلام تُجمَّع كما كانت تُعرض
+   (تاريخ+مورد+فاتورة) وتُربط باستلام «سابق» — فلا تختفي من السجل. */
+export async function backfillReceipts() {
+  try {
+    if (await getSetting('receiptsBackfilled', false)) return 0;
+    const lots = await db.lots.toArray();
+    const orphans = lots.filter((l) => !l.receiptId);
+    if (!orphans.length) { await setSetting('receiptsBackfilled', true); return 0; }
+    const groups = new Map();
+    for (const l of orphans) {
+      const key = `${baghdadDayKey(l.receivedAt)}|${(l.supplier || '').trim()}|${(l.invoice || '').trim()}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(l);
+    }
+    let n = 0;
+    for (const rows of groups.values()) {
+      const first = rows[0];
+      const date = rows.reduce((a, r) => (new Date(r.receivedAt) < new Date(a) ? r.receivedAt : a), first.receivedAt);
+      const rec = await createReceipt({ supplier: first.supplier || '', invoice: first.invoice || '', date, note: 'سابق', source: 'legacy' });
+      for (const r of rows) await db.lots.update(r.id, { receiptId: rec.id });
+      n++;
+    }
+    await setSetting('receiptsBackfilled', true);
+    return n;
+  } catch (e) {
+    console.error('backfillReceipts', e);
+    return 0;
+  }
 }
 
 export const DEFAULT_CATEGORIES = ['نسائية', 'رجالية', 'أطفال'];
@@ -705,7 +763,7 @@ export async function backfillLots() {
 }
 
 /* وصول دفعة جديدة — لا يُكتب فوق أي دفعة قائمة */
-export async function addLot({ sku, supplier = '', cost = 0, price = 0, qty = 0, receivedAt, invoice = '', note = '' }) {
+export async function addLot({ sku, supplier = '', cost = 0, price = 0, qty = 0, receivedAt, invoice = '', note = '', receiptId = null }) {
   const q = Math.max(0, Math.round(Number(qty) || 0));
   if (!q) return null;
   const p = await db.products.get(sku);
@@ -715,7 +773,7 @@ export async function addLot({ sku, supplier = '', cost = 0, price = 0, qty = 0,
     cost: Math.max(0, Number(cost) || 0), price: Math.max(0, Number(price) || 0),
     qty: q, remaining: q,
     receivedAt: receivedAt || new Date().toISOString(),
-    invoice: invoice || '', note: note || ''
+    invoice: invoice || '', note: note || '', receiptId: receiptId || null
   });
   await syncCardFromLots(sku);
   return id;
@@ -823,7 +881,7 @@ export async function deleteLotsOf(skus) {
   }
 }
 
-export async function addProduct(data, { moveNote } = {}) {
+export async function addProduct(data, { moveNote, receiptId = null } = {}) {
   /* Svelte $state proxies (seasons، sizes grids، سطور الفاتورة) لا تُستنسخ
      إلى IndexedDB — نفس فخ setSetting: جولة JSON تُجرّدها قبل أي put */
   data = JSON.parse(JSON.stringify(data ?? {}));
@@ -858,7 +916,7 @@ export async function addProduct(data, { moveNote } = {}) {
       if (Number(p.qty) > 0) {
         await addLot({
           sku: twin.sku, supplier: p.supplier, cost: p.cost, price: p.price,
-          qty: p.qty, receivedAt: createdAt, note: moveNote || 'دفعة على متغيّر موجود'
+          qty: p.qty, receivedAt: createdAt, note: moveNote || 'دفعة على متغيّر موجود', receiptId
         });
         await logMovement({ sku: twin.sku, type: 'in', qty: p.qty, note: moveNote || 'دفعة على متغيّر موجود', date: createdAt });
       }
@@ -875,7 +933,7 @@ export async function addProduct(data, { moveNote } = {}) {
   if (Number(p.qty) > 0) {
     await addLot({
       sku, supplier: p.supplier, cost: p.cost, price: p.price,
-      qty: p.qty, receivedAt: createdAt, note: moveNote || 'إضافة أولية'
+      qty: p.qty, receivedAt: createdAt, note: moveNote || 'إضافة أولية', receiptId
     });
   }
   if (p.qty > 0) await logMovement({ sku, type: 'in', qty: p.qty, note: moveNote || 'إضافة أولية', date: createdAt });
@@ -1326,6 +1384,8 @@ export async function sweepSeasonArrays() {
 export async function receiveBatch({ supplier = '', invoice = '', note = '', lines = [] }) {
   const sup = supplier.trim();
   const invNote = sup ? `فاتورة وارد${invoice ? ` #${invoice.trim()}` : ''} — ${sup}` : 'فاتورة وارد';
+  /* استلام واحد لهذه الفاتورة — كل دفعاتها تشير إليه */
+  const receipt = await createReceipt({ supplier: sup, invoice: invoice || '', date: new Date().toISOString(), note: invNote + (note ? ` — ${note}` : ''), source: 'receive' });
   const all = await db.products.toArray();
   /* البحث صار **داخل كل موديل على حِدة**، لا خريطة واحدة للجدول كله.
      منذ 0.21.3 صار ممكناً أن يتقاسَم موديلان المفتاح نفسه (بوت أسود ×2 بصورة
@@ -1401,7 +1461,7 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
           cost: Number(ln.cost) || twin.cost,
           price: Number(ln.price) || twin.price,
           qty, receivedAt: new Date().toISOString(),
-          invoice: invoice || '', note: invNote
+          invoice: invoice || '', note: invNote, receiptId: receipt.id
         });
         await updateProduct(twin.sku, {
           type: ln.type || twin.type || '',
@@ -1428,12 +1488,13 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
           cost: Number(ln.cost) || 0, price: Number(ln.price) || 0, qty,
           photo: ln.photo || null, supplier: sup, supplierAt: new Date().toISOString(),
           notes: note || '', modelId: target
-        }, { moveNote: invNote + (note ? ` — ${note}` : '') });
+        }, { moveNote: invNote + (note ? ` — ${note}` : ''), receiptId: receipt.id });
         bucket.set(modelKey(p), p);
         added++; pieces += qty; touchedSkus.push(p.sku);
       }
     }
   }
+  if (!added && !merged) await deleteReceipt(receipt.id);
   return { added, merged, pieces, touchedSkus, splitOff };
 }
 
@@ -2034,16 +2095,16 @@ export async function stocktakeApply(corrections) {
 /* ---------------- Backup / Restore ---------------- */
 
 export async function backupJSON() {
-  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos, lots, drafts, trash] = await Promise.all([
+  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos, lots, drafts, trash, receipts] = await Promise.all([
     db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray(),
     db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.vault.toArray(),
     db.waitlists.toArray(), db.referrals.toArray(), db.testimonials.toArray(), db.payments.toArray(),
-    db.photos.toArray(), db.lots.toArray(), db.drafts.toArray(), db.trash.toArray()
+    db.photos.toArray(), db.lots.toArray(), db.drafts.toArray(), db.trash.toArray(), db.receipts.toArray()
   ]);
   return {
-    app: 'ghazala-boutique', version: 10, exportedAt: new Date().toISOString(),
+    app: 'ghazala-boutique', version: 11, exportedAt: new Date().toISOString(),
     products, sales, movements, settings, expenses, reservations, occasions, vault,
-    waitlists, referrals, testimonials, payments, photos, lots, drafts, trash
+    waitlists, referrals, testimonials, payments, photos, lots, drafts, trash, receipts
   };
 }
 
@@ -2059,7 +2120,7 @@ export async function restoreJSON(data, { merge = false } = {}) {
 
   const tables = [
     db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions,
-    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash
+    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash, db.receipts
   ];
 
   /* استعادة واحدة ذرّية: إما تنجح كاملة أو لا يُمَس شيء. الكتابة خارج معاملة
@@ -2087,8 +2148,8 @@ export async function restoreJSON(data, { merge = false } = {}) {
 }
 
 export async function wipeAll() {
-  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash, async () => {
-    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear(), db.lots.clear(), db.drafts.clear(), db.trash.clear()]);
+  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash, db.receipts, async () => {
+    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear(), db.lots.clear(), db.drafts.clear(), db.trash.clear(), db.receipts.clear()]);
   });
 }
 
