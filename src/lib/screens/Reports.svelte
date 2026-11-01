@@ -4,6 +4,7 @@
   import VariantBits from '../components/VariantBits.svelte';
   import { db, allSettings, getSetting, WOMENS_TYPES, modelGroupKey, loadProducts } from '../db.js';
   import Glass from '../components/Glass.svelte';
+  import ReceiveHistory from './ReceiveHistory.svelte';
   import { fmtIQD, fmtNum, fmtDate, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR, shelfAgeDays, stockArrival, baghdadWeekday, baghdadDayPart, isoFromBaghdadLocal } from '../utils.js';
 
   let products = $state([]);
@@ -14,6 +15,7 @@
   let closings = $state([]);
   let settings = $state(null);
   let period = $state('today');
+  let view = $state('reports'); // reports | history
   let customFrom = $state('');
   let customTo = $state('');
 
@@ -191,6 +193,14 @@
 </script>
 
 <div class="stack" style="gap:12px">
+  {#if view === 'history'}
+    <ReceiveHistory onback={() => (view = 'reports')} />
+  {:else}
+  <div class="row" style="justify-content:flex-end">
+    <button class="btn ghost" style="min-height:38px" onclick={() => (view = 'history')}>
+      <Icon name="history" size={16} /> سجل الوارد
+    </button>
+  </div>
   <div class="row noscroll" style="gap:8px; overflow-x:auto; padding-bottom:2px">
     {#each PERIODS as p (p.id)}
       <button class="chip" class:on={period === p.id} onclick={() => (period = p.id)}>{p.label}</button>
@@ -357,6 +367,7 @@
         </div>
       {/if}
     </Glass>
+  {/if}
   {/if}
 </div>
 
