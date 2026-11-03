@@ -3,9 +3,14 @@
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
-  import { loadProducts, addLot, addProduct, modelGroupKey, typeChain, createReceipt, deleteReceipt, getSetting, setSetting, consumeAny, syncCardFromLots, syncCardSuppliers } from '../db.js';
+  import Pick from '../components/Pick.svelte';
+  import ColorSwatches from '../components/ColorSwatches.svelte';
+  import SizeQtyGrid from '../components/SizeQtyGrid.svelte';
+  import { loadProducts, addLot, addProduct, modelGroupKey, typeChain, modelOptions, addModelOption, getSetting, setSetting, createReceipt, deleteReceipt, consumeAny, syncCardFromLots, syncCardSuppliers, SIZE_RUNS, hexForColor } from '../db.js';
   import { fmtNum, buzz, iqd, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
   import { toastOk, toastErr, celebrateAt } from '../store.js';
+
+  const NOCOLOR = 'بلا لون';
 
   let { preselect = '', ondone = () => {} } = $props();
 
@@ -13,15 +18,21 @@
   let loading = $state(true);
   let q = $state('');
   let picked = $state('');
-  let qty = $state({});        // sku → الكمية الإجمالية الجديدة (نص)
+  let opts = $state({ colors: [], sizes: {} });
+  let suppliers = $state([]);
+  let selColors = $state([]);
+  let byColor = $state({});     // label → { sizeKey: الإجمالي الجديد }
+  let category = $state('نسائية');
   let supplier = $state('');
   let cost = $state('');
   let price = $state('');
   let arrival = $state(baghdadLocalInput());
   let note = $state('');
-  let newColor = $state('');
-  let newSize = $state('');
-  let newQty = $state('');
+  let addSupOpen = $state(false);
+  let addSupVal = $state('');
+  let addColorOpen = $state(false);
+  let addColorLabel = $state('');
+  let addColorHex = $state('#9C7B6B');
   let saving = $state(false);
 
   function group(ps) {
@@ -45,43 +56,118 @@
   }
 
   onMount(async () => {
-    const ps = await loadProducts();
+    const [ps, o, sup] = await Promise.all([loadProducts(), modelOptions(), getSetting('suppliers', [])]);
     models = group(ps);
+    opts = o;
+    suppliers = sup || [];
     loading = false;
     if (preselect) pickModel(preselect);
   });
 
+  async function refreshOpts() { opts = await modelOptions(); }
+
   const filtered = $derived(models.filter((m) => !q.trim() || [m.chain, ...m.colors.keys()].join(' ').toLowerCase().includes(q.trim().toLowerCase())));
   const chosen = $derived(models.find((m) => m.modelId === picked) || null);
-  const totalIn = $derived(chosen ? [...chosen.colors.values()].flat().reduce((a, c) => a + Math.max(0, (Number(qty[c.sku]) || 0) - (Number(c.qty) || 0)), 0) + (Number(newQty) || 0) : 0);
+  const palette = $derived([
+    ...opts.colors,
+    ...selColors.filter((c) => c !== NOCOLOR && !opts.colors.some((o) => o.label === c)).map((c) => ({ label: c, hex: '#9C7B6B' }))
+  ]);
+  const baseSizes = $derived((opts.sizes && opts.sizes[category]) || SIZE_RUNS[category] || SIZE_RUNS['نسائية']);
+
+  const colorKeyOf = (label) => (label === NOCOLOR ? '' : label);
+  const colorPieces = (label) => Object.values(byColor[label] || {}).reduce((a, n) => a + (Number(n) || 0), 0);
+  function colorDiff(label) {
+    if (!chosen) return 0;
+    const cards = chosen.colors.get(colorKeyOf(label)) || [];
+    const cur = byColor[label] || {};
+    let d = 0;
+    for (const card of cards) {
+      const sz = String(card.size || '').trim() || '—';
+      d += (Number(cur[sz]) || 0) - (Number(card.qty) || 0);
+    }
+    for (const [sz, qv] of Object.entries(cur)) {
+      if ((Number(qv) || 0) > 0 && !cards.some((c) => (String(c.size || '').trim() || '—') === sz)) d += Number(qv) || 0;
+    }
+    return d;
+  }
+  const totalIn = $derived(chosen ? selColors.reduce((a, l) => a + Math.max(0, colorDiff(l)), 0) : 0);
 
   function pickModel(mid) {
     const m = models.find((x) => x.modelId === mid);
     if (!m) return;
     picked = mid;
-    qty = {};
-    for (const cards of m.colors.values()) for (const c of cards) qty[c.sku] = String(Number(c.qty) || 0);
-    supplier = m.supplier || '';
+    selColors = [];
+    byColor = {};
+    for (const [colorKey, cards] of m.colors) {
+      const label = colorKey || NOCOLOR;
+      selColors.push(label);
+      const map = {};
+      for (const c of cards) map[String(c.size || '').trim() || '—'] = Number(c.qty) || 0;
+      byColor[label] = map;
+    }
+    category = m.lead.category || 'نسائية';
+    supplier = m.supplier || (suppliers[0] || '');
     cost = m.cost ? String(m.cost) : '';
     price = m.price ? String(m.price) : '';
     arrival = baghdadLocalInput();
-    note = ''; newColor = ''; newSize = ''; newQty = '';
+    note = ''; addSupOpen = false; addColorOpen = false;
     buzz(8);
   }
 
-  const delta = (c) => (Number(qty[c.sku]) || 0) - (Number(c.qty) || 0);
+  function toggleColor(label) {
+    if (selColors.includes(label)) selColors = selColors.filter((c) => c !== label);
+    else { selColors = [...selColors, label]; if (!byColor[label]) byColor[label] = {}; }
+    buzz(6);
+  }
+
+  async function addSupplier() {
+    const v = addSupVal.trim();
+    if (!v) return;
+    const reg = (await getSetting('suppliers', [])) || [];
+    if (!reg.includes(v)) await setSetting('suppliers', [...reg, v]);
+    suppliers = [...new Set([...suppliers, v])];
+    supplier = v;
+    addSupOpen = false; addSupVal = '';
+    buzz(8);
+  }
+
+  async function addColor() {
+    const v = addColorLabel.trim();
+    if (!v) return;
+    await addModelOption('colors', { label: v, hex: addColorHex || '#9C7B6B' }, null);
+    await refreshOpts();
+    if (!selColors.includes(v)) { selColors = [...selColors, v]; byColor = { ...byColor, [v]: byColor[v] || {} }; }
+    addColorOpen = false; addColorLabel = ''; addColorHex = '#9C7B6B';
+    buzz(8);
+  }
 
   async function save() {
     const m = chosen;
     if (!m) return;
     const c = iqd(cost), pr = iqd(price);
-    const cards = [...m.colors.values()].flat();
-    const diffs = cards.map((card) => ({ sku: card.sku, diff: delta(card) })).filter((x) => x.diff !== 0);
-    const hasNew = Number(newQty) > 0;
-    if (!diffs.length && !hasNew) { toastErr('لا تغيير في الكميات'); return; }
     if (c <= 0) { toastErr('سعر التكلفة مطلوب'); return; }
     if (pr <= 0) { toastErr('سعر البيع مطلوب'); return; }
-    if (hasNew && !newColor.trim() && !newSize.trim()) { toastErr('اكتبي لوناً أو مقاساً للبطاقة الجديدة'); return; }
+
+    const plan = [];
+    for (const label of selColors) {
+      const colorKey = colorKeyOf(label);
+      const cards = m.colors.get(colorKey) || [];
+      const cur = byColor[label] || {};
+      for (const card of cards) {
+        const sz = String(card.size || '').trim() || '—';
+        const next = Number(cur[sz]) || 0;
+        plan.push({ card, colorKey, sizeKey: sz, next, diff: next - (Number(card.qty) || 0) });
+      }
+      for (const [sz, qv] of Object.entries(cur)) {
+        const n = Number(qv) || 0;
+        if (n <= 0) continue;
+        if (cards.some((card) => (String(card.size || '').trim() || '—') === sz)) continue;
+        plan.push({ card: null, colorKey, sizeKey: sz, next: n, diff: n });
+      }
+    }
+    const changes = plan.filter((x) => x.diff !== 0);
+    if (!changes.length) { toastErr('لا تغيير في الكميات'); return; }
+
     saving = true;
     const arrivalIso = isoFromBaghdadLocal(arrival) || new Date().toISOString();
     const sup = supplier.trim();
@@ -91,27 +177,27 @@
       const rec = await createReceipt({ supplier: sup, invoice: '', date: arrivalIso, note: note.trim(), source: 'restock' });
       receiptId = rec.id;
       let pieces = 0, cardsAdded = 0;
-      for (const { sku, diff } of diffs) {
-        if (diff > 0) {
-          await addLot({ sku, supplier: sup, cost: c, price: pr, qty: diff, receivedAt: arrivalIso, note: noteTxt, receiptId });
-          pieces += diff;
+      for (const x of changes) {
+        if (x.card) {
+          if (x.diff > 0) {
+            await addLot({ sku: x.card.sku, supplier: sup, cost: c, price: pr, qty: x.diff, receivedAt: arrivalIso, note: noteTxt, receiptId });
+            pieces += x.diff;
+          } else {
+            await consumeAny(x.card.sku, -x.diff);
+            await syncCardFromLots(x.card.sku);
+          }
+          await syncCardSuppliers(x.card.sku);
         } else {
-          await consumeAny(sku, -diff);
-          await syncCardFromLots(sku);
+          const size = x.sizeKey === '—' ? '' : x.sizeKey;
+          await addProduct({
+            name: m.lead.name, category: m.lead.category,
+            type: m.lead.type || '', typeSub: m.lead.typeSub || '', typeSub2: m.lead.typeSub2 || '', typeSub3: m.lead.typeSub3 || '',
+            season: m.lead.season || '', material: m.lead.material || '',
+            color: x.colorKey, size, qty: x.next, cost: c, price: pr, supplier: sup, supplierAt: new Date().toISOString(),
+            modelId: picked, photo: m.photo || null
+          }, { moveNote: noteTxt, receiptId });
+          pieces += x.next; cardsAdded++;
         }
-        await syncCardSuppliers(sku);
-      }
-      if (hasNew) {
-        const n = Math.round(Number(newQty) || 0);
-        await addProduct({
-          name: m.lead.name, category: m.lead.category,
-          type: m.lead.type || '', typeSub: m.lead.typeSub || '', typeSub2: m.lead.typeSub2 || '', typeSub3: m.lead.typeSub3 || '',
-          season: m.lead.season || '', material: m.lead.material || '',
-          color: newColor.trim(), size: newSize.trim(),
-          cost: c, price: pr, qty: n, supplier: sup, supplierAt: new Date().toISOString(),
-          modelId: picked, photo: m.photo || null
-        }, { moveNote: noteTxt, receiptId });
-        pieces += n; cardsAdded++;
       }
       if (sup) {
         const reg = (await getSetting('suppliers', [])) || [];
@@ -167,16 +253,23 @@
       </div>
     </Glass>
 
-    <div class="row" style="gap:8px">
-      <div class="field" style="flex:1">
-        <label>المورد لهذه الدفعة</label>
-        <input class="input" bind:value={supplier} placeholder="منين شريتِ؟" />
-      </div>
-      <div class="field" style="flex:1">
-        <label>وقت الوصول</label>
-        <input class="input" type="datetime-local" bind:value={arrival} max={baghdadLocalInput()} />
-      </div>
+    <div class="field">
+      <label>المورد لهذه الدفعة</label>
+      {#if suppliers.length}
+        <Pick bind:value={supplier} placeholder="اختاري المورد…" options={suppliers} />
+      {:else}
+        <input class="input" bind:value={supplier} placeholder="مثال: هاي مول — أبو علي" />
+        <p class="muted tiny" style="margin:4px 2px 0">سجّلي مورديك من الإعدادات لتظهروا قائمة هنا.</p>
+      {/if}
+      <button type="button" class="chip add" style="margin-top:8px" onclick={() => (addSupOpen = !addSupOpen)}>+ مورد جديد</button>
+      {#if addSupOpen}
+        <div class="row" style="gap:6px; margin-top:6px">
+          <input class="input" bind:value={addSupVal} placeholder="اسم المورد…" style="flex:1" onkeydown={(e) => e.key === 'Enter' && addSupplier()} />
+          <button type="button" class="btn" style="min-height:44px; flex:none" onclick={addSupplier}>إضافة</button>
+        </div>
+      {/if}
     </div>
+
     <div class="row" style="gap:8px">
       <div class="field" style="flex:1">
         <label>سعر التكلفة (د.ع)</label>
@@ -188,41 +281,62 @@
       </div>
     </div>
     <div class="field">
+      <label>وقت الوصول <span class="muted tiny">(بتوقيت بغداد)</span></label>
+      <div class="row" style="gap:8px; align-items:center">
+        <input class="input ts-input" type="datetime-local" bind:value={arrival} max={baghdadLocalInput()} />
+        <button type="button" class="chip" onclick={() => (arrival = baghdadLocalInput())}>الآن</button>
+      </div>
+    </div>
+    <div class="field">
       <label>ملاحظة (اختياري)</label>
       <input class="input" bind:value={note} placeholder="اختياري…" />
     </div>
 
     <Glass class="summary">
+      <span class="sum-k">الحالي</span>
+      <b class="sum-v muted">{fmtNum(chosen.qty)}</b>
+      <span class="sum-arrow">←</span>
       <span class="sum-k">واصل الآن</span>
-      <b class="sum-v">{fmtNum(totalIn)} قطعة</b>
-      <span class="muted tiny">{supplier || 'بدون مورد'}</span>
+      <b class="sum-v">{fmtNum(totalIn)}</b>
+      <span class="muted tiny" style="margin-inline-start:auto">{supplier || 'بدون مورد'}</span>
     </Glass>
 
-    <div class="sizes-title">الكمية الجديدة <span class="muted tiny">— الإجمالي بعد الاستلام (الحالي معروض بجانبه)</span></div>
-    <div class="stack" style="gap:8px">
-      {#each [...chosen.colors.entries()] as [color, cards] (color)}
-        <Glass class="color-block">
-          <div class="cb-head"><span class="bold small">{color || 'بلا لون'}</span></div>
-          {#each cards as c (c.sku)}
-            <div class="size-row">
-              <span class="sz">{c.size || '—'}</span>
-              <span class="on-shelf">على الرف {fmtNum(c.qty)}</span>
-              <input class="input qin" type="number" min="0" inputmode="numeric" bind:value={qty[c.sku]} placeholder="0" />
-              {#if delta(c) > 0}<span class="dlt up">+{fmtNum(delta(c))}</span>{:else if delta(c) < 0}<span class="dlt down">{fmtNum(delta(c))}</span>{/if}
-            </div>
-          {/each}
-        </Glass>
-      {/each}
-    </div>
-
-    <Glass class="new-var">
-      <div class="bold small" style="margin-bottom:8px">+ لون أو مقاس جديد</div>
-      <div class="row" style="gap:8px">
-        <input class="input" bind:value={newColor} placeholder="لون" style="flex:1" />
-        <input class="input" bind:value={newSize} placeholder="مقاس" style="flex:1" />
-        <input class="input" bind:value={newQty} placeholder="كمية" inputmode="numeric" style="width:76px" />
+    <ColorSwatches
+      colors={palette}
+      multi={true}
+      selected={selColors}
+      onselect={toggleColor}
+      label="الألوان التي وصلت"
+      hint="اختاري من الدوائر"
+    />
+    <button type="button" class="chip add" onclick={() => (addColorOpen = !addColorOpen)}>+ لون</button>
+    {#if addColorOpen}
+      <div class="row" style="gap:6px; margin-top:6px">
+        <input type="color" bind:value={addColorHex} aria-label="اختاري لوناً" class="add-hex" />
+        <input class="input" bind:value={addColorLabel} placeholder="اسم اللون…" style="flex:1" onkeydown={(e) => e.key === 'Enter' && addColor()} />
+        <button type="button" class="btn" style="min-height:44px; flex:none" onclick={addColor}>إضافة</button>
       </div>
-    </Glass>
+    {/if}
+
+    <div class="sizes-title">الكمية الجديدة <span class="muted tiny">— الإجمالي بعد الاستلام (الحالي مُعبّأ)</span></div>
+    {#if selColors.length}
+      <div class="stack" style="gap:10px">
+        {#each selColors as color (color)}
+          <div class="color-block">
+            <div class="cb-head">
+              <i class="cb-dot" style="background:{color === NOCOLOR ? 'transparent' : hexForColor(color, palette)}"></i>
+              <span class="bold">{color}</span>
+              <span class="cb-count" class:has={colorDiff(color) !== 0}>
+                {colorDiff(color) > 0 ? `+${fmtNum(colorDiff(color))}` : colorDiff(color) < 0 ? fmtNum(colorDiff(color)) : 'لا تغيير'}
+              </span>
+            </div>
+            <SizeQtyGrid sizes={baseSizes} bind:value={byColor[color]} category={category} onAddSize={refreshOpts} />
+          </div>
+        {/each}
+      </div>
+    {:else}
+      <div class="cb-empty">اختاري لوناً من الدوائر أولاً</div>
+    {/if}
 
     <button class="btn primary lg block" onclick={save} disabled={saving}>
       <Icon name="check" size={20} /> حفظ الاستلام{totalIn > 0 ? ` — ${fmtNum(totalIn)} قطعة` : ''}
@@ -242,20 +356,21 @@
   .m-chain { font-size: 11px; font-weight: 700; color: var(--ink); line-height: 1.25; max-height: 2.5em; overflow: hidden; }
   .m-qty { font-size: 10px; color: var(--taupe); }
   :global(.picked) { padding: 12px 14px; display: flex; align-items: center; gap: 12px; }
-  :global(.summary) { padding: 11px 14px; display: flex; align-items: center; gap: 10px; }
-  .sum-k { font-size: 12px; font-weight: 700; color: var(--taupe); }
+  :global(.summary) { padding: 11px 14px; display: flex; align-items: center; gap: 8px; }
+  .sum-k { font-size: 11px; font-weight: 700; color: var(--taupe); }
   .sum-v { font-size: 15px; font-weight: 900; color: var(--burgundy); font-variant-numeric: tabular-nums; }
+  .sum-v.muted { color: var(--ink-2); }
+  .sum-arrow { color: var(--gold); font-weight: 900; }
   .sizes-title { font-weight: 900; font-size: 14px; color: var(--ink); }
-  :global(.color-block) { padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
-  .cb-head { margin-bottom: 2px; }
-  .size-row { display: flex; align-items: center; gap: 10px; }
-  .sz { flex: none; width: 40px; font-weight: 800; font-size: 13px; color: var(--ink); }
-  .on-shelf { flex: 1; font-size: 11px; color: var(--taupe); }
-  .qin { width: 78px; min-height: 44px; text-align: center; flex: none; }
-  .dlt { flex: none; min-width: 42px; text-align: center; font-size: 11px; font-weight: 800; padding: 3px 7px; border-radius: 999px; }
-  .dlt.up { color: var(--good); background: rgba(78,138,95,0.12); }
-  .dlt.down { color: var(--burgundy); background: rgba(181,73,91,0.1); }
-  :global(.new-var) { padding: 12px 14px; }
+  .color-block { border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 12px; background: rgba(255, 255, 255, 0.28); }
+  .cb-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .cb-dot { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; }
+  .cb-count { margin-inline-start: auto; font-size: 10.5px; font-weight: 800; color: var(--taupe); background: rgba(122, 46, 58, 0.07); border-radius: 999px; padding: 3px 9px; }
+  .cb-count.has { color: var(--good); background: rgba(78, 138, 95, 0.12); }
+  .cb-empty { font-size: 12.5px; font-weight: 700; color: var(--taupe); border: 1.5px dashed var(--line-2); border-radius: var(--r-md); padding: 14px; text-align: center; }
+  .add-hex { width: 44px; height: 44px; padding: 0; border: 1px solid var(--line-2); border-radius: 10px; background: #fff; flex: none; }
+  .ts-input { direction: ltr; text-align: center; font-variant-numeric: tabular-nums; }
+  .chip.add { border-style: dashed; border-color: var(--burgundy); color: var(--burgundy); background: rgba(181, 73, 91, 0.06); font-size: 12.5px; padding: 7px 13px; }
   .btn { font-family: inherit; font-size: 12.5px; font-weight: 700; border-radius: var(--r-md); padding: 0 12px; cursor: pointer; border: 1px solid var(--line); background: rgba(255,255,255,0.6); color: var(--ink); display: inline-flex; align-items: center; gap: 5px; }
   .btn.ghost { background: transparent; }
 </style>
