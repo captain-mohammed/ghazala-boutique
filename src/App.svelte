@@ -31,6 +31,7 @@
   import ModelRepair from './lib/screens/ModelRepair.svelte';
   import MyStore from './lib/screens/MyStore.svelte';
   import Trash from './lib/screens/Trash.svelte';
+  import PhotoTrash from './lib/screens/PhotoTrash.svelte';
   import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable, sweepAllDuplicateVariants, backfillReceipts } from './lib/db.js';
 
   let locked = $state(true);
@@ -75,7 +76,8 @@
     customers: 'دفتر الزبونات',
     repair: 'إصلاح الموديلات',
     store: 'متجري',
-    trash: 'سلة المحذوفات'
+    trash: 'سلة المحذوفات',
+    phototrash: 'سلة الصور'
   };
 
   async function goto(id) {
@@ -196,6 +198,7 @@
         {:else if screen === 'repair'}<ModelRepair />
         {:else if screen === 'store'}<MyStore />
         {:else if screen === 'trash'}<Trash />
+        {:else if screen === 'phototrash'}<PhotoTrash />
         {/if}
       </div>
     {/key}

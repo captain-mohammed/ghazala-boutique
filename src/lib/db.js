@@ -163,6 +163,11 @@ db.version(11).stores({
   lots: '++id, sku, modelId, supplier, receivedAt, receiptId'
 });
 
+/* v12: + photoTrash (سلة الصور — لا تُحذف صورة موديل نهائياً بلا رجعة) */
+db.version(12).stores({
+  photoTrash: '++id, modelId, deletedAt'
+});
+
 /* مسودات الشاشات: تُحفظ تلقائياً في IndexedDB (لا سقف localStorage) وتُستعاد
    عند العودة. المفتاح يميّز نوع المسودة — حالياً «receive» لفاتورة الوارد. */
 export async function saveDraft(key, data) {
@@ -805,6 +810,37 @@ export async function syncCardFromLots(sku) {
   return { ...p, ...patch };
 }
 
+/* مورد البطاقة = كل موردي دفعاتها (لا آخر مورد فقط) — «هاي مول · أبو علي» */
+export async function syncCardSuppliers(sku) {
+  const rows = await db.lots.where('sku').equals(sku).toArray();
+  const sups = [...new Set(rows.map((l) => (l.supplier || '').trim()).filter(Boolean))];
+  if (sups.length) await db.products.update(sku, { supplier: sups.join(' · ') });
+  return sups;
+}
+
+/* ---------------- سلة الصور (photo trash) ----------------
+   لا تُحذف صورة موديل نهائياً عند الدمج أو حذف الموديل — تُنقل هنا حتى
+   تقرّر صاحبة البوتيك حذفها أو إعادة استخدامها لموديل آخر. */
+export async function trashPhoto(modelId, reason = '') {
+  const ph = await db.photos.get(modelId);
+  if (!ph?.data) return false;
+  await db.photoTrash.add({ modelId, data: ph.data, deletedAt: new Date().toISOString(), reason });
+  await db.photos.delete(modelId);
+  return true;
+}
+export async function listPhotoTrash() {
+  return db.photoTrash.orderBy('deletedAt').reverse().toArray();
+}
+export async function restorePhotoTrash(id, modelId) {
+  const row = await db.photoTrash.get(id);
+  if (!row) return false;
+  if (modelId) await db.photos.put({ modelId, data: row.data });
+  await db.photoTrash.delete(id);
+  return true;
+}
+export async function purgePhotoTrash(id) { await db.photoTrash.delete(id); }
+export async function purgeAllPhotoTrash() { await db.photoTrash.clear(); }
+
 /* صرف كمية من دفعات بسعر محدّد (FIFO داخل نفس السعر). السعر غير الموجود
    (تغيّر يدوي مثلاً) يرتد إلى الأقدم المتاح بدل أن يفشل البيع. */
 export async function consumeAtPrice(sku, price, qty) {
@@ -1022,12 +1058,18 @@ export async function adjustQty(sku, delta, note) {
 export async function deleteProduct(sku) {
   /* ننقل البطاقة ودفعاتها لسلة المحذوفات قبل الحذف — استرجاع كامل */
   const product = await db.products.get(sku);
+  const mid = product ? modelGroupKey(product) : null;
   if (product) {
     const lots = await db.lots.where('sku').equals(sku).toArray();
     await db.trash.add({ kind: 'product', deletedAt: new Date().toISOString(), data: { product, lots } });
   }
   await deleteLotsOf(sku);
   await db.products.delete(sku);
+  /* آخر بطاقة في الموديل؟ صورته تذهب لسلة الصور لا للعدم */
+  if (mid) {
+    const all = await db.products.toArray();
+    if (!all.some((x) => modelGroupKey(x) === mid)) await trashPhoto(mid, 'delete-model');
+  }
 }
 
 /* One-time convergence: legacy cards that carry NO model number at all get one
@@ -1135,6 +1177,47 @@ export async function splitModel(skus) {
   return { ok: true, modelId: mid, moved };
 }
 
+/* فصل دفعات مختارة داخل بطاقة واحدة إلى موديل جديد — للحالة التي دُمجت فيها
+   بضاعتان مختلفتان في نفس (اللون+المقاس) فصارتا دفعات في بطاقة واحدة.
+   يبقى في البطاقة الأصلية دفعة واحدة على الأقل. */
+export async function splitLotsToNewModel({ sku, lotIds } = {}) {
+  const ids = [...new Set((lotIds || []).filter(Boolean))];
+  if (!sku || !ids.length) return { ok: false, moved: 0, newSku: null, modelId: null };
+  const card = await db.products.get(sku);
+  if (!card) return { ok: false, moved: 0, newSku: null, modelId: null };
+  const all = await db.lots.where('sku').equals(sku).toArray();
+  const chosen = all.filter((l) => ids.includes(l.id));
+  if (!chosen.length) return { ok: false, moved: 0, newSku: null, modelId: null };
+  if (chosen.length >= all.length) return { ok: false, moved: 0, newSku: null, modelId: null, reason: 'keep-one' };
+
+  const newModelId = await nextModelId();
+  const newSku = await nextSku();
+  const now = new Date().toISOString();
+  const earliest = chosen.reduce((a, l) => (new Date(l.receivedAt) < new Date(a) ? l.receivedAt : a), chosen[0].receivedAt);
+
+  /* لا ننسخ الصورة: الموديل الجديد يبدأ بلا صورة، والواجهة تعرض منتقي
+     صور (من سلة الصور أو رفع جديد) حتى لا تحمل صورتين لنفس الحذاء. */
+  const { id: _drop, ...rest } = card;
+  await db.products.put({
+    ...rest,
+    sku: newSku,
+    modelId: newModelId,
+    qty: 0,
+    createdAt: earliest,
+    updatedAt: now,
+    photo: null
+  });
+
+  for (const l of chosen) await db.lots.update(l.id, { sku: newSku, modelId: newModelId });
+
+  await syncCardFromLots(sku);
+  await syncCardFromLots(newSku);
+  await syncCardSuppliers(sku);
+  await syncCardSuppliers(newSku);
+  await syncModelsFor([sku, newSku]);
+  return { ok: true, moved: chosen.length, newSku, modelId: newModelId };
+}
+
 /* ---------------- دمج الموديلات المتشابهة ----------------
    الوجه الآخر لعملة الإصلاح: بعد أن صار كل تسجيل جديد يأخذ رقمه الخاص، قد
    تُنشئ نسخة مكرّرة بالخطأ. هذه الدالة تجد الموديلات التي تتشابه أسماؤها
@@ -1226,7 +1309,7 @@ export async function joinModels(modelIds) {
       if (ph?.data) { await db.photos.put({ modelId: base, data: ph.data }); break; }
     }
   }
-  for (const mid of absorbed) await db.photos.delete(mid);
+  for (const mid of absorbed) await trashPhoto(mid, 'merge');
 
   /* «نفد» يُحسب على الموديل كله — الطرفان تغيّرا معاً (جلب واحد).
      (كان `baseCards` غير معرّف هنا فيرمي ReferenceError ويفشل كل دمج.) */
@@ -1237,8 +1320,11 @@ export async function joinModels(modelIds) {
 
 /* delete a whole model (every color × size card of it) in one go */
 export async function deleteProducts(skus) {
-  await deleteLotsOf(skus);
-  await db.products.bulkDelete(skus);
+  const list = Array.isArray(skus) ? skus : [skus];
+  const first = list.length ? await db.products.get(list[0]) : null;
+  if (first) await trashPhoto(modelGroupKey(first), 'delete-model');
+  await deleteLotsOf(list);
+  await db.products.bulkDelete(list);
 }
 
 /* one-time migration: cards registered before the نوع sub-menus existed carry
@@ -1440,6 +1526,7 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
           supplierAt: new Date().toISOString(),
           photo: twin.photo || ln.photo || null
         }, invNote + (note ? ` — ${note}` : ''));
+        await syncCardSuppliers(twin.sku);
         const after = await db.products.get(twin.sku);
         twin.qty = after ? Number(after.qty) || 0 : (twin.qty || 0) + qty;
         merged++; pieces += qty; touchedSkus.push(twin.sku);
@@ -2061,16 +2148,16 @@ export async function stocktakeApply(corrections) {
 /* ---------------- Backup / Restore ---------------- */
 
 export async function backupJSON() {
-  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos, lots, drafts, trash, receipts] = await Promise.all([
+  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos, lots, drafts, trash, receipts, photoTrash] = await Promise.all([
     db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray(),
     db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.vault.toArray(),
     db.waitlists.toArray(), db.referrals.toArray(), db.testimonials.toArray(), db.payments.toArray(),
-    db.photos.toArray(), db.lots.toArray(), db.drafts.toArray(), db.trash.toArray(), db.receipts.toArray()
+    db.photos.toArray(), db.lots.toArray(), db.drafts.toArray(), db.trash.toArray(), db.receipts.toArray(), db.photoTrash.toArray()
   ]);
   return {
-    app: 'ghazala-boutique', version: 11, exportedAt: new Date().toISOString(),
+    app: 'ghazala-boutique', version: 12, exportedAt: new Date().toISOString(),
     products, sales, movements, settings, expenses, reservations, occasions, vault,
-    waitlists, referrals, testimonials, payments, photos, lots, drafts, trash, receipts
+    waitlists, referrals, testimonials, payments, photos, lots, drafts, trash, receipts, photoTrash
   };
 }
 
@@ -2086,7 +2173,7 @@ export async function restoreJSON(data, { merge = false } = {}) {
 
   const tables = [
     db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions,
-    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash, db.receipts
+    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash, db.receipts, db.photoTrash
   ];
 
   /* استعادة واحدة ذرّية: إما تنجح كاملة أو لا يُمَس شيء. الكتابة خارج معاملة
@@ -2114,8 +2201,8 @@ export async function restoreJSON(data, { merge = false } = {}) {
 }
 
 export async function wipeAll() {
-  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash, db.receipts, async () => {
-    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear(), db.lots.clear(), db.drafts.clear(), db.trash.clear(), db.receipts.clear()]);
+  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash, db.receipts, db.photoTrash, async () => {
+    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear(), db.lots.clear(), db.drafts.clear(), db.trash.clear(), db.receipts.clear(), db.photoTrash.clear()]);
   });
 }
 

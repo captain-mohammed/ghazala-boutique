@@ -2,8 +2,9 @@
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
-  import { db, findMergedModels, splitModel, findSimilarModels, joinModels } from '../db.js';
-  import { fmtIQD, fmtNum, buzz } from '../utils.js';
+  import Sheet from '../components/Sheet.svelte';
+  import { db, findMergedModels, splitModel, splitLotsToNewModel, findSimilarModels, joinModels, modelGroupKey, listPhotoTrash, restorePhotoTrash, setModelPhoto } from '../db.js';
+  import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   /* أداة صيانة هوية الموديلات — وجهان:
@@ -13,12 +14,17 @@
 
   let merged = $state([]);    // بطاقات مدمجة خطأً (فصل)
   let similar = $state([]);   // موديلات متشابهة (دمج)
+  let mixedCards = $state([]); // بطاقات فيها أكثر من دفعة (فصل عميق بالدفعة)
+  let lotSel = $state({});     // sku → [lotId…]
+  let photoPick = $state(null); // modelId بانتظار صورة بعد الفصل
+  let photoTrash = $state([]);
+  let undoSplit = $state(null); // { oldModelId, newModelId }
   let loaded = $state(false);
   let picked = $state({});    // key → [sku…]            للفصل
   let jpicked = $state({});   // nameKey → { modelId:true } للدمج
   let busy = $state(false);
-  /* كل قسم قابل للطي — الحالتان مفتوحتان افتراضياً حتى لا يخفى شيء */
-  let secOpen = $state({ merged: true, similar: true });
+  /* كل قسم قابل للطي — الأقسام مفتوحة افتراضياً حتى لا يخفى شيء */
+  let secOpen = $state({ merged: true, similar: true, lots: true });
   function toggleSec(k) { secOpen = { ...secOpen, [k]: !secOpen[k] }; buzz(6); }
 
   /* صور الموديلات — الصورة هي هوية المنتج، وهي في جدول `photos` منذ v7
@@ -52,6 +58,27 @@
     } catch { lotInfo = {}; }
   }
 
+  /* بطاقات فيها أكثر من دفعة — قد تكون بضاعتين مختلفتين دُمجتا في نفس اللون/المقاس */
+  async function loadMixed() {
+    try {
+      const [lots, prods] = await Promise.all([db.lots.toArray(), db.products.toArray()]);
+      const bySku = new Map(prods.map((p) => [p.sku, p]));
+      const map = new Map();
+      for (const l of lots) {
+        if (!bySku.has(l.sku)) continue;
+        if (!map.has(l.sku)) map.set(l.sku, []);
+        map.get(l.sku).push(l);
+      }
+      const out = [];
+      for (const [sku, rows] of map) {
+        if (rows.length < 2) continue;
+        rows.sort((a, b) => new Date(a.receivedAt) - new Date(b.receivedAt));
+        out.push({ sku, p: bySku.get(sku), lots: rows });
+      }
+      mixedCards = out;
+    } catch { mixedCards = []; }
+  }
+
   /* إلحاق الصورة بكل بطاقة (الفصل) وكل موديل (الدمج) */
   function decorate(a, b) {
     return {
@@ -61,7 +88,7 @@
   }
 
   async function scan() {
-    await Promise.all([loadPhotos(), loadLots()]);
+    await Promise.all([loadPhotos(), loadLots(), loadMixed()]);
     const [a, b] = await Promise.all([findMergedModels(), findSimilarModels()]);
     const d = decorate(a, b);
     merged = d.merged; similar = d.similar;
@@ -78,7 +105,7 @@
       if (alive) { merged = d.merged; similar = d.similar; loaded = true; }
     };
     /* الصور والدفعات أولاً، ثم الاستطلاع — كي تظهر الصورة من أول رسم */
-    Promise.all([loadPhotos(), loadLots()]).then(() => { if (alive) grab(); });
+    Promise.all([loadPhotos(), loadLots(), loadMixed()]).then(() => { if (alive) grab(); });
     const t = setInterval(grab, 6000);
     return () => { alive = false; clearInterval(t); };
   });
@@ -99,28 +126,6 @@
     buzz(6);
   }
 
-  /* الشواذ: البطاقات التي تختلف **هويتها** عن الأغلبية — سلسلة النوع أو
-     الموسم أو المادة. لا تُختار على أساس التكلفة: منذ الدفعات صار اختلاف
-     التكلفة داخل الموديل طبيعياً (موردان، سعران)، والاختيار على أساسها كان
-     يرشّح بطاقات سليمة للفصل. */
-  function outliers(g) {
-    const keyOf = (p) =>
-      [p.type, p.typeSub, p.typeSub2, p.typeSub3, p.season,
-       Array.isArray(p.seasons) ? p.seasons.join(',') : '', p.material]
-        .map((x) => String(x || '').trim()).join('|');
-    const tally = new Map();
-    for (const p of g.items) tally.set(keyOf(p), (tally.get(keyOf(p)) || 0) + 1);
-    let best = null, bestN = -1;
-    for (const [k, n] of tally) if (n > bestN) { bestN = n; best = k; }
-    return g.items.filter((p) => keyOf(p) !== best);
-  }
-  function pickOutliers(g) {
-    const out = outliers(g);
-    if (!out.length) { toastErr('كل البطاقات متشابهة — اختاري يدوياً'); return; }
-    picked = { ...picked, [g.key]: out.map((p) => p.sku) };
-    buzz(10);
-  }
-
   const dayOf = (ts) => {
     const d = new Date(ts);
     return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`;
@@ -138,17 +143,93 @@
       toastErr('لازم تبقى بطاقة واحدة على الأقل في الموديل الأصلي');
       return;
     }
+    const moved = g.items.filter((p) => skus.includes(p.sku));
+    const stays = g.items.length - moved.length;
+    const list = moved.map((p) => `• ${p.color || 'بلا لون'} · مقاس ${p.size || '—'} (${fmtNum(p.qty || 0)} قطعة)`).join('\n');
     const ok = await askConfirm({
       title: 'فصل البطاقات المختارة',
-      body: `تنفصل ${fmtNum(skus.length)} بطاقة إلى موديل جديد برقم جديد. المبيعات والحركات تبقى مرتبطة بأكوادها، فلا يُفقد شيء.`,
+      body:
+        `ستنفصل ${fmtNum(moved.length)} بطاقة إلى موديل جديد برقم جديد:\n${list}\n\n` +
+        `الصورة: الموديل الجديد يبدأ بلا صورة — ستظهر لك نافذة لاختيار صورة من سلة الصور أو رفع صورة.\n` +
+        `يبقى في الموديل الأصلي: ${fmtNum(stays)} بطاقة.\n` +
+        `المبيعات والحركات تبقى مرتبطة بأكوادها، فلا يُفقد شيء.`,
       okLabel: 'افصلي'
     });
     if (!ok) return;
     busy = true;
     try {
       const r = await splitModel(skus);
-      if (r.ok) { toastOk(`انفصلت ${fmtNum(r.moved)} بطاقة إلى موديل جديد`); buzz([20, 40, 20]); await scan(); }
-      else toastErr('ما قدرنا نفصل — حاولي مرة ثانية');
+      if (r.ok) {
+        toastOk(`انفصلت ${fmtNum(r.moved)} بطاقة إلى موديل جديد`);
+        buzz([20, 40, 20]);
+        undoSplit = { oldModelId: g.key, newModelId: r.modelId };
+        await openPhotoPick(r.modelId);
+        await scan();
+      } else toastErr('ما قدرنا نفصل — حاولي مرة ثانية');
+    } catch { toastErr('حدث خطأ أثناء الفصل'); }
+    finally { busy = false; }
+  }
+
+  async function openPhotoPick(modelId) {
+    photoPick = modelId;
+    try { photoTrash = await listPhotoTrash(); } catch { photoTrash = []; }
+  }
+  async function useTrashedPhoto(t) {
+    if (!photoPick) return;
+    await restorePhotoTrash(t.id, photoPick);
+    toastOk('نُسبت الصورة للموديل الجديد');
+    photoPick = null;
+    await scan();
+  }
+  async function uploadPhoto(e) {
+    const f = e.target.files?.[0];
+    e.target.value = '';
+    if (!f || !photoPick) return;
+    try {
+      const data = await fileToPhotoDataUrl(f, 640);
+      await setModelPhoto(photoPick, data);
+      toastOk('حُفظت الصورة');
+      photoPick = null;
+      await scan();
+    } catch { toastErr('تعذّرت قراءة الصورة'); }
+  }
+  async function undo() {
+    if (!undoSplit) return;
+    busy = true;
+    try {
+      const r = await joinModels([undoSplit.oldModelId, undoSplit.newModelId]);
+      if (r.ok) { toastOk('تراجع — رجع الموديل كما كان'); undoSplit = null; await scan(); }
+      else toastErr('ما قدرنا نتراجع');
+    } catch { toastErr('حدث خطأ أثناء التراجع'); }
+    finally { busy = false; }
+  }
+
+  function toggleLot(sku, id) {
+    const cur = lotSel[sku] || [];
+    lotSel = { ...lotSel, [sku]: cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id] };
+    buzz(6);
+  }
+
+  async function doSplitLots(c) {
+    const ids = lotSel[c.sku] || [];
+    if (!ids.length) { toastErr('اختاري الدفعات التي تريدين فصلها'); return; }
+    if (ids.length >= c.lots.length) { toastErr('لازم تبقى دفعة واحدة على الأقل في البطاقة'); return; }
+    const ok = await askConfirm({
+      title: 'فصل الدفعات المختارة',
+      body: `تنفصل ${fmtNum(ids.length)} دفعة إلى موديل جديد (نفس اللون والمقاس). المبيعات تبقى مرتبطة بأكوادها.`,
+      okLabel: 'افصلي'
+    });
+    if (!ok) return;
+    busy = true;
+    try {
+      const r = await splitLotsToNewModel({ sku: c.sku, lotIds: ids });
+      if (r.ok) {
+        toastOk(`انفصلت ${fmtNum(r.moved)} دفعة إلى موديل جديد`);
+        buzz([20, 40, 20]);
+        undoSplit = { oldModelId: modelGroupKey(c.p), newModelId: r.modelId };
+        await openPhotoPick(r.modelId);
+        await scan();
+      } else toastErr(r.reason === 'keep-one' ? 'لازم تبقى دفعة واحدة على الأقل' : 'ما قدرنا نفصل');
     } catch { toastErr('حدث خطأ أثناء الفصل'); }
     finally { busy = false; }
   }
@@ -180,6 +261,12 @@
 </script>
 
 <div class="stack" style="gap:14px">
+  {#if undoSplit}
+    <Glass class="undo-bar rise">
+      <span class="small">انفصل الموديل — تريدين التراجع؟</span>
+      <button type="button" class="btn ghost" onclick={undo} disabled={busy}><Icon name="undo" size={15} /> تراجع</button>
+    </Glass>
+  {/if}
   <Glass class="repair-hero rise">
     <div class="h-top">
       <span class="h-ic"><Icon name="alert" size={20} color="#fff" /></span>
@@ -258,9 +345,6 @@
           </div>
 
           <div class="acts">
-            <button type="button" class="btn" onclick={() => pickOutliers(g)} disabled={busy}>
-              <Icon name="sparkle" size={16} /> اختاري الشواذ
-            </button>
             <button type="button" class="btn primary" onclick={() => doSplit(g)} disabled={busy || !sel.length}>
               <Icon name="scissors" size={16} /> افصلي {sel.length ? fmtNum(sel.length) : ''}
             </button>
@@ -331,8 +415,76 @@
       {/each}
       {/if}
     {/if}
+
+    {#if mixedCards.length}
+      <button type="button" class="sect" onclick={() => toggleSec('lots')} aria-expanded={secOpen.lots}>
+        <span class="sect-ic"><Icon name="box" size={16} color="var(--burgundy)" /></span>
+        <span class="sect-txt">
+          <span class="sect-t">دفعات مختلطة — بضاعتان في بطاقة واحدة</span>
+          <span class="sect-s">بطاقة فيها أكثر من دفعة — اختاري الدفعات التي تنتمي لمنتج آخر وافصليها</span>
+        </span>
+        <span class="sect-n">{fmtNum(mixedCards.length)}</span>
+        <span class="chev" class:open={secOpen.lots} aria-hidden="true"></span>
+      </button>
+
+      {#if secOpen.lots}
+        {#each mixedCards as c (c.sku)}
+          {@const chosenIds = lotSel[c.sku] || []}
+          <Glass class="rep-card rise">
+            <div class="c-head">
+              <span class="c-badge"><Icon name="box" size={14} color="var(--burgundy)" /></span>
+              <div style="flex:1; min-width:0">
+                <div class="c-name">{c.p.color || 'بلا لون'} · مقاس {c.p.size || '—'}</div>
+                <div class="muted tiny">{metaOf(c.p)} · {fmtNum(c.lots.length)} دفعة</div>
+              </div>
+            </div>
+
+            <div class="lots-list">
+              {#each c.lots as l (l.id)}
+                <button type="button" class="lot-row" class:on={chosenIds.includes(l.id)} onclick={() => toggleLot(c.sku, l.id)}>
+                  <span class="lot-box">{#if chosenIds.includes(l.id)}<Icon name="check" size={12} color="#fff" />{/if}</span>
+                  <span class="lot-main">
+                    <span class="lot-sup">{l.supplier || 'بدون مورد'}</span>
+                    <span class="lot-meta">{dayOf(l.receivedAt)} · {fmtNum(Number(l.remaining) || 0)}/{fmtNum(Number(l.qty) || 0)} قطعة{l.note ? ` · ${l.note}` : ''}</span>
+                  </span>
+                  <span class="lot-cost">{fmtIQD(l.cost)}</span>
+                </button>
+              {/each}
+            </div>
+
+            <div class="acts">
+              <button type="button" class="btn primary" onclick={() => doSplitLots(c)} disabled={busy || !chosenIds.length}>
+                <Icon name="scissors" size={16} /> افصلي الدفعات المختارة {chosenIds.length ? `(${fmtNum(chosenIds.length)})` : ''}
+              </button>
+            </div>
+          </Glass>
+        {/each}
+      {/if}
+    {/if}
   {/if}
 </div>
+
+<Sheet open={!!photoPick} title="صورة الموديل الجديد" onclose={() => (photoPick = null)}>
+  {#if photoPick}
+    <div class="stack" style="gap:12px">
+      <p class="muted small" style="margin:0">الموديل الجديد بلا صورة. اختاري من سلة الصور أو ارفعي صورة.</p>
+      {#if photoTrash.length}
+        <div class="pthumbs">
+          {#each photoTrash as t (t.id)}
+            <button type="button" class="pthumb" onclick={() => useTrashedPhoto(t)}><img src={t.data} alt="" /></button>
+          {/each}
+        </div>
+      {:else}
+        <p class="muted tiny" style="margin:0">سلة الصور فارغة — ارفعي صورة.</p>
+      {/if}
+      <label class="btn ghost" style="min-height:44px; justify-content:center">
+        <Icon name="image" size={16} /> ارفعي صورة
+        <input type="file" accept="image/*" style="display:none" onchange={uploadPhoto} />
+      </label>
+      <button type="button" class="btn" style="min-height:44px" onclick={() => (photoPick = null)}>تجاهل الآن</button>
+    </div>
+  {/if}
+</Sheet>
 
 <style>
   /* ⚠️ أسماء خاصة بالمكوّن لا أسماء عامة: `:global(.hero)` و`:global(.card)`
@@ -491,4 +643,28 @@
     color: var(--burgundy-deep);
   }
   .lots-note { color: #8a6a35; font-weight: 700; }
+
+  /* الفصل العميق: دفعات داخل بطاقة واحدة */
+  .lots-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+  .lot-row {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 8px 10px; border-radius: 10px; border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.4); cursor: pointer; font-family: inherit; text-align: start;
+  }
+  .lot-row.on { border-color: var(--burgundy); background: var(--gold-soft, rgba(201, 162, 75, 0.14)); }
+  .lot-box {
+    flex: none; width: 20px; height: 20px; border-radius: 6px;
+    border: 1.5px solid var(--line-2); background: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .lot-row.on .lot-box { background: var(--burgundy); border-color: var(--burgundy); }
+  .lot-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .lot-sup { font-size: 12px; font-weight: 800; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lot-meta { font-size: 10.5px; color: var(--taupe); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lot-cost { flex: none; font-size: 12px; font-weight: 800; color: var(--burgundy); font-variant-numeric: tabular-nums; }
+
+  :global(.undo-bar) { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-color: rgba(201, 161, 90, 0.5); background: rgba(201, 161, 90, 0.1); }
+  .pthumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .pthumb { aspect-ratio: 1; border-radius: 10px; overflow: hidden; border: 1px solid var(--line-2); padding: 0; cursor: pointer; background: var(--ivory, #FBF3EE); }
+  .pthumb img { width: 100%; height: 100%; object-fit: cover; }
 </style>
