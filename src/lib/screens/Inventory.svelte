@@ -6,10 +6,11 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
   import ProductForm from './ProductForm.svelte';
+  import Restock from './Restock.svelte';
   import ItemDetail from './ItemDetail.svelte';
   import { db, modelOptions, hexForColor, deleteProducts, modelGroupKey, subsOfType, subsOfType2, subsOfType3, countUnderType, typeChain, seasonsOf, loadProducts } from '../db.js';
   import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl } from '../utils.js';
-  import { toastErr, toastOk, askConfirm, invoicePreset, catalogFilters, filtersOpen } from '../store.js';
+  import { toastErr, toastOk, askConfirm, catalogFilters, filtersOpen } from '../store.js';
   import { get } from 'svelte/store';
 
   let { goto } = $props();
@@ -220,6 +221,8 @@
   }
 
   let showForm = $state(false);
+  let showRestock = $state(false);
+  let restockModelId = $state('');
   let editing = $state(null);
   let detailGroup = $state(null);
   let openSku = $state(null);
@@ -272,9 +275,12 @@
   /* ---- Floating action menu ---- */
   const dialActions = [
     { id: 'add', label: 'إضافة موديل', icon: 'plus' },
+    { id: 'restock', label: 'استلام دفعة', icon: 'box' },
     { id: 'invoice', label: 'فاتورة وارد', icon: 'upload' }
-  ];  function onDial(a) {
+  ];
+  function onDial(a) {
     if (a.id === 'add') openAddFlow();
+    if (a.id === 'restock') { restockModelId = ''; showRestock = true; buzz(8); }
     if (a.id === 'invoice') goto('receive');
   }
 
@@ -326,20 +332,9 @@
   function qoRestock() {
     const g = quickOps ? quickOps.g : detailGroup;
     quickOps = null;
-    invoicePreset.set({
-      supplier: g.supplier || '',
-      lines: g.colorRows.map((cr) => {
-        const sizes = {};
-        for (const sz of cr.sizes) if (sz.qty === 0) sizes[sz.size] = 2;
-        return {
-          name: g.name, category: g.category, type: g.type || '', typeSub: g.typeSub || '', typeSub2: g.typeSub2 || '', typeSub3: g.typeSub3 || '', season: g.season || '',
-          material: g.material || '', color: cr.color,
-          cost: g.lead.cost, price: g.price, sizes, photo: cr.sizes.find((s) => s.p?.photo)?.p?.photo || g.photo,
-          modelId: g.lead.modelId
-        };
-      })
-    });
-    goto('receive');
+    restockModelId = g.lead.modelId;
+    showRestock = true;
+    buzz(8);
   }
 </script>
 
@@ -500,6 +495,10 @@
 
 <Sheet open={showForm} title={editing ? 'تعديل موديل' : 'إضافة موديل جديد'} onclose={() => { showForm = false; editing = null; }}>
   <ProductForm product={editing} photo={formPhoto} {goto} ondone={() => { showForm = false; editing = null; formPhoto = null; }} />
+</Sheet>
+
+<Sheet open={showRestock} title="استلام دفعة" onclose={() => (showRestock = false)}>
+  <Restock preselect={restockModelId} ondone={() => (showRestock = false)} />
 </Sheet>
 
 <!-- Model sheet: everything about the model — colors × size-run → tap a size for its SKU -->
@@ -810,7 +809,7 @@
   .szchip.hole .sz-num { color: var(--taupe); }
   .szchip.hole .sz-q { color: var(--burgundy); }
   /* ملاحظات الموديل — تظهر الآن في بطاقة «الموديل كامل» */
-  .mv-notes { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; }
+  :global(.mv-notes) { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; }
   .mv-notes-t { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: var(--burgundy-deep); }
   .mv-note { margin: 0; font-size: 12px; line-height: 1.6; color: var(--ink-2); }
 

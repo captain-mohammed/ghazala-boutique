@@ -1392,57 +1392,22 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
      وسعر مختلفين)، فخريطة واحدة كانت تختار أحدهما — حسب ترتيب المصفوفة — وتودع
      الكمية في الموديل الخطأ بصمت، ولو كان السطر يقول صراحةً إنه من موديل آخر. */
   const byModel = new Map();   // modelId → Map(modelKey → card)
-  const byName = new Map();    // name|category → Set(modelId)
   const isMid = (v) => typeof v === 'string' && v.startsWith('M-');
   for (const p of all) {
     const mid = modelGroupKey(p);
     if (!byModel.has(mid)) byModel.set(mid, new Map());
     byModel.get(mid).set(modelKey(p), p);
-    const nk = `${(p.name || '').trim().toLowerCase()}|${p.category || ''}`;
-    if (!byName.has(nk)) byName.set(nk, new Set());
-    byName.get(nk).add(mid);
   }
-  /* مجموعة قديمة بلا رقم موديل → نمنحها رقماً ونُلحِق بطاقاتها به (نفس منطق
-     backfillModelIds، لكن عند الحاجة بدل الانتظار لإعادة التشغيل) */
-  async function numberGroup(key) {
-    const bucket = byModel.get(key);
-    if (!bucket) return null;
-    const fresh = await nextModelId();
-    for (const c of bucket.values()) {
-      await db.products.update(c.sku, { modelId: fresh });
-      const rows = await db.lots.where('sku').equals(c.sku).toArray();
-      for (const l of rows) await db.lots.update(l.id, { modelId: fresh });
-      c.modelId = fresh;
-    }
-    byModel.delete(key);
-    byModel.set(fresh, bucket);
-    for (const s of byName.values()) if (s.delete(key)) s.add(fresh);
-    return fresh;
-  }
-
   let added = 0, merged = 0, pieces = 0;
   const touchedSkus = [];
-  const splitOff = [];   /* أسطر غامضة: أكثر من موديل بنفس النوع واللون — لم نخمّن */
   for (const ln of lines) {
     const name = (ln.name || '').trim();
     if (!name) continue;
     const cat = ln.category || 'نسائية';
-    const cands = [...(byName.get(`${name.toLowerCase()}|${cat}`) || [])];
-    /* أي موديل يستقبل هذا السطر؟
-       ١) السطر يقول صراحةً «أنا من موديل موجود» (لون آخر لنفس الموديل) → هو.
-       ٢) موديل واحد بهذا الاسم → هو — التوريد المعتاد يندمج مع بطاقاته.
-       ٣) ولا موديل → رقم جديد.
-       ٤) أكثر من موديل → **غامض: لا تخمين** — رقم جديد، ويُبلَّغ عنه ليظهر
-          للمستخدمة بدل أن تُودَع الكمية في موديل لا تقصده. */
-    let target;
-    if (isMid(ln.modelId) && byModel.has(ln.modelId)) {
-      target = ln.modelId;
-    } else if (cands.length === 1) {
-      target = isMid(cands[0]) ? cands[0] : await numberGroup(cands[0]);
-    } else {
-      target = isMid(ln.modelId) ? ln.modelId : await nextModelId();
-      if (cands.length > 1) splitOff.push({ name, category: cat, existing: cands.length });
-    }
+    /* لا استنتاج للهوية: السطر يندمج فقط إن قال صراحةً «أنا من هذا الموديل»
+       (modelId من «لون آخر لنفس الموديل» أو اختيار صريح). غير ذلك موديل جديد —
+       لا مطابقة بالاسم. هذا يمنع اندماج «بوت أسود» جديد في «بوت أسود» قديم. */
+    const target = isMid(ln.modelId) && byModel.has(ln.modelId) ? ln.modelId : await nextModelId();
     if (!byModel.has(target)) byModel.set(target, new Map());
     const bucket = byModel.get(target);
 
@@ -1496,7 +1461,7 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
   }
   const kept = added || merged;
   if (!kept) await deleteReceipt(receipt.id);
-  return { added, merged, pieces, touchedSkus, splitOff, receiptNo: kept ? receipt.no : null, receiptId: kept ? receipt.id : null };
+  return { added, merged, pieces, touchedSkus, receiptNo: kept ? receipt.no : null, receiptId: kept ? receipt.id : null };
 }
 
 /* ---------------- Sales ---------------- */

@@ -318,7 +318,7 @@
       clearDraft('receive').catch(() => {});
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.6, '📦');
-      toastOk(`تم الاستلام — ${fmtNum(r.pieces)} قطعة (${fmtNum(r.added)} بطاقة جديدة${r.merged ? `، ${fmtNum(r.merged)} اندمجت` : ''})${r.receiptNo ? ` · ${r.receiptNo}` : ''}`, 'success', 5200);
+      toastOk(`تم الاستلام — ${fmtNum(r.pieces)} قطعة (${fmtNum(r.added)} بطاقة جديدة${r.merged ? `، ${fmtNum(r.merged)} دفعة على بطاقة قائمة` : ''})${r.receiptNo ? ` · ${r.receiptNo}` : ''}`, 'success', 5200);
       /* سطر غامض: أكثر من موديل بنفس النوع واللون — لم نخمّن أبداً، ونسجّله
          منفصلاً ونُبلّغ.
          ⚠️ الصياغة القديمة كانت تقول «عندك ٢٥ موديلات باسم «بوت أسود» —
@@ -780,7 +780,7 @@
   .add-line.same { border-color: rgba(201, 162, 75, 0.45); color: #8a6a35; }
 
   /* شريط استعادة المسودة — يظهر عند فتح الشاشة وفيه فاتورة غير محفوظة */
-  .recover {
+  :global(.recover) {
     display: flex; flex-direction: column; gap: 10px;
     padding: 12px 14px;
     border-color: rgba(201, 161, 90, 0.6) !important;

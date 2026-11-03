@@ -34,34 +34,7 @@
   let supplier = $state(product?.supplier ?? '');
   let suppliers = $state([]);
 
-  /* ---- وصول دفعة لموديل موجود (إضافة فقط) ----
-     نفس الحذاء يُشترى من مورد آخر بتكلفة وسعر مختلفين. لا نستنتج الهوية أبداً:
-     الموديل تختاره صاحبة البوتيك بنفسها، والداخل يُسجَّل دفعةً داخل رقمه. */
-  let batchOpen = $state(false);
-  let batchModelId = $state('');
-  let batchModels = $state([]);
-  $effect(() => {
-    if (editing) return;
-    let alive = true;
-    loadProducts().then((ps) => {
-      if (!alive) return;
-      const map = new Map();
-      for (const p of ps) {
-        const mid = modelGroupKey(p);
-      const cur = map.get(mid) || { modelId: mid, chain: '', colors: new Set(), qty: 0, photo: '' };
-      cur.qty += Number(p.qty) || 0;
-      if ((p.color || '').trim()) cur.colors.add(p.color.trim());
-      if (!cur.photo && (p.photo || '')) cur.photo = p.photo;
-      if (!cur.chain) cur.chain = [p.type, p.typeSub, p.typeSub2, p.typeSub3].filter(Boolean).join(' - ') || p.category || 'موديل';
-        map.set(mid, cur);
-      }
-      batchModels = [...map.values()]
-        .filter((m) => m.qty > 0)
-        .map((m) => ({ ...m, colors: [...m.colors].join('، ') }))
-        .sort((a, b) => a.chain.localeCompare(b.chain, 'ar'));
-    });
-    return () => { alive = false; };
-  });
+  /* «وصول دفعة لموديل موجود» انتقل إلى زر الاستلام في المخزون (Restock.svelte) */
 
   /* وقت الوصول للرف: افتراضياً «الآن» بتوقيت بغداد، وقابل للتعديل.
      الرکود ونسبة التصريف وترتيب الأحدث ودفتر الشهر كلها تحسب من هذه اللحظة. */
@@ -316,22 +289,17 @@
   /* everything is required except notes — الصورة إجبارية: هي هوية الموديل */
   const missing = $derived.by(() => {
     const m = [];
-    /* في وضع «دفعة لموديل موجود» الهوية (صورة/تصنيف/نوع/موسم/مادة) تأتي من
-       الموديل نفسه — لا نطالب بها مرة أخرى، وإلا صار إدخال الدفعة أثقل من
-       تسجيل موديل جديد. */
-    if (!batchModelId) {
-      if (!img) m.push('الصورة');
-      if (!category) m.push('التصنيف');
-      if (!type) m.push('النوع');
-      /* تفصيلات النوع المعرّفة في الإعدادات تصبح إجبارية مثل النوع نفسه —
-         إلا ما كان ناقصاً في الموديل أصلاً وقت فتحه للتعديل: لا نحجب تعديل
-         لون أو مقاس بسبب فراغ لم تصنعه صاحبة البوتيك */
-      if (!typeSub && subsNow.length && !gap('typeSub')) m.push('التفصيل');
-      if (!typeSub2 && subs2Now.length && !gap('typeSub2')) m.push('تفصيل أدق');
-      if (!typeSub3 && subs3Now.length && !gap('typeSub3')) m.push('تفصيل أخير');
-      if (!seasons.length && !gap('season')) m.push('الموسم');
-      if (!material && !gap('material')) m.push('المادة');
-    }
+    /* تفصيلات النوع المعرّفة في الإعدادات تصبح إجبارية مثل النوع نفسه —
+       إلا ما كان ناقصاً في الموديل أصلاً وقت فتحه للتعديل: لا نحجب تعديل
+       لون أو مقاس بسبب فراغ لم تصنعه صاحبة البوتيك */
+    if (!img) m.push('الصورة');
+    if (!category) m.push('التصنيف');
+    if (!type) m.push('النوع');
+    if (!typeSub && subsNow.length && !gap('typeSub')) m.push('التفصيل');
+    if (!typeSub2 && subs2Now.length && !gap('typeSub2')) m.push('تفصيل أدق');
+    if (!typeSub3 && subs3Now.length && !gap('typeSub3')) m.push('تفصيل أخير');
+    if (!seasons.length && !gap('season')) m.push('الموسم');
+    if (!material && !gap('material')) m.push('المادة');
     if (!selColors.length) m.push('اللون');
     if (!supplier.trim() && !gap('supplier')) m.push('المورد');
     if (iqd(cost) <= 0) m.push('التكلفة');
@@ -355,61 +323,7 @@
     toastOk('كل الكميات صارت صفر — اضغطي «حفظ التعديلات» لتثبيت نفد');
   }
 
-  /* ---- الحفظ كدفعة داخل موديل قائم ----
-     البطاقة التي تجمع (لون+مقاس) موجودة؟ تُضاف دفعة على كودها — لا بطاقة
-     جديدة ولا كتابة فوق تكلفة قديمة. اللون غير الموجود بعد يصير بطاقة جديدة
-     في الموديل نفسه (لون آخر لنفس الحذاء). */
-  async function saveAsBatch(receiptId = null) {
-    const all = await loadProducts();
-    const mates = all.filter((x) => x.modelId === batchModelId);
-    if (!mates.length) { toastErr('الموديل المختار لم يعد موجوداً'); return; }
-    const lead = mates[0];
-    const nowIso = new Date().toISOString();
-    const arrivalIso = tsIsNow ? nowIso : (isoFromBaghdadLocal(ts) || nowIso);
-    const c = iqd(cost), pr = iqd(price);
-    const sup = supplier.trim();
-    const note = `دفعة جديدة — ${sup || 'بدون مورد'}`;
-    let lots = 0, cards = 0, pieces = 0;
-    for (const cl of selColors) {
-      const color = cl === NOCOLOR ? '' : cl;
-      for (const [rawSize, rawQty] of Object.entries(byColor[cl] || {})) {
-        const q = Math.max(0, Math.round(Number(rawQty) || 0));
-        const sz = String(rawSize).trim() === '—' ? '' : String(rawSize).trim();
-        if (!q) continue;
-        const twin = mates.find((x) => (x.color || '').trim() === color && String(x.size || '').trim() === sz);
-        if (twin) {
-          await addLot({ sku: twin.sku, supplier: sup, cost: c, price: pr, qty: q, receivedAt: arrivalIso, note, receiptId });
-          await updateProduct(twin.sku, {
-            supplier: sup, supplierAt: nowIso,
-            notes: notes.trim() || twin.notes || '',
-            ...(seasons.length ? { seasons: [...seasons], season: seasons[0] } : {}),
-            ...(material ? { material } : {})
-          });
-        } else {
-          await addProduct({
-            name: lead.name, category: lead.category,
-            type: lead.type || type, typeSub: lead.typeSub || typeSub,
-            typeSub2: lead.typeSub2 || typeSub2, typeSub3: lead.typeSub3 || typeSub3,
-            brand: brand.trim() || lead.brand || '',
-            seasons: seasons.length ? [...seasons] : seasonsOf(lead),
-            season: seasons[0] || lead.season || '',
-            material: material || lead.material || '',
-            cost: c, price: pr, qty: q, supplier: sup, supplierAt: nowIso,
-            color, size: sz, notes: notes.trim(), modelId: batchModelId,
-            photo: img && !lead.photo ? img : null
-          }, { moveNote: note, receiptId });
-          cards++;
-        }
-        lots++; pieces += q;
-      }
-    }
-    if (!lots) { toastErr('ما فيه كميات لإضافتها'); if (receiptId) await deleteReceipt(receiptId); return; }
-    buzz([20, 50, 20]);
-    clearDraft('product').catch(() => {});
-    celebrateAt(window.innerWidth / 2, window.innerHeight / 2.5, '📦');
-    toastOk(`دفعة جديدة داخل «${lead.name || 'الموديل'}» — ${fmtNum(pieces)} قطعة${cards ? ` (${fmtNum(cards)} بطاقة جديدة)` : ''}`);
-    ondone();
-  }
+  /* (أُزيل مسار «الدفعة داخل موديل» — صار في Restock.svelte عبر زر الاستلام) */
 
   async function save() {
     if (!valid) {
@@ -429,27 +343,11 @@
         const r = await createReceipt({
           supplier: (supplier || '').trim(), invoice: '',
           date: tsIsNow ? new Date().toISOString() : (isoFromBaghdadLocal(ts) || new Date().toISOString()),
-          note: batchModelId ? 'دفعة من نموذج الموديل' : 'تسجيل موديل جديد',
+          note: 'تسجيل موديل جديد',
           source: 'product'
         });
         receiptId = r.id;
       } catch { receiptId = null; }
-    }
-    /* دفعة داخل موديل قائم — مسار مستقل تماماً عن تسجيل موديل جديد */
-    if (!editing && batchModelId) {
-      try {
-        const supName = (supplier || '').trim();
-        if (supName) {
-          const reg = (await getSetting('suppliers', [])) || [];
-          if (!reg.includes(supName)) await setSetting('suppliers', [...reg, supName]);
-        }
-        await saveAsBatch(receiptId);
-      } catch (e) {
-        if (receiptId) deleteReceipt(receiptId);
-        toastErr('حدث خطأ أثناء حفظ الدفعة');
-        console.error(e);
-      }
-      return;
     }
     try {
       /* supplier typed without a registry? — register it so it appears in every dropdown next time */
@@ -553,7 +451,7 @@
         touched.add(p.sku);
         created++;
       }
-      if (!editing && created === 0 && !batchModelId && receiptId) { await deleteReceipt(receiptId); receiptId = null; }
+      if (!editing && created === 0 && receiptId) { await deleteReceipt(receiptId); receiptId = null; }
 
       buzz([20, 50, 20]);
       clearDraft('product').catch(() => {});
@@ -622,44 +520,7 @@
       </div>
     {/if}
   {/snippet}
-  <!-- وصول دفعة لموديل موجود: نفس الحذاء من مورّد آخر. الهوية (الصورة/النوع)
-       تبقى للموديل المختار، والداخل يُسجَّل دفعةً بمورّدها وتكلفتها وسعرها. -->
-  {#if !editing}
-    <Glass class="batch-card" radius="var(--r-md)">
-      <button type="button" class="batch-top" onclick={() => { buzz(6); batchOpen = !batchOpen; if (!batchOpen) batchModelId = ''; }}>
-        <span class="batch-ic"><Icon name={batchModelId ? 'check' : 'box'} size={17} color={batchModelId ? 'var(--good)' : 'var(--burgundy)'} /></span>
-        <span class="batch-txt">
-          <span class="batch-t">وصول دفعة لموديل موجود؟</span>
-          <span class="muted tiny">نفس الحذاء من مورّد ثانٍ — تُضاف دفعةً داخل الموديل، لا بطاقة مكرّرة</span>
-        </span>
-        <span class="chev" class:flip={batchOpen}><Icon name="back" size={13} /></span>
-      </button>
-      {#if batchOpen}
-        <div class="batch-body">
-          {#if batchModels.length}
-            <div class="batch-grid">
-              {#each batchModels as m (m.modelId)}
-                <button type="button" class="batch-mod" class:on={batchModelId === m.modelId} onclick={() => { batchModelId = m.modelId; buzz(6); }}>
-                  <span class="bm-img">{#if m.photo}<img src={m.photo} alt="" />{:else}<Icon name="image" size={24} color="var(--taupe)" />{/if}</span>
-                  <span class="bm-cap">{m.chain}</span>
-                  <span class="bm-qty">{fmtNum(m.qty)} قطعة</span>
-                </button>
-              {/each}
-            </div>
-          {:else}
-            <p class="muted tiny" style="margin:0">لا موديلات على الرف بعد — أول تسجيل يفتح موديله.</p>
-          {/if}
-          {#if batchModelId}
-            <p class="batch-note">
-              ستُسجَّل كدفعة داخل الموديل المختار: الصورة والنوع يبقيان له، ولكِ التكلفة والسعر والمورّد.
-            </p>
-          {/if}
-        </div>
-      {/if}
-    </Glass>
-  {/if}
 
-  {#if !batchModelId}
   <!-- الصورة أولاً: أوسع، بالمنتصف، هي هوية الموديل -->
   <div class="field photo-field">
     <div class="photo-wrap">
@@ -745,7 +606,6 @@
     </div>
     {#if seasons.length > 1}<p class="muted tiny" style="margin:4px 2px 0"> القطعة تُعرض في كل المواسم المختارة ({seasons.join('، ')})</p>{/if}
   </div>
-  {/if}
 
   <ColorSwatches
     colors={palette}
@@ -976,75 +836,6 @@
     justify-content: space-between;
     padding: 6px;
     border-radius: var(--r-md);
-  }
-  /* بطاقة «وصول دفعة لموديل موجود» */
-  :global(.batch-card) { padding: 0; overflow: hidden; }
-  .batch-top {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 12px 14px;
-    background: none;
-    border: none;
-    text-align: right;
-    cursor: pointer;
-    color: var(--ink);
-  }
-  .batch-ic {
-    flex: none;
-    width: 34px; height: 34px;
-    border-radius: 11px;
-    display: inline-flex; align-items: center; justify-content: center;
-    background: var(--gold-soft, rgba(201, 162, 75, 0.14));
-  }
-  .batch-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-  .batch-t { font-size: 13px; font-weight: 800; color: var(--burgundy-deep); }
-  .chev { flex: none; display: inline-flex; transition: transform 0.25s; color: var(--taupe); }
-  .chev.flip { transform: rotate(-90deg); }
-  .batch-body {
-    padding: 0 14px 13px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-  .batch-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
-    gap: 8px;
-  }
-  .batch-mod {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    padding: 6px;
-    border-radius: 12px;
-    border: 2px solid transparent;
-    background: var(--glass, rgba(255, 255, 255, 0.5));
-    cursor: pointer;
-    text-align: center;
-  }
-  .batch-mod.on { border-color: var(--burgundy); background: var(--gold-soft, rgba(201, 162, 75, 0.14)); }
-  .bm-img {
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    border-radius: 9px;
-    background: var(--ivory, #FBF3EE);
-    display: flex; align-items: center; justify-content: center;
-    overflow: hidden;
-  }
-  .bm-img img { width: 100%; height: 100%; object-fit: cover; }
-  .bm-cap { font-size: 11px; font-weight: 700; color: var(--ink); line-height: 1.25; max-height: 2.5em; overflow: hidden; }
-  .bm-qty { font-size: 10px; color: var(--taupe); }
-  .batch-note {
-    margin: 0;
-    font-size: 11px;
-    line-height: 1.55;
-    color: var(--burgundy-deep);
-    background: var(--gold-soft, rgba(201, 162, 75, 0.12));
-    border-radius: 10px;
-    padding: 8px 10px;
   }
   /* خط «أضيفي أثناء الإضافة» — رقاقة منقّطة تفتح حقل إدخال سريع دون الرجوع للإعدادات */
   .chip.add {
