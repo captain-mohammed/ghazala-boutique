@@ -164,7 +164,10 @@
   /* مرتجعات بعد التسوية = دين على البوتيك، يُخصم من أول دفعة قادمة */
   const debtTotal = $derived([...debts.values()].reduce((a, v) => a + (Number(v) || 0), 0));
   const owedGross = $derived(byCompany.reduce((a, c) => a + c.amount, 0));
-  const inTransit = $derived(owedGross - creditTotal - debtTotal);
+  /* «عند الشركات الآن» = ما لها عندهم فعلاً. الدين لا يُخصم من العنوان:
+     رصيد سالب («-17,000 عند شركات التوصيل») يُقرأ كخطأ لا كدين. يُعرض
+     بنداً مستقلاً تحته. */
+  const inTransit = $derived(owedGross - creditTotal);
   const inTransitCount = $derived(byCompany.reduce((a, c) => a + c.count, 0));
 
   const settled = $derived(
@@ -236,6 +239,12 @@
         {#if creditTotal > 0}
           <div class="muted tiny" style="margin-top:4px">
             بعد خصم {fmtIQD(creditTotal)} رصيد دائن — دفعات مقابل مبيعات أقدم من التطبيق
+          </div>
+        {/if}
+        {#if debtTotal > 0}
+          <div class="t-debt">
+            <Icon name="undo" size={12} />
+            <span>مستحق للشركات: <b>{fmtIQD(debtTotal)}</b></span>
           </div>
         {/if}
       </div>
@@ -383,14 +392,13 @@
                 ? `${fmtNum(g.count)} قطعة - آخر عملية ${fmtDate(g.sales[g.sales.length - 1].date)}`
                 : `${fmtNum(paysOf(g.company).length)} دفعة مسجّلة — لا عمليات معلّقة`}
             </div>
+            {#if (debts.get(g.company) || 0) > 0}
+              <span class="co-debt">مستحق لها {fmtIQD(debts.get(g.company))}</span>
+            {/if}
           </div>
           <div class="col" style="align-items:flex-end; gap:2px">
             <div class="money">{fmtIQD(g.amount)}</div>
-            {#if (debts.get(g.company) || 0) > 0}
-              <span class="co-debt">مستحق لها {fmtIQD(debts.get(g.company))}</span>
-            {:else}
-              <span class="muted tiny">اضغطي للتفاصيل</span>
-            {/if}
+            <span class="muted tiny">اضغطي للتفاصيل</span>
           </div>
         </Glass>
       {/each}
@@ -537,8 +545,24 @@
     border-radius: 13px; background: var(--accent-soft);
   }
   .a-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  /* دين مرتجعات على البوتيك — أحمر خفيف، لا يمرّ بلا ملاحظة */
+  /* دين مرتجعات على البوتيك — سطر مستقل، لا يزاحم الرقم */
+  .t-debt {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 6px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: rgba(181, 73, 91, 0.1);
+    border: 1px solid rgba(181, 73, 91, 0.22);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--burgundy-deep);
+  }
+  .t-debt b { font-weight: 900; }
   .co-debt {
+    align-self: flex-start;
+    margin-top: 3px;
     font-size: 11px; font-weight: 800;
     color: var(--burgundy);
     background: rgba(181, 73, 91, 0.1);
