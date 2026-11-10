@@ -472,9 +472,9 @@
         {#if missingPhoto(l)}
           <span class="ln-warn" title="بلا صورة — الصورة هي هوية الموديل"><Icon name="alert" size={13} color="var(--warn)" /></span>
         {/if}
-        <span class="ln-pieces" class:has={linePieces(l) > 0}>
-          {linePieces(l) > 0 ? `${fmtNum(linePieces(l))} قطعة` : 'بلا كمية'}
-        </span>
+        {#if linePieces(l) > 0}
+          <span class="ln-pieces has">{fmtNum(linePieces(l))} قطعة</span>
+        {/if}
         {#if lines.length > 1}
           <button class="ln-x" aria-label="حذف السطر {fmtNum(li + 1)}" onclick={(e) => { e.stopPropagation(); removeLine(l.id); }}><Icon name="x" size={13} /></button>
         {/if}
@@ -777,7 +777,8 @@
     line-height: 1.25;
     text-align: center;
   }
-  .add-line.same { border-color: rgba(201, 162, 75, 0.45); color: var(--gold-ink); }
+  /* الزرّان فعلان متساويان — كان الثاني ذهبياً باهتاً فيُقرأ معطّلاً */
+  .add-line.same { border-color: rgba(181, 73, 91, 0.4); color: var(--burgundy); }
 
   /* شريط استعادة المسودة — يظهر عند فتح الشاشة وفيه فاتورة غير محفوظة */
   :global(.recover) {

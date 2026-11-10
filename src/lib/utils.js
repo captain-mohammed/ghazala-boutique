@@ -8,11 +8,13 @@ export const fmtIQD = (n) => fmtNum(n) + ' د.ع';
 /* العدّ بالعربية كما تُكتب فعلاً: «عملية واحدة»، «عمليتان»، «٥ عمليات»،
    «١٥ عملية». القاعدة النحوية تميّز المفرد والمثنى والجمع (٣-١٠)، وما فوق
    العشرة يعود مفرداً منصوباً. كتابة «٣ عملية» خطأ شائع — تُقرأ غلط.
+
+   oneForm للكلمات المذكّرة: «سطر واحد» لا «سطر واحدة».
    الاستعمال: countAr(n, 'عملية', 'عمليتان', 'عمليات') */
-export function countAr(n, one, two, few) {
+export function countAr(n, one, two, few, oneForm = `${one} واحدة`) {
   const v = Math.abs(Math.round(Number(n) || 0));
   if (!v) return `لا ${few}`;
-  if (v === 1) return `${one} واحدة`;
+  if (v === 1) return oneForm;
   if (v === 2) return two;
   if (v <= 10) return `${v} ${few}`;
   return `${v} ${one}`;
@@ -24,6 +26,16 @@ export function pluralAr(n, one, two, few) {
   if (v === 2) return two;
   if (v >= 3 && v <= 10) return few;
   return one;
+}
+
+/* الأيام مذكّرة: «يوم واحد»، «يومان»، «٥ أيام»، «٥٧ يوماً».
+   countAr مؤنّثة («واحدة») فلا تصلح هنا. */
+export function daysAr(n) {
+  const v = Math.abs(Math.round(Number(n) || 0));
+  if (v === 1) return 'يوم واحد';
+  if (v === 2) return 'يومان';
+  if (v <= 10) return `${v} أيام`;
+  return `${v} يوماً`;
 }
 
 /* Iraqi money shorthand: what you type is read in thousands.

@@ -8,7 +8,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
   import { db, upcomingOccasions, addReferral, addTestimonial, referralStats, loadCustomerBook } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, salePieces, saleItemLabel, daysAgoStart, buzz, sendWhatsApp, buildSalesMessage, countAr, pluralAr } from '../utils.js';
+  import { fmtIQD, fmtNum, fmtDate, salePieces, saleItemLabel, daysAgoStart, buzz, sendWhatsApp, buildSalesMessage, countAr, pluralAr, daysAr } from '../utils.js';
   import { toastOk, toastErr } from '../store.js';
 
   let { goto } = $props();
@@ -210,7 +210,7 @@
           {#each goneQuiet.slice(0, 6) as c (c.name + '|' + c.phone)}
             <div class="row" style="gap:8px; align-items:center">
               <span class="g-name">{c.name}</span>
-              <span class="muted tiny">منذ {fmtNum(c.daysSince)} يوم</span>
+              <span class="muted tiny">منذ {daysAr(c.daysSince)}</span>
               <button class="g-wa" onclick={() => waGoneQuiet(c)} disabled={!c.phone}>
                 <Icon name="whatsapp" size={12} /> سالّمي عليها
               </button>
@@ -322,7 +322,7 @@
           <div class="kline">
             <span class="cs-k">آخر زيارة</span>
             <span class="cs-v">
-              {detail.last ? `${fmtDate(detail.last)}${detail.daysSince !== null ? ` · منذ ${fmtNum(detail.daysSince)} يوم` : ''}` : '—'}
+              {detail.last ? `${fmtDate(detail.last)}${detail.daysSince !== null ? ` · منذ ${daysAr(detail.daysSince)}` : ''}` : '—'}
             </span>
           </div>
         </div>
@@ -471,6 +471,7 @@
     display: flex; align-items: stretch;
     border-top: 1px dashed rgba(201, 161, 90, 0.5);
     padding-top: 10px;
+    padding-bottom: 4px; /* الأرقام كانت تلامس حافة البطاقة */
   }
   .h-stat {
     flex: 1; min-width: 0;

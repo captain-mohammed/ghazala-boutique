@@ -390,7 +390,7 @@
             <div class="muted small">
               {g.count
                 ? `${fmtNum(g.count)} قطعة - آخر عملية ${fmtDate(g.sales[g.sales.length - 1].date)}`
-                : `${fmtNum(paysOf(g.company).length)} دفعة مسجّلة — لا عمليات معلّقة`}
+                : `${countAr(paysOf(g.company).length, 'دفعة', 'دفعتان', 'دفعات')} مسجّلة`}
             </div>
             {#if (debts.get(g.company) || 0) > 0}
               <span class="co-debt">مستحق لها {fmtIQD(debts.get(g.company))}</span>

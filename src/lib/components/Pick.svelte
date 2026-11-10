@@ -185,7 +185,9 @@
   }
   .pk-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .pk-dot { flex: none; width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12); }
-  .pk-chev { flex: none; display: inline-flex; color: var(--taupe); transform: rotate(180deg); transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+  /* سهم «back» يشير يميناً. للقائمة المنسدلة: مغلقة = للأسفل، مفتوحة = للأعلى.
+     كان معكوساً (مغلقة تشير يساراً) فتُقرأ كـ«تقدّم» لا كـ«افتحي القائمة». */
+  .pk-chev { flex: none; display: inline-flex; color: var(--taupe); transform: rotate(90deg); transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
   .pk-chev.up { transform: rotate(-90deg); }
 
   /* ---------- الورقة ---------- */

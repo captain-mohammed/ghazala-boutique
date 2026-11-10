@@ -89,8 +89,9 @@ if (await page.$('.lock')) {
   await sleep(2200);
 }
 
-const shot = async (name) => {
-  await page.evaluate(() => window.scrollTo(0, 0));
+const shot = async (name, { bottom = false } = {}) => {
+  if (bottom) await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  else await page.evaluate(() => window.scrollTo(0, 0));
   await sleep(350);
   await page.screenshot({ path: path.join(OUT, `${name}.png`) });
   console.log('   📸', name);
@@ -135,6 +136,12 @@ for (const [label, name] of [['الرئيسية', '01-dashboard'], ['المخز�
   await tab(label);
   await shot(name);
 }
+
+/* أسفل القائمة: هل آخر بطاقة/صف مقروءة فوق الشريط العائم والزر؟ */
+await tab('المخزون');
+await shot('02b-inventory-bottom', { bottom: true });
+await tab('بيع');
+await shot('03b-sell-bottom', { bottom: true });
 
 /* شاشات «المزيد» */
 const subs = [

@@ -434,7 +434,7 @@
               <!-- الصف: القياسات يميناً والدوائر يساراً -->
               <div class="card-mid">
                 <div class="card-sizes-box">
-                  <span class="sz-label">القياسات المتوفر:</span>
+                  <span class="sz-label">القياسات المتوفرة:</span>
                   <div class="sz-flow">
                     {#each allSizes(g).slice(0, 5) as sz (String(sz))}
                       <span class="sz-chip">{sz}</span>
@@ -502,7 +502,7 @@
 </Sheet>
 
 <!-- Model sheet: everything about the model — colors × size-run → tap a size for its SKU -->
-<Sheet open={!!detailGroup} title={openSku ? 'تفاصيل القطعة' : 'الموديل كامل'} onclose={closeDetail}>
+<Sheet open={!!detailGroup} title={openSku ? 'تفاصيل القطعة' : 'تفاصيل الموديل'} onclose={closeDetail}>
   {#if openSku}
     <ItemDetail product={openSku} onedit={openEdit} ongoto={goto} onclose={() => (openSku = null)} />
   {:else if detailGroup}
@@ -594,6 +594,8 @@
     display: grid;
     grid-template-columns: repeat(2, 1fr); /* بطاقتان جنباً إلى جنب دائماً */
     gap: 14px;
+    /* مساحة أسفل الشبكة بقدر زر الإضافة العائم — بدونه سعر آخر بطاقة يختفي تحته */
+    padding-bottom: 88px;
   }
   .cardwrap { position: relative; min-width: 0; height: 100%; }
   /* البطاقة المحددة تبقى واضحة فوق الحجاب الضبابي */
@@ -683,10 +685,20 @@
   }
   .cc-item { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
   .cc-dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
-  .cc-qty { color: var(--ink-2); font-weight: 800; font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums; }
+  /* رقم تحت الدائرة كان يُقرأ كمقاس. شارة صغيرة تميّزه كعدّ قطع */
+  .cc-qty {
+    color: var(--burgundy-deep);
+    background: rgba(181, 73, 91, 0.08);
+    border-radius: 999px;
+    padding: 1px 5px;
+    font-weight: 800;
+    font-size: 11px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
   /* حاوية القياسات: بلا حدود ظاهرة — تثبّت المساحة فقط */
   .card-sizes-box {
-    flex: 0 1 auto; /* لا تلتقط المساحة الحرة —:auto-margin هو اللي يدفع الدوائر لليسار */
+    flex: 1 1 auto; /* تأخذ المساحة الحرة — فتبقى الشرائح تحت عنوانها لا في الطرف */
     min-width: 0;
     min-height: 0;
     display: flex;

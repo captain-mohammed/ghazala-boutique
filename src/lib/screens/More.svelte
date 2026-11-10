@@ -120,7 +120,8 @@
     background: var(--accent-soft);
   }
   .m-label { font-weight: 800; font-size: 15px; color: var(--ink); }
-  .m-desc { padding-inline-start: 44px; }
+  /* padding يطابق عمود الأيقونة، وpretty يمنع كلمة يتيمة في سطر ثانٍ */
+  .m-desc { padding-inline-start: 44px; text-wrap: pretty; }
   /* «متجري» — أكبر وأبرز قليلاً من بقية الأدوات */
   :global(.hero-menu) {
     padding: 15px 16px;

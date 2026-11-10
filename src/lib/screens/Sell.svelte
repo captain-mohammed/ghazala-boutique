@@ -877,6 +877,10 @@
       </div>
     {/if}
   {/if}
+  <!-- مساحة سفلية بقدر شريط السلة: بدونه آخر صف يبقى تحته ولا يمكن قراءته -->
+  {#if cart.length || lastCart}
+    <div class="bar-spacer" aria-hidden="true"></div>
+  {/if}
 </div>
 
 <!-- Floating cart bar — portaled to <body> so the screen slide-in never drags it -->
@@ -887,9 +891,8 @@
         <span class="cart-badge pop alive">{fmtNum(cartCount)}</span>
         <div class="cart-txt">
           <div class="bold">متابعة البيع</div>
-          <div class="muted small">{fmtNum(cart.length)} سطر — {fmtIQD(subtotal)}</div>
+          <div class="muted small">{countAr(cart.length, 'سطر', 'سطران', 'أسطر', 'سطر واحد')} — {fmtIQD(subtotal)}</div>
         </div>
-        <span class="cart-go"><Icon name="back" size={17} /></span>
       </button>
       <button class="cart-x" onclick={() => { archiveLast(); cart = []; buzz(10); }} aria-label="إفراغ السلة">
         <Icon name="trash" size={17} />
@@ -1130,7 +1133,9 @@
     <div class="row" style="gap:10px">
       <div class="field" style="flex:1">
         <label>أجور التوصيل (د.ع)</label>
-        <input class="input" bind:value={fee} inputmode="decimal" />
+        <input class="input" bind:value={fee} inputmode="decimal" dir="ltr" style="text-align:center" />
+        <!-- الحقل يقبل «5» = 5,000 (اختصار الألف). نعرض الناتج صريحاً حتى لا يبقى الرقم غامضاً -->
+        <span class="fee-echo">{fmtIQD(iqd(fee))}</span>
       </div>
       <div class="field" style="flex:1">
         <label>شركة التوصيل</label>
@@ -1282,6 +1287,8 @@
   :global(.sell-card:active) .add-ic { transform: scale(0.86) rotate(-6deg); }
 
   .bar-portal { display: contents; }
+  /* فراغ أسفل القائمة بقدر الشريط العائم — بدونه آخر موديل يُغطّى */
+  .bar-spacer { height: 108px; }
   .cartbar {
     position: fixed;
     bottom: calc(var(--nav-h) + 22px + var(--sab));
@@ -1314,13 +1321,6 @@
     cursor: pointer;
     text-align: start;
     padding: 4px 6px;
-  }
-  .cart-go {
-    flex: none;
-    width: 30px; height: 30px; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
-    color: #fff;
   }
   .cart-badge {
     width: 40px; height: 40px;
@@ -1501,17 +1501,17 @@
   }
   /* السهم يشير لليسار في RTL = «تقدّم» */
   .cpt-all :global(svg) { transform: rotate(90deg); }
+  /* تلتف بدل أن تنزلق أفقياً — الانزلاق كان يقطع أول اسم عند الحافة */
   .cpt-quick {
     display: flex;
+    flex-wrap: wrap;
     gap: 6px;
     padding: 0 10px 10px;
-    overflow-x: auto;
-    scrollbar-width: none;
   }
-  .cpt-quick::-webkit-scrollbar { display: none; }
   .cpt-c {
-    flex: 1 0 auto;
+    flex: 1 1 auto;
     min-width: 0;
+    max-width: 100%;
     display: flex;
     align-items: center;
     gap: 6px;

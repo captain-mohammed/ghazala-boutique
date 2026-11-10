@@ -153,7 +153,11 @@
   const suppliersFiltered = $derived(suppliers.filter((s) => !qNorm || s.sup.toLowerCase().includes(qNorm)));
   const modelsFiltered = $derived(models.filter((m) => !qNorm || [m.label, ...m.supList.map((s) => s.sup)].join(' ').toLowerCase().includes(qNorm)));
 
-  const capitalTied = $derived(lots.reduce((a, l) => a + (!l.legacy ? (Number(l.remaining) || 0) * (Number(l.cost) || 0) : 0), 0));
+  /* رأس المال الراكد = **كل** ما على الرف بتكلفته، بما فيه رصيد ما قبل التطبيق.
+     استثناء الدفعات القديمة هنا كان يجعل الشاشة تقول ٠ د.ع بينما الرئيسية تقول
+     ٤٦١٬٠٠٠ — رقم متناقض يُقرأ كخلل. القائمة أدناه وحدها تستثني القديم. */
+  const capitalTied = $derived(lots.reduce((a, l) => a + (Number(l.remaining) || 0) * (Number(l.cost) || 0), 0));
+  const hasLegacy = $derived(lots.some((l) => l.legacy));
   const alerts = $derived(models.filter((m) => m.lots.length > 1 && m.costChange >= 10).sort((a, b) => b.costChange - a.costChange));
 
   const pct = (sold, pieces) => (pieces ? Math.round((sold / pieces) * 100) : 0);
@@ -212,6 +216,9 @@
     <span class="cap-body">
       <span class="cap-k">رأس المال الراكد في المخزون</span>
       <span class="cap-v">{fmtIQD(capitalTied)}</span>
+      {#if hasLegacy}
+        <span class="cap-note">يشمل رصيد ما قبل التطبيق — السطور أدناه تبدأ من أول فاتورة وارد</span>
+      {/if}
     </span>
     <span class="cap-hint">تكلفة المتبقي</span>
   </Glass>
@@ -364,6 +371,7 @@
   .cap-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .cap-k { font-size: 11px; font-weight: 700; color: var(--taupe); }
   .cap-v { font-size: 17px; font-weight: 900; color: var(--burgundy); font-variant-numeric: tabular-nums; }
+  .cap-note { font-size: 11px; font-weight: 600; color: var(--taupe); line-height: 1.5; margin-top: 2px; }
   .cap-hint { flex: none; font-size: 11px; font-weight: 700; color: var(--taupe); background: rgba(156, 123, 107, 0.1); border-radius: 999px; padding: 3px 8px; }
 
   /* ---------- بطاقة الاستلام ---------- */

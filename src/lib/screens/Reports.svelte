@@ -99,6 +99,9 @@
     return days;
   });
   const maxDaily = $derived(Math.max(1, ...daily.map((x) => x.total)));
+  /* كل الأيام صفر؟ الرسم يصير ١٤ شرطة متساوية ومساحة بيضاء — يُقرأ كعطل.
+     نقولها بالكلام بدل رسم فارغ. */
+  const hasDaily = $derived(daily.some((x) => x.total > 0));
 
   const DAY_AR = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
   const dayName = (d) => DAY_AR[d.getDay()];
@@ -239,13 +242,20 @@
 
   <Glass class="chart rise" style="animation-delay:0.1s; padding:16px">
     <h2 class="h2">مبيعات آخر 14 يوم</h2>
-    <div class="bars">
-      {#each daily as day, i (i)}
-        <div class="bar-wrap" title="{dayName(day.d)}: {fmtIQD(day.total)}">
-          <div class="bar" style="height:{Math.max(4, (day.total / maxDaily) * 100)}%; animation-delay:{i * 0.04}s"></div>
-          <span class="bar-label muted">{day.d.getDate()}</span>
+    <div class="bars" class:empty={!hasDaily}>
+      {#if hasDaily}
+        {#each daily as day, i (i)}
+          <div class="bar-wrap" title="{dayName(day.d)}: {fmtIQD(day.total)}">
+            <div class="bar" style="height:{Math.max(4, (day.total / maxDaily) * 100)}%; animation-delay:{i * 0.04}s"></div>
+            <span class="bar-label muted">{day.d.getDate()}</span>
+          </div>
+        {/each}
+      {:else}
+        <div class="bars-empty">
+          <span class="be-ic"><Icon name="chart" size={22} color="var(--taupe)" /></span>
+          <p>لا مبيعات في آخر ١٤ يوم — أول بيعة ترسم أول عمود هنا</p>
         </div>
-      {/each}
+      {/if}
     </div>
   </Glass>
 
@@ -403,6 +413,17 @@
   .big.gold { color: var(--gold); }
 
   .bars { display: flex; align-items: flex-end; gap: 5px; height: 130px; margin-top: 14px; }
+  .bars.empty { height: auto; min-height: 110px; align-items: center; justify-content: center; }
+  .bars-empty {
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    text-align: center; padding: 10px 0;
+  }
+  .bars-empty p { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--taupe); max-width: 260px; line-height: 1.6; }
+  .be-ic {
+    width: 42px; height: 42px; border-radius: 14px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(156, 123, 107, 0.12);
+  }
   .bar-wrap { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 5px; height: 100%; justify-content: flex-end; }
   .bar {
     width: 100%;
