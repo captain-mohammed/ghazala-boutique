@@ -73,16 +73,11 @@
     }
     return rows;
   });
-  /* المقاسات المتوفرة للموديل كله — بلا تكرار بين الألوان */
-  const allSizes = (g) =>
-    [...new Set(g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)))].sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
-  /* مقاسات لون واحد كما تظهر تحت دائرته على البطاقة: «40·41» أو «40·41 +2».
-     الكمية تُعرض في «تفاصيل الموديل» — البطاقة تحتاج المقاس لا العدّ. */
-  const colorSizes = (cr) => {
-    const s = (cr.sizes || []).filter((x) => x.qty > 0).map((x) => String(x.size)).sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
-    if (!s.length) return '—';
-    return s.length <= 2 ? s.join('·') : `${s[0]}·${s[1]} +${s.length - 2}`;
-  };
+  /* مقاسات لون واحد — مرتبة رقمياً، بلا تكرار. البطاقة تعرضها تحت دائرته
+     مباشرة، فلم يبقَ لصف المقاسات العام معنى. */
+  const sizesOf = (cr) =>
+    [...new Set((cr.sizes || []).filter((x) => x.qty > 0).map((x) => String(x.size)))]
+      .sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
   const matchType = (p, tv) => {
     if (String(tv).startsWith(TYPE_SEP3)) return p.typeSub3 === tv.slice(3) && !!p.typeSub2;
     if (String(tv).startsWith(TYPE_SEP2)) return p.typeSub2 === tv.slice(2) && !!p.typeSub;
@@ -415,10 +410,10 @@
               {:else}
                 <Icon name="image" size={34} color="var(--taupe)" />
               {/if}
-              <!-- النفد أو الكمية: شارة وسيطة أسفل الصورة -->
+              <!-- النفد أو الكمية: الشارة تظهر فوق القطعتين فقط — ١ أو ٢ لا تحتاج رقماً -->
               {#if g.qty === 0}
                 <span class="thumb-badge oos">نفد</span>
-              {:else}
+              {:else if g.qty > 2}
                 <span class="thumb-badge">{fmtNum(g.qty)}</span>
               {/if}
             </div>
@@ -427,24 +422,17 @@
               {#if g.chain}
                 <div class="card-type" class:split={g.chainSplit}>{g.chain}{#if g.chainSplit}<span class="chain-warn" title="قطع هذا الموديل تختلف في التفصيل — راجعي «إصلاح الموديلات»">⚠</span>{/if}</div>
               {/if}
-              <!-- الصف: القياسات يميناً والدوائر يساراً -->
+              <!-- الدوائر وحدها: مقاسات كل لون تحتها، بلا صف مقاسات مكرّر -->
               <div class="card-mid">
-                <div class="card-sizes-box">
-                  <span class="sz-label">القياسات:</span>
-                  <div class="sz-flow">
-                    {#each allSizes(g).slice(0, 5) as sz (String(sz))}
-                      <span class="sz-chip">{sz}</span>
-                    {/each}
-                    {#if allSizes(g).length > 5}<span class="sz-more">+{fmtNum(allSizes(g).length - 5)}</span>{/if}
-                    {#if !allSizes(g).length}<span class="sz-chip empty">—</span>{/if}
-                  </div>
-                </div>
                 {#if g.colorRows.some((cr) => cr.color)}
                   <div class="card-colors">
                     {#each g.colorRows.filter((cr) => cr.qty > 0).slice(0, 4) as cr (cr.color)}
-                      <span class="cc-item" title="{cr.color} — مقاسات {colorSizes(cr)}">
+                      <span class="cc-item" title="{cr.color} — مقاسات {sizesOf(cr).join(' · ') || '—'}">
                         <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
-                        <b class="cc-sz">{colorSizes(cr)}</b>
+                        <span class="cc-sizes">
+                          {#each sizesOf(cr) as s (s)}<b class="cc-sz">{s}</b>{/each}
+                          {#if !sizesOf(cr).length}<b class="cc-sz none">—</b>{/if}
+                        </span>
                       </span>
                     {/each}
                     {#if g.colorRows.filter((cr) => cr.qty > 0).length > 4}
@@ -660,67 +648,43 @@
   .card-type.split { color: var(--warn); }
   .chain-warn { font-size: 11px; margin-inline-start: 4px; }
   /* الصف الأوسط: القياسات يميناً (مرن) والدوائر يساراً (ثابتة) */
-  .card-mid { flex: 1; min-height: 0; display: flex; gap: 12px; }
-  /* الدوائر: ثلاثة بكل صف، ملتصقة بيسار البطاقة دائماً */
+  .card-mid { flex: 1; min-height: 0; display: flex; }
+  /* الدوائر ملتصقة بيسار البطاقة، ومقاسات كل لون تحتها مباشرة.
+     صف المقاسات العام أُزيل: صار تكراراً، ومساحته للدوائر. */
   .card-colors {
-    flex: none;
-    margin-right: auto; /* يدفع الصندوق لأقصى اليسار مهما كان عدد الدوائر */
-    display: grid;
-    grid-template-columns: repeat(2, auto); /* عمودان: تحت كل دائرة مقاسات لونها */
-    align-content: start;
-    gap: 6px 7px;
+    /* تبدأ من حافة العنوان لا من الطرف المقابل: صف المقاسات أُزيل، فالمجموعة
+       وحدها في صف عريض كانت تطفو بعيداً بفراغ كبير */
+    margin-inline-end: auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
     min-height: 0;
     overflow: hidden;
   }
+  .cc-item { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; }
+  .cc-dot { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
+  .cc-sizes { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  /* كل مقاس شارة مستقلة — تُقرأ عمودياً تحت دائرتها بلا التباس */
+  .cc-sz {
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--burgundy-deep);
+    background: rgba(181, 73, 91, 0.09);
+    border-radius: 5px;
+    padding: 2px 4px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .cc-sz.none { color: var(--taupe); background: rgba(156, 123, 107, 0.1); }
   .cc-more {
-    width: 20px; height: 20px; border-radius: 50%;
+    width: 18px; height: 18px; border-radius: 50%;
     display: inline-flex; align-items: center; justify-content: center;
     font-size: 11px; font-weight: 800; color: var(--burgundy);
     background: rgba(181, 73, 91, 0.1);
   }
-  .cc-item { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
-  .cc-dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
-  /* رقم تحت الدائرة كان يُقرأ كمقاس. شارة صغيرة تميّزه كعدّ قطع */
-  .cc-sz {
-    color: var(--ink-2);
-    font-weight: 800;
-    font-size: 11px;
-    line-height: 1;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-  /* حاوية القياسات: بلا حدود ظاهرة — تثبّت المساحة فقط */
-  .card-sizes-box {
-    flex: 1 1 auto; /* تأخذ المساحة الحرة — فتبقى الشرائح تحت عنوانها لا في الطرف */
-    min-width: 0;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    overflow: hidden;
-  }
-  .sz-label { font-weight: 800; color: var(--taupe); font-size: 11px; }
-  .sz-flow { display: flex; flex-wrap: wrap; gap: 3px 4px; align-content: flex-start; overflow: hidden; }
-  .sz-chip {
-    font-size: 11px;
-    font-weight: 700;
-    color: var(--ink-2);
-    background: rgba(122, 46, 58, 0.06);
-    border-radius: 6px;
-    padding: 1px 6px;
-    text-align: center;
-    font-variant-numeric: tabular-nums;
-  }
-  .sz-chip.empty { background: none; color: var(--taupe); }
-  .sz-more {
-    font-size: 11px;
-    font-weight: 800;
-    color: var(--burgundy);
-    background: rgba(181, 73, 91, 0.1);
-    border-radius: 6px;
-    padding: 1px 6px;
-  }
-  /* صف العنوان: العدّاد يميناً ومفتاح جدار الصور يساراً */
+  /* صف العنوان: العدّاد يميناً */
+  .sort-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .sort-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .card-price {
     margin: 8px 12px 12px;

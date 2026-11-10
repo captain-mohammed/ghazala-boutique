@@ -10,7 +10,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
   import CustomerPicker from '../components/CustomerPicker.svelte';
-  import { fly, slide } from 'svelte/transition';
+  import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
   import { longpress, flyToCart, popBadge } from '../motion.js';
   import VariantBits from '../components/VariantBits.svelte';
@@ -652,11 +652,11 @@
   }
 
   /* ── الانتقال بين الخطوتين ──
-     الخيط يقطع أولاً (٢٦٠ms) ثم تنزلق اللوحة: الحركة تقول «تقدّمنا» بدل أن
-     تُبدَّل الشاشة فجأة. في RTL التقدّم يساراً — فالتالية تدخل من اليمين
-     والحالية تخرج يساراً. */
+     الشاحنة تعبر الخيط بنفسها (٤٦٠ms) وتتركه ذهبياً مشتعلًا خلفها، ثم تنزلق
+     اللوحة. الحركة تقول «انطلقت الشحنة» لا «تغيّرت الشاشة». */
   let stepDir = $state(1);
   let advancing = $state(false);
+  const DRIVE_MS = 460;
 
   function gotoStep2() {
     if (!cart.length || advancing) return;
@@ -666,8 +666,17 @@
     setTimeout(() => {
       step = 2;
       advancing = false;
-    }, 260);
+    }, DRIVE_MS);
   }
+  /* الخروج لا يحجز ارتفاعاً: العنصر المغادر يصير مطلقاً، فارتفاع الورقة يأتي
+     من اللوحة الجديدة وحدها. بدونه تتضاعف الورقة وتظهر مساحة فارغة كبيرة. */
+  function flyOutAbs(node) {
+    node.style.position = 'absolute';
+    node.style.top = '0';
+    node.style.insetInline = '0';
+    return fly(node, { x: -34 * stepDir, duration: 200 });
+  }
+
   function gotoStep1() {
     if (stepDir !== 1 || step !== 2) stepDir = -1;
     step = 1;
@@ -988,17 +997,21 @@
 <!-- Checkout — خطوتان: القطع ثم التوصيل والمراجعة -->
 <Sheet open={checkout} title={step === 1 ? 'إتمام البيع — القطع' : 'إتمام البيع — التوصيل'} onclose={closeCheckout}>
   {#key step}
-  <div class="step-panel" in:slide={{ duration: 240 }} out:slide={{ duration: 150 }}>
+  <div class="step-panel">
     <div
       class="step-inner"
-      in:fly={{ x: 26 * stepDir, duration: 280, easing: cubicOut }}
-      out:fly={{ x: -26 * stepDir, duration: 150 }}
+      in:fly={{ x: 34 * stepDir, duration: 400, easing: cubicOut, opacity: 0.55 }}
+      out:flyOutAbs
     >
   {#if step === 1}
   <div class="stack" style="gap:12px">
-    <div class="step-track" class:beading={advancing}>
+    <div class="step-track">
       <span class="st-item on"><i class="st-dot"></i>القطع</span>
-      <span class="st-thread"></span>
+      <span class="st-thread" class:filling={advancing}>
+        {#if advancing}
+          <span class="st-truck"><Icon name="truck" size={13} color="var(--burgundy)" /></span>
+        {/if}
+      </span>
       <span class="st-item"><i class="st-dot"></i>التوصيل</span>
     </div>
     {#each cart as c (c.vsKey)}
@@ -1073,11 +1086,11 @@
     </div>
     <button class="btn primary lg block go-btn" class:advancing onclick={gotoStep2}>
       <span class="go-txt">متابعة للتوصيل</span>
-      <span class="go-badge" class:truck={advancing}>
+      <span class="go-move">
         {#if advancing}
-          <Icon name="truck" size={15} color="#fff" />
+          <Icon name="truck" size={17} color="#fff" />
         {:else}
-          <span class="go-chev"><Icon name="back" size={14} color="#fff" /></span>
+          <span class="go-chev"><Icon name="back" size={15} color="#fff" /></span>
         {/if}
       </span>
     </button>
@@ -1497,57 +1510,62 @@
   .st-item.on { color: var(--burgundy); }
   .st-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); flex: none; transition: background 0.2s, box-shadow 0.2s; }
   .st-item.on .st-dot { background: var(--burgundy); box-shadow: 0 0 0 3px rgba(181, 73, 91, 0.15); }
-  .st-thread { flex: 1; height: 1.5px; background: linear-gradient(to left, rgba(201, 161, 90, 0.15), rgba(201, 161, 90, 0.55)); }
+  .st-thread { flex: 1; height: 1.5px; position: relative; background: linear-gradient(to left, rgba(201, 161, 90, 0.15), rgba(201, 161, 90, 0.55)); }
   .st-thread.filled { background: linear-gradient(to left, rgba(201, 161, 90, 0.55), rgba(201, 161, 90, 0.9)); }
   .st-item.done { color: var(--gold-ink); }
-  /* الخرزة تعبر الخيط من القطع إلى التوصيل (يمين ← يسار في RTL) */
-  .step-track.beading .st-thread { position: relative; overflow: hidden; }
-  .step-track.beading .st-thread::after {
+  /* الشاحنة تعبر الخيط وتملؤه ذهباً خلفها — الخيط نفسه هو الطريق */
+  .st-thread.filling::before {
     content: '';
     position: absolute;
-    top: 50%;
-    left: calc(100% - 9px);
-    width: 9px; height: 9px;
-    margin-top: -4.5px;
-    border-radius: 50%;
-    background: var(--gold);
-    box-shadow: 0 0 8px 2px rgba(201, 161, 90, 0.55);
-    animation: thread-run 260ms linear forwards;
+    inset-block: 0;
+    right: 0;
+    width: 0;
+    background: linear-gradient(to left, rgba(201, 161, 90, 0.95), rgba(201, 161, 90, 0.6));
+    animation: thread-fill 460ms linear forwards;
   }
-  @keyframes thread-run {
-    from { left: calc(100% - 9px); }
-    to { left: 0; }
+  @keyframes thread-fill {
+    from { width: 0; }
+    to { width: 100%; }
+  }
+  .st-truck {
+    position: absolute;
+    top: 50%;
+    left: calc(100% - 13px);
+    display: inline-flex;
+    transform: translateY(-50%);
+    filter: drop-shadow(0 1px 2px rgba(181, 73, 91, 0.35));
+    animation: truck-drive 460ms cubic-bezier(0.35, 0, 0.25, 1) forwards;
+  }
+  @keyframes truck-drive {
+    0% { left: calc(100% - 13px); }
+    100% { left: -3px; }
   }
   /* لوحة الخطوة: الارتفاع ينزلق، والمحتوى يدخل من جهة التقدّم */
-  .step-panel { overflow: hidden; }
+  /* لوحة الخطوة: موضع نسبي كي يخرج المغادر مطلقاً بلا أن يحجز ارتفاعاً */
+  .step-panel { position: relative; overflow: hidden; }
   .step-inner { will-change: transform, opacity; }
 
-  /* زر المتابعة: شارة ذهبية بسهم، تتحول شاحنة لحظة الانتقال */
+  /* زر المتابعة: بلا ذهب على العنابي — أبيض عالي التباين يتحرك عند الضغط */
   .go-btn { display: flex; align-items: center; justify-content: center; gap: 8px; }
-  .go-badge {
-    flex: none;
-    width: 26px; height: 26px;
-    border-radius: 50%;
-    display: inline-flex; align-items: center; justify-content: center;
-    background: linear-gradient(150deg, var(--gold), var(--gold-deep));
-    box-shadow: 0 2px 8px rgba(201, 161, 90, 0.45);
-    transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
-  }
+  .go-move { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; }
   .go-chev { display: inline-flex; transform: rotate(180deg); animation: go-nudge 2.6s ease-in-out infinite; }
   @keyframes go-nudge {
     0%, 74%, 100% { transform: rotate(180deg) translateX(0); }
     84% { transform: rotate(180deg) translateX(-2px); }
     92% { transform: rotate(180deg) translateX(0); }
   }
-  .go-btn.advancing .go-badge { animation: truck-go 260ms ease-out forwards; }
+  .go-btn.advancing .go-move { animation: truck-go 460ms cubic-bezier(0.4, 0, 0.2, 1) forwards; }
   @keyframes truck-go {
-    to { transform: translateX(-9px); opacity: 0.92; }
+    0% { transform: translateX(0); opacity: 1; }
+    65% { transform: translateX(-15px); opacity: 1; }
+    100% { transform: translateX(-26px); opacity: 0; }
   }
 
   @media (prefers-reduced-motion: reduce) {
     .go-chev { animation: none; }
-    .go-btn.advancing .go-badge { animation: none; }
-    .step-track.beading .st-thread::after { display: none; }
+    .go-btn.advancing .go-move { animation: none; }
+    .st-truck { display: none; }
+    .st-thread.filling::before { animation-duration: 1ms; }
   }
   .step-back {
     align-self: flex-start;
