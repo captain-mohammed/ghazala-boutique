@@ -76,6 +76,13 @@
   /* المقاسات المتوفرة للموديل كله — بلا تكرار بين الألوان */
   const allSizes = (g) =>
     [...new Set(g.colorRows.flatMap((c) => c.sizes.filter((s) => s.qty > 0).map((s) => s.size)))].sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
+  /* مقاسات لون واحد كما تظهر تحت دائرته على البطاقة: «40·41» أو «40·41 +2».
+     الكمية تُعرض في «تفاصيل الموديل» — البطاقة تحتاج المقاس لا العدّ. */
+  const colorSizes = (cr) => {
+    const s = (cr.sizes || []).filter((x) => x.qty > 0).map((x) => String(x.size)).sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0));
+    if (!s.length) return '—';
+    return s.length <= 2 ? s.join('·') : `${s[0]}·${s[1]} +${s.length - 2}`;
+  };
   const matchType = (p, tv) => {
     if (String(tv).startsWith(TYPE_SEP3)) return p.typeSub3 === tv.slice(3) && !!p.typeSub2;
     if (String(tv).startsWith(TYPE_SEP2)) return p.typeSub2 === tv.slice(2) && !!p.typeSub;
@@ -423,7 +430,7 @@
               <!-- الصف: القياسات يميناً والدوائر يساراً -->
               <div class="card-mid">
                 <div class="card-sizes-box">
-                  <span class="sz-label">القياسات المتوفرة:</span>
+                  <span class="sz-label">القياسات:</span>
                   <div class="sz-flow">
                     {#each allSizes(g).slice(0, 5) as sz (String(sz))}
                       <span class="sz-chip">{sz}</span>
@@ -434,14 +441,14 @@
                 </div>
                 {#if g.colorRows.some((cr) => cr.color)}
                   <div class="card-colors">
-                    {#each g.colorRows.filter((cr) => cr.qty > 0).slice(0, 6) as cr (cr.color)}
-                      <span class="cc-item" title="{cr.color} — {fmtNum(cr.qty)} قطعة">
+                    {#each g.colorRows.filter((cr) => cr.qty > 0).slice(0, 4) as cr (cr.color)}
+                      <span class="cc-item" title="{cr.color} — مقاسات {colorSizes(cr)}">
                         <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
-                        <b class="cc-qty">{fmtNum(cr.qty)}</b>
+                        <b class="cc-sz">{colorSizes(cr)}</b>
                       </span>
                     {/each}
-                    {#if g.colorRows.filter((cr) => cr.qty > 0).length > 6}
-                      <span class="cc-item"><span class="cc-more">+{fmtNum(g.colorRows.filter((cr) => cr.qty > 0).length - 6)}</span></span>
+                    {#if g.colorRows.filter((cr) => cr.qty > 0).length > 4}
+                      <span class="cc-item"><span class="cc-more">+{fmtNum(g.colorRows.filter((cr) => cr.qty > 0).length - 4)}</span></span>
                     {/if}
                   </div>
                 {/if}
@@ -659,9 +666,9 @@
     flex: none;
     margin-right: auto; /* يدفع الصندوق لأقصى اليسار مهما كان عدد الدوائر */
     display: grid;
-    grid-template-columns: repeat(3, auto);
+    grid-template-columns: repeat(2, auto); /* عمودان: تحت كل دائرة مقاسات لونها */
     align-content: start;
-    gap: 7px 8px;
+    gap: 6px 7px;
     min-height: 0;
     overflow: hidden;
   }
@@ -674,15 +681,13 @@
   .cc-item { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
   .cc-dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
   /* رقم تحت الدائرة كان يُقرأ كمقاس. شارة صغيرة تميّزه كعدّ قطع */
-  .cc-qty {
-    color: var(--burgundy-deep);
-    background: rgba(181, 73, 91, 0.08);
-    border-radius: 999px;
-    padding: 1px 5px;
+  .cc-sz {
+    color: var(--ink-2);
     font-weight: 800;
     font-size: 11px;
     line-height: 1;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   /* حاوية القياسات: بلا حدود ظاهرة — تثبّت المساحة فقط */
   .card-sizes-box {

@@ -10,6 +10,8 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
   import CustomerPicker from '../components/CustomerPicker.svelte';
+  import { fly, slide } from 'svelte/transition';
+  import { cubicOut } from 'svelte/easing';
   import { longpress, flyToCart, popBadge } from '../motion.js';
   import VariantBits from '../components/VariantBits.svelte';
   import Pick from '../components/Pick.svelte';
@@ -649,10 +651,27 @@
     toast(`بيانات ${c.name || c.phone} جاهزة`);
   }
 
+  /* ── الانتقال بين الخطوتين ──
+     الخيط يقطع أولاً (٢٦٠ms) ثم تنزلق اللوحة: الحركة تقول «تقدّمنا» بدل أن
+     تُبدَّل الشاشة فجأة. في RTL التقدّم يساراً — فالتالية تدخل من اليمين
+     والحالية تخرج يساراً. */
+  let stepDir = $state(1);
+  let advancing = $state(false);
+
   function gotoStep2() {
-    if (!cart.length) return;
-    step = 2;
-    buzz(8);
+    if (!cart.length || advancing) return;
+    stepDir = 1;
+    advancing = true;
+    buzz([12, 30, 12]);
+    setTimeout(() => {
+      step = 2;
+      advancing = false;
+    }, 260);
+  }
+  function gotoStep1() {
+    if (stepDir !== 1 || step !== 2) stepDir = -1;
+    step = 1;
+    buzz(6);
   }
 
   /* الحقول الثلاثة الإجبارية: الاسم، موبايل صحيح (10 أرقام على الأقل)، المحافظة */
@@ -968,9 +987,16 @@
 
 <!-- Checkout — خطوتان: القطع ثم التوصيل والمراجعة -->
 <Sheet open={checkout} title={step === 1 ? 'إتمام البيع — القطع' : 'إتمام البيع — التوصيل'} onclose={closeCheckout}>
+  {#key step}
+  <div class="step-panel" in:slide={{ duration: 240 }} out:slide={{ duration: 150 }}>
+    <div
+      class="step-inner"
+      in:fly={{ x: 26 * stepDir, duration: 280, easing: cubicOut }}
+      out:fly={{ x: -26 * stepDir, duration: 150 }}
+    >
   {#if step === 1}
   <div class="stack" style="gap:12px">
-    <div class="step-track">
+    <div class="step-track" class:beading={advancing}>
       <span class="st-item on"><i class="st-dot"></i>القطع</span>
       <span class="st-thread"></span>
       <span class="st-item"><i class="st-dot"></i>التوصيل</span>
@@ -1045,19 +1071,25 @@
       <span class="muted small">{fmtNum(cart.length)} سطر — {fmtNum(cartCount)} قطعة</span>
       <span class="money">{fmtIQD(subtotal)}</span>
     </div>
-    <button class="btn primary lg block" onclick={gotoStep2}>
-      متابعة للتوصيل
-      <Icon name="back" size={17} />
+    <button class="btn primary lg block go-btn" class:advancing onclick={gotoStep2}>
+      <span class="go-txt">متابعة للتوصيل</span>
+      <span class="go-badge" class:truck={advancing}>
+        {#if advancing}
+          <Icon name="truck" size={15} color="#fff" />
+        {:else}
+          <span class="go-chev"><Icon name="back" size={14} color="#fff" /></span>
+        {/if}
+      </span>
     </button>
   </div>
   {:else}
   <div class="stack" style="gap:12px">
     <div class="step-track">
-      <span class="st-item"><i class="st-dot"></i>القطع</span>
-      <span class="st-thread"></span>
+      <span class="st-item done"><Icon name="check" size={11} color="var(--gold)" />القطع</span>
+      <span class="st-thread filled"></span>
       <span class="st-item on"><i class="st-dot"></i>التوصيل</span>
     </div>
-    <button class="step-back" onclick={() => { step = 1; buzz(6); }}>
+    <button class="step-back" onclick={gotoStep1}>
       <Icon name="undo" size={13} /> رجوع للقطع
     </button>
 
@@ -1191,6 +1223,9 @@
     </button>
   </div>
   {/if}
+    </div>
+  </div>
+  {/key}
 </Sheet>
 
 <!-- خارج الورقة عمداً: ورقة الإتمام عليها transform، فأي عنصر fixed بداخلها
@@ -1382,6 +1417,9 @@
   .ci-top { display: flex; align-items: flex-end; gap: 10px; }
   .ci-picks { flex: 1; min-width: 0; display: flex; gap: 8px; }
   .ci-pf { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  /* اللون يحتاج مساحة للكلمة والدائرة؛ المقاس رقم واحد فمساحته ثابتة صغيرة */
+  .ci-picks > .ci-pf:first-child { flex: 1 1 auto; }
+  .ci-picks > .ci-pf:last-child { flex: 0 0 74px; }
   .ci-pl { font-size: 11px; font-weight: 800; color: var(--taupe); padding-inline-start: 2px; }
   /* قوائم صغيرة لكن مقروءة: ٣٨px ارتفاعاً و١٣.٥px خطاً */
   .ci-picks > .ci-pf > :global(.pk) { width: 100%; min-height: 38px; font-size: 13.5px; }
@@ -1390,8 +1428,8 @@
   .ci-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
   .ci-thumb {
     flex: none;
-    width: 34px; height: 34px;
-    border-radius: 9px;
+    width: 56px; height: 56px;
+    border-radius: 12px;
     overflow: hidden;
     display: flex; align-items: center; justify-content: center;
     background: rgba(255, 255, 255, 0.5);
@@ -1460,6 +1498,57 @@
   .st-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line-2); flex: none; transition: background 0.2s, box-shadow 0.2s; }
   .st-item.on .st-dot { background: var(--burgundy); box-shadow: 0 0 0 3px rgba(181, 73, 91, 0.15); }
   .st-thread { flex: 1; height: 1.5px; background: linear-gradient(to left, rgba(201, 161, 90, 0.15), rgba(201, 161, 90, 0.55)); }
+  .st-thread.filled { background: linear-gradient(to left, rgba(201, 161, 90, 0.55), rgba(201, 161, 90, 0.9)); }
+  .st-item.done { color: var(--gold-ink); }
+  /* الخرزة تعبر الخيط من القطع إلى التوصيل (يمين ← يسار في RTL) */
+  .step-track.beading .st-thread { position: relative; overflow: hidden; }
+  .step-track.beading .st-thread::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: calc(100% - 9px);
+    width: 9px; height: 9px;
+    margin-top: -4.5px;
+    border-radius: 50%;
+    background: var(--gold);
+    box-shadow: 0 0 8px 2px rgba(201, 161, 90, 0.55);
+    animation: thread-run 260ms linear forwards;
+  }
+  @keyframes thread-run {
+    from { left: calc(100% - 9px); }
+    to { left: 0; }
+  }
+  /* لوحة الخطوة: الارتفاع ينزلق، والمحتوى يدخل من جهة التقدّم */
+  .step-panel { overflow: hidden; }
+  .step-inner { will-change: transform, opacity; }
+
+  /* زر المتابعة: شارة ذهبية بسهم، تتحول شاحنة لحظة الانتقال */
+  .go-btn { display: flex; align-items: center; justify-content: center; gap: 8px; }
+  .go-badge {
+    flex: none;
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: linear-gradient(150deg, var(--gold), var(--gold-deep));
+    box-shadow: 0 2px 8px rgba(201, 161, 90, 0.45);
+    transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .go-chev { display: inline-flex; transform: rotate(180deg); animation: go-nudge 2.6s ease-in-out infinite; }
+  @keyframes go-nudge {
+    0%, 74%, 100% { transform: rotate(180deg) translateX(0); }
+    84% { transform: rotate(180deg) translateX(-2px); }
+    92% { transform: rotate(180deg) translateX(0); }
+  }
+  .go-btn.advancing .go-badge { animation: truck-go 260ms ease-out forwards; }
+  @keyframes truck-go {
+    to { transform: translateX(-9px); opacity: 0.92; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .go-chev { animation: none; }
+    .go-btn.advancing .go-badge { animation: none; }
+    .step-track.beading .st-thread::after { display: none; }
+  }
   .step-back {
     align-self: flex-start;
     display: inline-flex; align-items: center; gap: 5px;
