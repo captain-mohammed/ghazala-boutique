@@ -1561,7 +1561,7 @@ export async function receiveBatch({ supplier = '', invoice = '', note = '', lin
 
 /* ---------------- Sales ---------------- */
 
-export async function recordSale({ items, customerName, customerPhone, province, address, deliveryFee, barcode, status, deliveryCompany, fromReservation, stockDeducted }) {
+export async function recordSale({ items, customerName, customerPhone, province, address, deliveryFee, status, deliveryCompany, fromReservation, stockDeducted }) {
   const now = new Date().toISOString();
   let subtotal = 0, cost = 0;
   const sold = [];
@@ -1593,7 +1593,7 @@ export async function recordSale({ items, customerName, customerPhone, province,
     deliveryFee: fee, total,
     customerName: customerName || '', customerPhone: customerPhone || '',
     province: province || '', address: address || '',
-    barcode: barcode || '', status: status || 'pending',
+    status: status || 'pending',
     deliveryCompany: deliveryCompany || '', settledAt: null,
     fromReservation: fromReservation ?? null, createdAt: now
   };
@@ -2065,7 +2065,7 @@ export async function expireReservation(id) {
 }
 
 /* Convert an active reservation into a real sale (already-deducted stock stays deducted) */
-export async function convertReservation(id, { deliveryFee, barcode, deliveryCompany, province, address } = {}) {
+export async function convertReservation(id, { deliveryFee, deliveryCompany, province, address } = {}) {
   const r = await db.reservations.get(id);
   if (!r || r.status !== 'active') throw new Error('الحجز غير صالح');
   const p = await db.products.get(r.sku);
@@ -2080,7 +2080,6 @@ export async function convertReservation(id, { deliveryFee, barcode, deliveryCom
     province,
     address,
     deliveryFee,
-    barcode,
     deliveryCompany,
     status: 'pending',
     fromReservation: id,
@@ -2320,6 +2319,74 @@ export async function backfillCustomers() {
 export async function verifyCustomersTable() {
   try { await db.customers.count(); return { ok: true }; }
   catch (e) { return { ok: false, error: String(e?.message || e) }; }
+}
+
+/* ---------------- نسخة أمان قبل ترقية المخطط ----------------
+   الترقية هنا لا تعيد كتابة صفوف، لكن «آمن» ليس «مضموناً». قبل أول فتح
+   لمخطط جديد نأخذ نسخة **من المخطط الحالي** — عبر IndexedDB مباشرةً لا عبر
+   Dexie: أي قراءة من Dexie تُشغّل الترقية أولاً، فتفوت الفرصة وتصير النسخة
+   من المخطط الجديد لا القديم.
+
+   SCHEMA_VERSION يجب أن يطابق آخر db.version(...) في هذا الملف. */
+export const SCHEMA_VERSION = 13;
+const DB_NAME = 'ghazala_boutique';
+
+/* إصدار المخطط المخزَّن فعلياً. 0 = تثبيت جديد (لا شيء نحفظه). */
+export async function storedDbVersion() {
+  try {
+    if (indexedDB.databases) {
+      const list = await indexedDB.databases();
+      const hit = list.find((d) => d.name === DB_NAME);
+      return hit ? (hit.version || 0) : 0;
+    }
+  } catch { /* غير مدعوم — الطريقة الثانية أدناه */ }
+
+  return new Promise((resolve) => {
+    let created = false;
+    const req = indexedDB.open(DB_NAME);
+    req.onupgradeneeded = () => { created = true; };
+    req.onsuccess = () => {
+      const idb = req.result;
+      const v = idb.version;
+      const empty = idb.objectStoreNames.length === 0;
+      idb.close();
+      /* فتح قاعدة غير موجودة أنشأها فارغة — ننظّفها ونعدّها تثبيتاً جديداً */
+      if (created && empty) {
+        indexedDB.deleteDatabase(DB_NAME);
+        resolve(0);
+        return;
+      }
+      resolve(v);
+    };
+    req.onerror = () => resolve(null);
+    req.onblocked = () => resolve(null);
+  });
+}
+
+/* تفريغ خام لكل الجداول بالمخطط الحالي — بصيغة نسخ غزالة نفسها،
+   فتُستعاد بنفس شاشة الاستعادة. */
+export function rawDump() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME);
+    req.onerror = () => reject(req.error || new Error('تعذر فتح قاعدة البيانات'));
+    req.onblocked = () => reject(new Error('القاعدة مفتوحة في نافذة أخرى'));
+    req.onsuccess = () => {
+      const idb = req.result;
+      const version = idb.version;
+      const names = [...idb.objectStoreNames];
+      if (!names.length) { idb.close(); resolve({ version, data: {} }); return; }
+      const data = {};
+      let left = names.length;
+      const done = () => { if (--left === 0) { idb.close(); resolve({ version, data }); } };
+      for (const n of names) {
+        try {
+          const g = idb.transaction(n, 'readonly').objectStore(n).getAll();
+          g.onsuccess = () => { data[n] = g.result || []; done(); };
+          g.onerror = () => done();
+        } catch { done(); }
+      }
+    };
+  });
 }
 
 /* ---------------- Backup / Restore ---------------- */

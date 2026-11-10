@@ -4,6 +4,7 @@
   import { fade } from 'svelte/transition';
   import { askConfirm, navGuard, toast } from './lib/store.js';
   import { screenIn } from './lib/motion.js';
+  import { downloadFile } from './lib/utils.js';
   import Lock from './lib/components/Lock.svelte';
   import BottomNav from './lib/components/BottomNav.svelte';
   import BackBtn from './lib/components/BackBtn.svelte';
@@ -32,7 +33,7 @@
   import MyStore from './lib/screens/MyStore.svelte';
   import Trash from './lib/screens/Trash.svelte';
   import PhotoTrash from './lib/screens/PhotoTrash.svelte';
-  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable, sweepAllDuplicateVariants, backfillReceipts, backfillCustomers, verifyCustomersTable, db } from './lib/db.js';
+  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable, sweepAllDuplicateVariants, backfillReceipts, backfillCustomers, verifyCustomersTable, db, SCHEMA_VERSION, storedDbVersion, rawDump } from './lib/db.js';
 
   let locked = $state(true);
   let screen = $state('home');
@@ -106,12 +107,47 @@
   let needRefresh = $state(false);
   let wbUpdate = null;
 
+  /* نسخة أمان قبل أي ترقية مخطط — مرة واحدة لكل إصدار مخطط.
+     تُقرأ القاعدة خاماً قبل أن يفتحها Dexie، وإلا صارت النسخة من المخطط
+     الجديد بعد أن يكون القديم قد رُقّي فعلاً. لا نمنع الإقلاع أبداً بسببها. */
+  async function preUpgradeBackupGate() {
+    const KEY = `ghazala.preUpgradeBackup.v${SCHEMA_VERSION}`;
+    try {
+      if (localStorage.getItem(KEY)) return;
+      const v = await storedDbVersion();
+      /* تثبيت جديد (0) أو مخطط محدَّث سلفاً: لا شيء نحفظه */
+      if (!v || v >= SCHEMA_VERSION) { localStorage.setItem(KEY, 'not-needed'); return; }
+      const ok = await askConfirm({
+        title: 'نسخة أمان قبل التحديث',
+        body: `هذا التحديث يرقّي قاعدة البيانات من إصدار ${v} إلى ${SCHEMA_VERSION}. بياناتك لا تُحذف، لكن نأخذ نسخة احتياطية أولاً — ملف واحد ينزل لمجلد التنزيلات.`,
+        okLabel: 'خذي نسخة'
+      });
+      if (ok) {
+        const dump = await rawDump();
+        const payload = {
+          app: 'ghazala-boutique', version: dump.version,
+          exportedAt: new Date().toISOString(), ...dump.data
+        };
+        downloadFile(
+          `ghazala-pre-upgrade-v${dump.version}-${new Date().toISOString().slice(0, 10)}.json`,
+          JSON.stringify(payload, null, 2)
+        );
+        toast('نزلت النسخة الاحتياطية — احفظيها، والتطبيق يُكمل الآن', 'success', 5000);
+      }
+      localStorage.setItem(KEY, ok ? 'done' : 'declined');
+    } catch (e) {
+      console.error('[pre-upgrade]', e);
+    }
+  }
+
   onMount(async () => {
     /* ترقية قاعدة البيانات محجوبة؟ تبويب آخر ما زال مفتوحاً على المخطط القديم.
        بلا هذا المستمع يبدو التطبيق «معلّقاً» بلا سبب مفهوم. */
     db.on('blocked', () => {
       toast('التطبيق مفتوح في نافذة أخرى — أغلقيها وأعيدي فتح هذا التبويب', 'error', 9000);
     });
+    /* قبل أي عملية على القاعدة: نسخة أمان إن كان المخطط قديماً */
+    await preUpgradeBackupGate();
     sweepMonthClosing();
     backfillModelIds();
     backfillTypeTree();

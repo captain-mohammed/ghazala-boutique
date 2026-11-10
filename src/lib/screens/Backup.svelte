@@ -104,8 +104,7 @@
         'رقم العملية': s.id, 'التاريخ': s.date, 'الزبون': s.customerName || '',
         'الهاتف': s.customerPhone || '', 'الحالة': s.status,
         'الموديل': it.name, 'الكود': it.sku, 'الكمية': it.qty,
-        'السعر': it.price, 'الإجمالي': s.total, 'أجور التوصيل': s.deliveryFee,
-        'باركود الشحنة': s.barcode || ''
+        'السعر': it.price, 'الإجمالي': s.total, 'أجور التوصيل': s.deliveryFee
       }))
     );
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sRows.length ? sRows : [{ 'رقم العملية': '' }]), 'المبيعات');

@@ -593,10 +593,8 @@
   let cprovince = $state('');
   let caddress = $state('');
   let fee = $state(5000);
-  let barcode = $state('');
   let company = $state('');
   let companies = $state([]);
-  let scanOpen = $state(false);
   let itemScanOpen = $state(false);
   let saving = $state(false);
   let tried = $state(false);
@@ -727,7 +725,6 @@
         province: cprovince,
         address: caddress,
         deliveryFee: iqd(fee),
-        barcode,
         deliveryCompany: company,
         status: 'pending'
       });
@@ -736,7 +733,7 @@
       cart = [];
       /* الزبونة تُسجَّل في الدفتر فوراً — تبقى معروفة حتى لو حُذف هذا البيع */
       upsertCustomer({ name: buyerName, phone: cphone, province: cprovince, address: caddress }).catch(() => {});
-      cname = ''; cphone = ''; cprovince = ''; caddress = ''; barcode = ''; company = ''; tried = false;
+      cname = ''; cphone = ''; cprovince = ''; caddress = ''; company = ''; tried = false;
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.8, '🛍️');
       toastOk(`تم البيع #${sale.id} — ${fmtIQD(sale.total)}`);
@@ -924,14 +921,6 @@
     const p = products.find((x) => x.barcode === code || x.sku === code);
     if (p) addToCart(p);
     else toastErr('لا يوجد موديل بهذا الكود — أضيفي الباركود من تفاصيل الموديل');
-  }}
-/>
-
-<!-- Shipment scanner (captures the delivery company's barcode) -->
-<Scanner open={scanOpen} title="باركود شركة التوصيل" onclose={() => (scanOpen = false)}
-  onscan={(code) => {
-    scanOpen = false;
-    barcode = code;
   }}
 />
 
@@ -1155,23 +1144,6 @@
         {/if}
       </div>
     </div>
-    <div class="row" style="gap:10px">
-      <div class="field" style="flex:1">
-        <label>باركود شركة التوصيل</label>
-        <div class="row" style="gap:6px">
-          <button class="btn" style="flex:1; min-width:0; justify-content:flex-start" onclick={() => { buzz(8); scanOpen = true; }}>
-            <Icon name="scan" size={18} color="var(--burgundy)" />
-            <span class="small" style="overflow:hidden; text-overflow:ellipsis; white-space:nowrap">{barcode || 'مسح الباركود…'}</span>
-          </button>
-          {#if barcode}
-            <button class="iconbtn" style="width:46px; height:46px; flex:none" aria-label="حذف الباركود" onclick={() => { barcode = ''; buzz(8); }}>
-              <Icon name="x" size={17} />
-            </button>
-          {/if}
-        </div>
-      </div>
-    </div>
-
     <!-- مراجعة الطلب قبل التأكيد: القطع، ثم الحساب -->
     <Glass class="review" radius="var(--r-md)">
       <div class="rv-head">

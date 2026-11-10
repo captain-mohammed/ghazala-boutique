@@ -185,7 +185,6 @@
       const area = [s.province, s.address].filter(Boolean).join(' — ');
       if (area) lines.push(`   📍 ${area}`);
       lines.push(`   💰 المبلغ: ${fmtIQD(s.total)}`); /* الشركة تحصن الإجمالي من الزبونة */
-      if (s.barcode) lines.push(`   #️⃣ ${s.barcode}`);
       lines.push('');
     }
     lines.push(`الإجمالي المطلوب: ${fmtIQD(group.amount)}`);
@@ -468,7 +467,7 @@
           <Glass class="row" style="padding:10px 12px; border-radius:var(--r-md); justify-content:space-between">
             <div>
               <div class="bold small">#{s.id} {s.customerName || 'زبون'}</div>
-              <div class="muted tiny">{s.status === 'delivered' ? 'تم التسليم' : 'قيد التوصيل'}{s.barcode ? ' - ' + s.barcode : ''}</div>
+              <div class="muted tiny">{s.status === 'delivered' ? 'تم التسليم' : 'قيد التوصيل'}</div>
             </div>
             <div class="money small">{fmtIQD(s.subtotal)}</div>
           </Glass>

@@ -262,7 +262,6 @@
           <!-- الذيل: مرجع الشحنة، ثم الإجمالي وزر الواتساب -->
           <span class="s-foot">
             <span class="s-tags">
-              {#if s.barcode}<span class="s-tag">#{s.barcode}</span>{/if}
               {#if s.deliveryCompany}<span class="s-tag">{s.deliveryCompany}</span>{/if}
               {#if s.province}<span class="s-tag">{s.province}</span>{/if}
             </span>
@@ -322,9 +321,6 @@
         {/if}
         {#if detail.province}
           <div class="row small muted"><Icon name="flag" size={14} /> {detail.province}{detail.address ? ' — ' + detail.address : ''}</div>
-        {/if}
-        {#if detail.barcode}
-          <div style="margin-top:6px"><span class="bc-chip"><Icon name="scan" size={13} /> {detail.barcode}</span></div>
         {/if}
       </Glass>
 
@@ -537,20 +533,6 @@
   .st-delivered { background: rgba(78, 138, 95, 0.14); color: var(--good); }
   .st-returned { background: rgba(122, 46, 58, 0.12); color: var(--burgundy-deep); }
   :global(.head-card) { padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
-  .bc-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-weight: 800;
-    font-size: 12.5px;
-    letter-spacing: 1.5px;
-    color: var(--burgundy-deep);
-    background: rgba(255, 255, 255, 0.55);
-    border: 1px dashed var(--line-2);
-    padding: 6px 12px;
-    border-radius: 10px;
-    direction: ltr;
-  }
   .ts-edit {
     display: inline-flex; align-items: center; gap: 3px;
     font-family: inherit; font-size: 10px; font-weight: 800;

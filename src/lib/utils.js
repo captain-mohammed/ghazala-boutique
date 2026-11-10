@@ -273,8 +273,7 @@ export function shelfAgeDays(p, now = Date.now()) {
 /* ---------- WhatsApp delivery message ----------
    The template is stored as a setting ("waTemplate") and editable in
    الإعدادات ← رسالة الواتساب. Variables: {customer} {order} {items}
-   {subtotal} {delivery} {total} {shop}. The shipment barcode stays in-app
-   on purpose — the customer never sees the parcel number in the message. */
+   {subtotal} {delivery} {total} {shop}. */
 
 export const WA_VARS = [
   { token: '{customer}', label: 'اسم الزبون' },
