@@ -2169,9 +2169,13 @@ export async function stocktakeApply(corrections) {
 const cbDigits = (v) => String(v || '').replace(/\D/g, '');
 const cbRicher = (a, b) => (String(b || '').trim().length > String(a || '').trim().length ? b : a);
 
-export async function loadCustomerBook() {
+export async function loadCustomerBook({ withSources = false } = {}) {
+  /* جدول customers قد يكون غائباً لو فشلت ترقية v13 (تبويب آخر يمنع الترقية،
+     أو قاعدة قديمة عالقة). الدفتر يجب أن يظل يعمل من المبيعات وحدها بدل أن
+     يُفرغ دفتر الإتمام بصمت. */
   const [sales, reservations, occasions, saved] = await Promise.all([
-    db.sales.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.customers.toArray()
+    db.sales.toArray(), db.reservations.toArray(), db.occasions.toArray(),
+    db.customers.toArray().catch(() => [])
   ]);
 
   const map = new Map();
@@ -2183,7 +2187,11 @@ export async function loadCustomerBook() {
     const key = digits ? `p:${digits}` : `n:${n.toLowerCase()}`;
     let c = map.get(key);
     if (!c) {
-      c = { key, name: '', phone: ph, province: '', address: '', orders: 0, spent: 0, last: null, sources: new Set() };
+      c = {
+        key, name: '', phone: ph, province: '', address: '',
+        orders: 0, spent: 0, last: null, sources: new Set(),
+        _s: [], _r: [], _o: []
+      };
       map.set(key, c);
     }
     c.name = cbRicher(c.name, n);
@@ -2195,6 +2203,7 @@ export async function loadCustomerBook() {
     const c = touch(s.customerName, s.customerPhone);
     if (!c) continue;
     c.sources.add('sale');
+    c._s.push(s);
     /* الرواجع لا تُحتسب عملية ولا إيراداً — لكنها لا تمحو الزبونة */
     if (s.status !== 'returned') {
       c.orders += 1;
@@ -2208,7 +2217,9 @@ export async function loadCustomerBook() {
   for (const r of reservations) {
     const c = touch(r.customerName, r.customerPhone);
     if (!c) continue;
+    if (r.status === 'cancelled') continue; /* لا تُدرج في سجل الزبونة */
     c.sources.add('reservation');
+    c._r.push(r);
     c.province = c.province || r.province || '';
     c.address = cbRicher(c.address, r.address);
   }
@@ -2216,6 +2227,7 @@ export async function loadCustomerBook() {
     const c = touch(o.customerName, o.customerPhone);
     if (!c) continue;
     c.sources.add('occasion');
+    c._o.push(o);
     c.province = c.province || o.province || '';
     c.address = cbRicher(c.address, o.address);
   }
@@ -2228,10 +2240,25 @@ export async function loadCustomerBook() {
   }
 
   const out = [...map.values()].map((c) => ({
-    ...c,
+    key: c.key,
     name: c.name || 'زبونة',
+    phone: c.phone,
+    province: c.province,
+    address: c.address,
+    orders: c.orders,
+    spent: c.spent,
+    last: c.last,
     sources: [...c.sources],
-    vip: c.spent >= 150000 || c.orders >= 3
+    vip: c.spent >= 150000 || c.orders >= 3,
+    /* سجلّات المصدر تُمرَّر فقط عند الطلب — شاشة الزبونات تحتاجها للتفاصيل،
+       وشاشة البيع لا تحتاج تحميل مئات الصفوف بلا سبب. */
+    ...(withSources
+      ? {
+          sales: [...c._s].sort((a, b) => new Date(b.date) - new Date(a.date)),
+          reservations: c._r,
+          occasions: c._o
+        }
+      : {})
   }));
 
   return out.sort((a, b) => {
@@ -2260,6 +2287,39 @@ export async function upsertCustomer({ name = '', phone = '', province = '', add
     return hit.id;
   }
   return db.customers.add({ name: nm, phone: ph, province, address, createdAt: new Date().toISOString() });
+}
+
+/* ترحيل تلقائي لزبونات ما قبل v13: كل من ظهر في مبيعات أو حجوزات أو مناسبات
+   يصبح صفاً في السجلّ — بلا إدخال يدوي. آمن للتكرار: لا يعمل إن كان الجدول
+   غير فارغ، ولا يدهس أي تعديل يدوي. */
+export async function backfillCustomers() {
+  let existing = 0;
+  try { existing = await db.customers.count(); }
+  catch { return 0; } /* الجدول غير موجود — لا شيء نفعله، والدفتر يعمل مشتقاً */
+  if (existing > 0) return 0;
+
+  const book = await loadCustomerBook();
+  const rows = book
+    .filter((c) => c.phone || (c.name && c.name !== 'زبونة'))
+    .map((c) => ({
+      name: c.name === 'زبونة' ? '' : c.name,
+      phone: c.phone || '',
+      province: c.province || '',
+      address: c.address || '',
+      origin: 'backfill',
+      createdAt: new Date().toISOString()
+    }));
+  if (!rows.length) return 0;
+  try { await db.customers.bulkAdd(rows); }
+  catch { return 0; }
+  return rows.length;
+}
+
+/* فحص ترقية v13 عند الإقلاع — فشل الترقية يجب أن يُقال في التطبيق نفسه،
+   لا في وحدة تحكم لا تفتحها صاحبة البوتيك أبداً. */
+export async function verifyCustomersTable() {
+  try { await db.customers.count(); return { ok: true }; }
+  catch (e) { return { ok: false, error: String(e?.message || e) }; }
 }
 
 /* ---------------- Backup / Restore ---------------- */

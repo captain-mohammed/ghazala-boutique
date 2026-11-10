@@ -7,9 +7,9 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
-  import { db, upcomingOccasions, addReferral, addTestimonial, referralStats } from '../db.js';
+  import { db, upcomingOccasions, addReferral, addTestimonial, referralStats, loadCustomerBook } from '../db.js';
   import { fmtIQD, fmtNum, fmtDate, salePieces, saleItemLabel, daysAgoStart, buzz, sendWhatsApp, buildSalesMessage } from '../utils.js';
-  import { toastOk } from '../store.js';
+  import { toastOk, toastErr } from '../store.js';
 
   let { goto } = $props();
 
@@ -21,10 +21,13 @@
   onMount(load);
   async function load() {
     loading = true;
-    const [sales, reservations, occasions, products] = await Promise.all([
-      db.sales.toArray(),
-      db.reservations.toArray(),
-      db.occasions.toArray(),
+    /* مصدر واحد للحقيقة: نفس الدفتر الذي يقرأه الإتمام. الهوية والإجماليات
+       (عدد العمليات، المصروف، آخر زيارة، VIP) تُحسب في db.js مرة واحدة —
+       كان لهذه الشاشة حسابها الخاص، فأي تغيير في أحدهما يُناقض الآخر.
+       هنا تُحسب فقط الأشياء الخاصة بهذه الشاشة: الذوق، المناسبة القريبة،
+       الحجوزات المفتوحة، والختم. */
+    const [book, products] = await Promise.all([
+      loadCustomerBook({ withSources: true }),
       db.products.toArray()
     ]);
     /* فهرس بالكود: نوع كل قطعة مباعة — منه نعرف «شو تحب تشتري» */
@@ -34,28 +37,16 @@
       const best = [...m.entries()].sort((a, b) => b[1] - a[1])[0];
       return best ? best[0] : '';
     };
-    const map = new Map();
-    const key = (n, p) => `${(n || '').trim()}|${(p || '').trim()}`;
-    const touch = (n, p) => {
-      if (!(n || '').trim() && !(p || '').trim()) return null;
-      const k = key(n, p);
-      if (!map.has(k)) map.set(k, { name: (n || '').trim() || 'زبونة', phone: (p || '').trim(), sales: [], reservations: [], occasions: [] });
-      return map.get(k);
-    };
-    for (const s of sales) { const c = touch(s.customerName, s.customerPhone); if (c) c.sales.push(s); }
-    for (const r of reservations) { const c = touch(r.customerName, r.customerPhone); if (c && r.status !== 'cancelled') c.reservations.push(r); }
-    for (const o of occasions) { const c = touch(o.customerName, o.customerPhone); if (c) c.occasions.push(o); }
 
     const weekAgo = daysAgoStart(6);
     refStats = await referralStats();
-    customers = [...map.values()].map((c) => {
-      const sales = [...c.sales].sort((a, b) => new Date(b.date) - new Date(a.date));
+    customers = book.map((c) => {
+      const sales = c.sales || [];
       const active = sales.filter((s) => s.status !== 'returned');
-      const spent = active.reduce((a, s) => a + (s.subtotal || 0), 0);
       const pieces = active.reduce((a, s) => a + salePieces(s), 0);
-      const last = sales[0]?.date || null;
-      const openRes = c.reservations.filter((r) => r.status === 'active' && new Date(r.expiresAt) > new Date());
-      const nextOcc = nextOccasionOf(c.occasions);
+      const last = c.last ? c.last.toISOString() : null;
+      const openRes = (c.reservations || []).filter((r) => r.status === 'active' && new Date(r.expiresAt) > new Date());
+      const nextOcc = nextOccasionOf(c.occasions || []);
       const daysSince = last ? Math.floor((Date.now() - new Date(last).getTime()) / 86400000) : null;
       /* ذوقها: من القطع التي اشترتها فعلاً — النوع واللون والمقاس الأكثر تكراراً */
       const types = new Map(), colors = new Map(), sizes = new Map();
@@ -66,18 +57,27 @@
         if (it.size) sizes.set(String(it.size), (sizes.get(String(it.size)) || 0) + (Number(it.qty) || 0));
       }
       return {
-        ...c, sales, spent, pieces, last, openRes,
+        key: c.key,
+        name: c.name,
+        phone: c.phone,
+        sales,
+        reservations: c.reservations || [],
+        occasions: c.occasions || [],
+        spent: c.spent,
+        pieces,
+        last,
+        openRes,
         topType: tallyTop(types), topColor: tallyTop(colors), topSize: tallyTop(sizes),
-        avgOrder: active.length ? Math.round(spent / active.length) : 0,
+        avgOrder: c.orders ? Math.round(c.spent / c.orders) : 0,
         lastItems: (sales[0]?.items || []),
-        orders: active.length,
-        vip: spent >= 150000 || active.length >= 3,
+        orders: c.orders,
+        vip: c.vip,
         recent: last ? new Date(last) >= weekAgo : false,
         nextOcc,
         daysSince,
         /* ختم الغزالة: كل 5 عمليات مكتملة = بطاقة مكتملة — مشتق بلا سكيما */
-        stampFill: active.length > 0 && active.length % 5 === 0 ? 5 : active.length % 5,
-        stampCards: Math.floor(active.length / 5)
+        stampFill: c.orders > 0 && c.orders % 5 === 0 ? 5 : c.orders % 5,
+        stampCards: Math.floor(c.orders / 5)
       };
     }).sort((a, b) => b.spent - a.spent);
     loading = false;

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { get } from 'svelte/store';
   import { fade } from 'svelte/transition';
-  import { askConfirm, navGuard } from './lib/store.js';
+  import { askConfirm, navGuard, toast } from './lib/store.js';
   import { screenIn } from './lib/motion.js';
   import Lock from './lib/components/Lock.svelte';
   import BottomNav from './lib/components/BottomNav.svelte';
@@ -32,7 +32,7 @@
   import MyStore from './lib/screens/MyStore.svelte';
   import Trash from './lib/screens/Trash.svelte';
   import PhotoTrash from './lib/screens/PhotoTrash.svelte';
-  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable, sweepAllDuplicateVariants, backfillReceipts } from './lib/db.js';
+  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable, sweepAllDuplicateVariants, backfillReceipts, backfillCustomers, verifyCustomersTable, db } from './lib/db.js';
 
   let locked = $state(true);
   let screen = $state('home');
@@ -107,6 +107,11 @@
   let wbUpdate = null;
 
   onMount(async () => {
+    /* ترقية قاعدة البيانات محجوبة؟ تبويب آخر ما زال مفتوحاً على المخطط القديم.
+       بلا هذا المستمع يبدو التطبيق «معلّقاً» بلا سبب مفهوم. */
+    db.on('blocked', () => {
+      toast('التطبيق مفتوح في نافذة أخرى — أغلقيها وأعيدي فتح هذا التبويب', 'error', 9000);
+    });
     sweepMonthClosing();
     backfillModelIds();
     backfillTypeTree();
@@ -120,6 +125,16 @@
     sweepAllDuplicateVariants();
     /* الاستلامات: اربطي الدفعات القديمة باستلاماتها حتى تظهر في سجل الوارد */
     backfillReceipts();
+    /* دفتر الزبونات (v13): ترقية الجدول تُفحص وتُبلَّغ في التطبيق نفسه —
+       صاحبة البوتيك لا تفتح وحدة التحكم، فخطأ صامت هنا يعني قائمة فارغة
+       بلا سبب مفهوم. ثم تُرحَّل الزبونات القديمة تلقائياً بلا إدخال يدوي. */
+    verifyCustomersTable().then((r) => {
+      if (!r.ok) {
+        console.error('[customers] ترقية جدول الزبونات فشلت:', r.error);
+        toast('تعذر تجهيز دفتر الزبونات — أغلقي التطبيق من الخلفية وأعيدي فتحه', 'error', 8000);
+      }
+    });
+    backfillCustomers().catch(() => {});
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredInstall = e;
