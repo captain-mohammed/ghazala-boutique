@@ -12,6 +12,7 @@
   import CustomerPicker from '../components/CustomerPicker.svelte';
   import { fly } from 'svelte/transition';
   import { cubicOut } from 'svelte/easing';
+  import { tick } from 'svelte';
   import { longpress, flyToCart, popBadge } from '../motion.js';
   import VariantBits from '../components/VariantBits.svelte';
   import Pick from '../components/Pick.svelte';
@@ -651,23 +652,51 @@
     toast(`بيانات ${c.name || c.phone} جاهزة`);
   }
 
-  /* ── الانتقال بين الخطوتين ──
-     الشاحنة تعبر الخيط بنفسها (٤٦٠ms) وتتركه ذهبياً مشتعلًا خلفها، ثم تنزلق
-     اللوحة. الحركة تقول «انطلقت الشحنة» لا «تغيّرت الشاشة». */
+  /* ── الانتقال بين الخطوتين: شاحنة واحدة، رحلة واحدة ──
+     لا شاحنة تموت في الزر وأخرى تولد على الخيط — بل جسم واحد يخرج من الزر،
+     يحلّق إلى الخيط، ثم يسير عليه إلى «التوصيل» ويترك الذهب خلفه.
+     المواضع تُقاس فعلياً (getBoundingClientRect) لأن المسافة تتغيّر مع الشاشة. */
   let stepDir = $state(1);
   let advancing = $state(false);
-  const DRIVE_MS = 460;
+  let flying = $state(null);
+  let flyEl = $state(null);
+  const FLY_MS = 520;
 
-  function gotoStep2() {
-    if (!cart.length || advancing) return;
-    stepDir = 1;
-    advancing = true;
+  async function gotoStep2(e) {
+    if (!cart.length || advancing || flying) return;
+    const truckIcon = e?.currentTarget?.querySelector('.go-move');
+    const thread = document.querySelector('.st-thread');
+    const sheetEl = document.querySelector('.sheet');
+    if (!truckIcon || !thread || !sheetEl) { step = 2; return; }
+
+    const sr = sheetEl.getBoundingClientRect();
+    const a = truckIcon.getBoundingClientRect();
+    const t = thread.getBoundingClientRect();
+    const x0 = a.left + a.width / 2 - sr.left;
+    const y0 = a.top + a.height / 2 - sr.top;
+    const x1 = t.right - sr.left - 9;
+    const y1 = t.top + t.height / 2 - sr.top;
+    const x2 = t.left - sr.left + 7;
+
+    advancing = true; /* يخفي شاحنة الزر ويبدأ ملء الخيط بعد وصول الشاحنة */
+    flying = { x0, y0, dx1: x1 - x0, dy1: y1 - y0, dx2: x2 - x0 };
     buzz([12, 30, 12]);
-    setTimeout(() => {
-      step = 2;
+    await tick();
+    if (!flyEl) { flying = null; advancing = false; step = 2; return; }
+
+    const anim = flyEl.animate([
+      { transform: 'translate(0px, 0px) scale(1)', offset: 0 },
+      { transform: `translate(${(x1 - x0) * 0.5}px, ${(y1 - y0) * 0.66}px) scale(1.08)`, offset: 0.28 },
+      { transform: `translate(${x1 - x0}px, ${y1 - y0}px) scale(1)`, offset: 0.48 },
+      { transform: `translate(${x2 - x0}px, ${y1 - y0}px) scale(0.9)`, offset: 1 }
+    ], { duration: FLY_MS, easing: 'cubic-bezier(0.4, 0, 0.25, 1)', fill: 'forwards' });
+    anim.onfinish = () => {
+      flying = null;
       advancing = false;
-    }, DRIVE_MS);
+      step = 2;
+    };
   }
+
   /* الخروج لا يحجز ارتفاعاً: العنصر المغادر يصير مطلقاً، فارتفاع الورقة يأتي
      من اللوحة الجديدة وحدها. بدونه تتضاعف الورقة وتظهر مساحة فارغة كبيرة. */
   function flyOutAbs(node) {
@@ -996,6 +1025,11 @@
 
 <!-- Checkout — خطوتان: القطع ثم التوصيل والمراجعة -->
 <Sheet open={checkout} title={step === 1 ? 'إتمام البيع — القطع' : 'إتمام البيع — التوصيل'} onclose={closeCheckout}>
+  {#if flying}
+    <span class="fly-truck" bind:this={flyEl} style="left:{flying.x0 - 8}px; top:{flying.y0 - 8}px">
+      <Icon name="truck" size={15} color="var(--burgundy)" />
+    </span>
+  {/if}
   {#key step}
   <div class="step-panel">
     <div
@@ -1007,11 +1041,7 @@
   <div class="stack" style="gap:12px">
     <div class="step-track">
       <span class="st-item on"><i class="st-dot"></i>القطع</span>
-      <span class="st-thread" class:filling={advancing}>
-        {#if advancing}
-          <span class="st-truck"><Icon name="truck" size={13} color="var(--burgundy)" /></span>
-        {/if}
-      </span>
+      <span class="st-thread" class:filling={advancing}></span>
       <span class="st-item"><i class="st-dot"></i>التوصيل</span>
     </div>
     {#each cart as c (c.vsKey)}
@@ -1084,8 +1114,7 @@
       <span class="muted small">{fmtNum(cart.length)} سطر — {fmtNum(cartCount)} قطعة</span>
       <span class="money">{fmtIQD(subtotal)}</span>
     </div>
-    <button class="btn primary lg block go-btn" class:advancing onclick={gotoStep2}>
-      <span class="go-txt">متابعة للتوصيل</span>
+    <button class="btn primary lg block go-btn" class:advancing onclick={gotoStep2}>      <span class="go-txt">متابعة للتوصيل</span>
       <span class="go-move">
         {#if advancing}
           <Icon name="truck" size={17} color="#fff" />
@@ -1513,7 +1542,7 @@
   .st-thread { flex: 1; height: 1.5px; position: relative; background: linear-gradient(to left, rgba(201, 161, 90, 0.15), rgba(201, 161, 90, 0.55)); }
   .st-thread.filled { background: linear-gradient(to left, rgba(201, 161, 90, 0.55), rgba(201, 161, 90, 0.9)); }
   .st-item.done { color: var(--gold-ink); }
-  /* الشاحنة تعبر الخيط وتملؤه ذهباً خلفها — الخيط نفسه هو الطريق */
+  /* الشاحنة تصل الخيط عند ٤٨٪ من الرحلة، فيبدأ الذهب بالامتلاء عندها */
   .st-thread.filling::before {
     content: '';
     position: absolute;
@@ -1521,24 +1550,21 @@
     right: 0;
     width: 0;
     background: linear-gradient(to left, rgba(201, 161, 90, 0.95), rgba(201, 161, 90, 0.6));
-    animation: thread-fill 460ms linear forwards;
+    animation: thread-fill 270ms linear 250ms forwards;
   }
   @keyframes thread-fill {
     from { width: 0; }
     to { width: 100%; }
   }
-  .st-truck {
-    position: absolute;
-    top: 50%;
-    left: calc(100% - 13px);
-    display: inline-flex;
-    transform: translateY(-50%);
-    filter: drop-shadow(0 1px 2px rgba(181, 73, 91, 0.35));
-    animation: truck-drive 460ms cubic-bezier(0.35, 0, 0.25, 1) forwards;
-  }
-  @keyframes truck-drive {
-    0% { left: calc(100% - 13px); }
-    100% { left: -3px; }
+  /* الشاحنة الطائرة: جسم واحد من الزر إلى الخيط، خارج تدفّق الورقة */
+  .fly-truck {
+    position: fixed;
+    z-index: 6;
+    width: 16px; height: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    filter: drop-shadow(0 2px 4px rgba(181, 73, 91, 0.35));
+    pointer-events: none;
+    will-change: transform;
   }
   /* لوحة الخطوة: الارتفاع ينزلق، والمحتوى يدخل من جهة التقدّم */
   /* لوحة الخطوة: موضع نسبي كي يخرج المغادر مطلقاً بلا أن يحجز ارتفاعاً */
@@ -1554,18 +1580,13 @@
     84% { transform: rotate(180deg) translateX(-2px); }
     92% { transform: rotate(180deg) translateX(0); }
   }
-  .go-btn.advancing .go-move { animation: truck-go 460ms cubic-bezier(0.4, 0, 0.2, 1) forwards; }
-  @keyframes truck-go {
-    0% { transform: translateX(0); opacity: 1; }
-    65% { transform: translateX(-15px); opacity: 1; }
-    100% { transform: translateX(-26px); opacity: 0; }
-  }
+  /* الشاحنة غادرت الزر فعلاً — لا نترك نسخة ثانية تحتها */
+  .go-btn.advancing .go-move { opacity: 0; }
 
   @media (prefers-reduced-motion: reduce) {
     .go-chev { animation: none; }
-    .go-btn.advancing .go-move { animation: none; }
-    .st-truck { display: none; }
-    .st-thread.filling::before { animation-duration: 1ms; }
+    .fly-truck { display: none; }
+    .st-thread.filling::before { animation-duration: 1ms; animation-delay: 0ms; }
   }
   .step-back {
     align-self: flex-start;

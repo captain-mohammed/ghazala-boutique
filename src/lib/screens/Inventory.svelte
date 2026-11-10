@@ -413,7 +413,7 @@
               <!-- النفد أو الكمية: الشارة تظهر فوق القطعتين فقط — ١ أو ٢ لا تحتاج رقماً -->
               {#if g.qty === 0}
                 <span class="thumb-badge oos">نفد</span>
-              {:else if g.qty > 2}
+              {:else if g.qty > 1}
                 <span class="thumb-badge">{fmtNum(g.qty)}</span>
               {/if}
             </div>
@@ -430,7 +430,8 @@
                       <span class="cc-item" title="{cr.color} — مقاسات {sizesOf(cr).join(' · ') || '—'}">
                         <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
                         <span class="cc-sizes">
-                          {#each sizesOf(cr) as s (s)}<b class="cc-sz">{s}</b>{/each}
+                          {#each sizesOf(cr).slice(0, 2) as s (s)}<b class="cc-sz">{s}</b>{/each}
+                          {#if sizesOf(cr).length > 2}<b class="cc-sz more">+{sizesOf(cr).length - 2}</b>{/if}
                           {#if !sizesOf(cr).length}<b class="cc-sz none">—</b>{/if}
                         </span>
                       </span>
@@ -498,7 +499,18 @@
         </div>
         <div class="mv-info">
           {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="mv-type">{typeChain(g)}</div>{/if}
-          <div class="muted small">{[g.category, g.seasons.length ? g.seasons.join(' - ') : '', g.material].filter(Boolean).join(' - ')}</div>
+          <!-- كل تصنيف بسطره: كانت الثلاثة في سطر واحد فيضيع أيهم أيها -->
+          <div class="mv-meta">
+            {#if g.category}
+              <div class="mv-meta-row"><span class="mv-meta-k">التصنيف</span><span class="mv-meta-v">{g.category}</span></div>
+            {/if}
+            {#if g.seasons.length}
+              <div class="mv-meta-row"><span class="mv-meta-k">الموسم</span><span class="mv-meta-v">{g.seasons.join(' · ')}</span></div>
+            {/if}
+            {#if g.material}
+              <div class="mv-meta-row"><span class="mv-meta-k">المادة</span><span class="mv-meta-v">{g.material}</span></div>
+            {/if}
+          </div>
           <div class="mv-stats">
             <span class="money" style="color:var(--burgundy)">{fmtIQD(g.price)}</span>
             <span class="mv-qty" class:zero={g.qty === 0}>{fmtNum(g.qty)} قطعة</span>
@@ -641,7 +653,7 @@
     letter-spacing: 0.5px;
   }
   /* جسم البطاقة: ارتفاع مثبت — لا تمدد أبداً مهما كثر المحتوى */
-  .card-body { height: 122px; padding: 9px 12px 4px; display: flex; flex-direction: column; gap: 7px; flex: none; overflow: hidden; }
+  .card-body { height: 98px; padding: 9px 12px 4px; display: flex; flex-direction: column; gap: 6px; flex: none; overflow: hidden; }
   /* النوع بعرض البطاقة أسفل الصورة */
   .card-type { font-weight: 800; font-size: 13.5px; color: var(--ink); width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: none; }
   /* قطع الموديل تختلف في التفصيل — تلوين خفيف + علامة تنبيه */
@@ -652,17 +664,17 @@
   /* الدوائر ملتصقة بيسار البطاقة، ومقاسات كل لون تحتها مباشرة.
      صف المقاسات العام أُزيل: صار تكراراً، ومساحته للدوائر. */
   .card-colors {
-    /* تبدأ من حافة العنوان لا من الطرف المقابل: صف المقاسات أُزيل، فالمجموعة
-       وحدها في صف عريض كانت تطفو بعيداً بفراغ كبير */
-    margin-inline-end: auto;
+    /* يسار البطاقة: الدائرة ومقاساتها تحتها، والألوان المتعددة جنباً إلى جنب */
+    margin-inline-start: auto;
     display: flex;
     align-items: flex-start;
-    gap: 9px;
+    gap: 10px;
     min-height: 0;
     overflow: hidden;
   }
   .cc-item { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; }
-  .cc-dot { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
+  /* الدائرة أكبر قليلاً من شارة المقاس — تُقرأ كعنوان تحته أبناؤه */
+  .cc-dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
   .cc-sizes { display: flex; flex-direction: column; align-items: center; gap: 2px; }
   /* كل مقاس شارة مستقلة — تُقرأ عمودياً تحت دائرتها بلا التباس */
   .cc-sz {
@@ -676,6 +688,7 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
+  .cc-sz.more { color: var(--taupe); background: rgba(156, 123, 107, 0.14); }
   .cc-sz.none { color: var(--taupe); background: rgba(156, 123, 107, 0.1); }
   .cc-more {
     width: 18px; height: 18px; border-radius: 50%;
@@ -713,6 +726,11 @@
   .mv-thumb.oos { opacity: 0.75; }
   .mv-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .mv-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  /* التصنيف والموسم والمادة: سطر لكل واحد، من جهة اليمين */
+  .mv-meta { display: flex; flex-direction: column; gap: 1px; margin-top: 1px; }
+  .mv-meta-row { display: flex; align-items: baseline; gap: 6px; font-size: 12px; line-height: 1.5; }
+  .mv-meta-k { color: var(--taupe); font-weight: 700; flex: none; }
+  .mv-meta-v { color: var(--ink-2); font-weight: 800; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mv-stats { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
   .mv-qty { font-size: 12px; font-weight: 800; color: var(--good); }
   .mv-qty.zero { color: var(--burgundy-deep); }
