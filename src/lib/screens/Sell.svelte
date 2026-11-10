@@ -9,10 +9,11 @@
   import SpeedDial from '../components/SpeedDial.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Glass from '../components/Glass.svelte';
+  import CustomerPicker from '../components/CustomerPicker.svelte';
   import { longpress, flyToCart, popBadge } from '../motion.js';
   import VariantBits from '../components/VariantBits.svelte';
   import Pick from '../components/Pick.svelte';
-  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType, createReservation, seasonsOf, loadProducts, openLotIndex, priceOptionsFrom } from '../db.js';
+  import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType, createReservation, seasonsOf, loadProducts, openLotIndex, priceOptionsFrom, loadCustomerBook, upsertCustomer } from '../db.js';
   import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters, filtersOpen } from '../store.js';
@@ -600,27 +601,45 @@
   let saving = $state(false);
   let tried = $state(false);
 
-  /* زبونات محفوظات: تتجمع من مبيعاتها السابقة — الأحدث أولاً. لمسة على الاسم
-     وتُعبّى الحقول كلها (الاسم، الهاتف، المحافظة، العنوان) بلا إعادة كتابة */
-  const savedCustomers = $derived.by(() => {
-    const map = new Map();
-    for (const s of [...sales].sort((a, b) => new Date(b.date) - new Date(a.date))) {
-      if (s.status === 'returned') continue; /* الرواجع لا تصنع زبونة محفوظة */
-      const phone = String(s.customerPhone || '').replace(/\D/g, '');
-      if (!phone) continue;
-      const cur = map.get(phone);
-      if (cur) { cur.orders++; continue; }
-      map.set(phone, {
-        phone: String(s.customerPhone || '').trim(),
-        name: (s.customerName || '').trim(),
-        province: s.province || '',
-        address: s.address || '',
-        orders: 1
-      });
-    }
-    return [...map.values()].slice(0, 6);
-  });
+  /* زبونات محفوظات: دفتر واحد يقرأه الإتمام وشاشة الزبونات معاً (loadCustomerBook).
+     النسخة القديمة كانت تبنيه من المبيعات فقط، بسقف 6 زبونات، بلا هاتف —
+     فالسابعة غير موجودة، واسمان متشابهان لا يُميَّزان. */
+  let customerBook = $state([]);
+  let pickerOpen = $state(false);
+
+  async function refreshCustomers() {
+    try { customerBook = await loadCustomerBook(); }
+    catch (e) { console.error(e); }
+  }
+
+  /* الاقتراحات السريعة: أعلى 3 من الترتيب الذكي (VIP ثم الأحدث) */
+  const quickCustomers = $derived(customerBook.slice(0, 3));
+
   const phoneDigits = $derived(cphone.replace(/\D/g, ''));
+
+  /* «زبونة معروفة» أثناء الكتابة: الرقم هو الهوية، والاسم بديل عند غيابه.
+     الشرائح القديمة لم تُخبرك بشيء إن لم تكن الزبونة من الستة المعروضة. */
+  const knownCustomer = $derived.by(() => {
+    if (phoneDigits.length >= 7) {
+      const hit = customerBook.find((c) => c.phone.replace(/\D/g, '') === phoneDigits);
+      if (hit) return hit;
+    }
+    const n = cname.trim().toLowerCase();
+    if (n.length >= 2) return customerBook.find((c) => c.name.trim().toLowerCase() === n) || null;
+    return null;
+  });
+
+  function openPicker() {
+    refreshCustomers();
+    pickerOpen = true;
+    buzz(6);
+  }
+
+  async function saveNewCustomer({ name, phone }) {
+    await upsertCustomer({ name, phone });
+    await refreshCustomers();
+    toastOk(`حُفظت ${name || phone} في الزبونات`);
+  }
 
   function pickCustomer(c) {
     cname = c.name;
@@ -653,6 +672,8 @@
     if (!cart.length) return;
     fee = await getSetting('deliveryFee', 5000);
     companies = await getSetting('deliveryCompanies', []);
+    /* الدفتر يُقرأ عند الفتح — لا نسخة قديمة من آخر تحميل للشاشة */
+    refreshCustomers();
     /* أول شركة جاهزة مُختارة سلفاً — لا «بدون» في الإتمام */
     if (!company && companies.length) company = companies[0];
     step = 1;
@@ -713,6 +734,8 @@
       checkout = false;
       step = 1;
       cart = [];
+      /* الزبونة تُسجَّل في الدفتر فوراً — تبقى معروفة حتى لو حُذف هذا البيع */
+      upsertCustomer({ name: buyerName, phone: cphone, province: cprovince, address: caddress }).catch(() => {});
       cname = ''; cphone = ''; cprovince = ''; caddress = ''; barcode = ''; company = ''; tried = false;
       buzz([30, 60, 30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.8, '🛍️');
@@ -1037,19 +1060,40 @@
       <Icon name="undo" size={13} /> رجوع للقطع
     </button>
 
-    {#if savedCustomers.length}
-      <div class="field">
-        <label>زبونات محفوظات <span class="muted tiny">(لمسة وتتعبى)</span></label>
-        <div class="row wrap" style="gap:6px">
-          {#each savedCustomers as c (c.phone)}
-            <button type="button" class="chip" class:on={phoneDigits === c.phone.replace(/\D/g, '')} onclick={() => pickCustomer(c)}>
-              {c.name || c.phone}
-              <b class="ch-ord">{fmtNum(c.orders)}</b>
+    <!-- زبونات محفوظات: زر واحد يفتح المنتقي الطافي (بحث + القائمة كاملة).
+         الصفّ السابق كان شرائح بسقف 6 وبلا هاتف — لا يميّز اسمين متشابهين. -->
+    <div class="cp-trigger">
+      <button type="button" class="cpt-head" onclick={openPicker}>
+        <span class="cpt-ic"><Icon name="user" size={15} color="var(--burgundy)" /></span>
+        <span class="cpt-txt">
+          <b>زبونات محفوظات</b>
+          <i>
+            {#if customerBook.length}
+              {fmtNum(customerBook.length)} زبونة — لمسة وتتعبى كل الحقول
+            {:else}
+              ابحثي بالاسم أو الرقم، أو أضيفي زبونة جديدة
+            {/if}
+          </i>
+        </span>
+        <span class="cpt-all">الكل <Icon name="back" size={12} /></span>
+      </button>
+      {#if quickCustomers.length}
+        <div class="cpt-quick">
+          {#each quickCustomers as c (c.key)}
+            <button
+              type="button"
+              class="cpt-c"
+              class:on={phoneDigits.length > 0 && c.phone.replace(/\D/g, '') === phoneDigits}
+              onclick={() => pickCustomer(c)}
+            >
+              <span class="cpt-av">{c.name.trim().charAt(0)}</span>
+              <span class="cpt-nm">{c.name}</span>
+              <span class="cpt-od">{c.orders ? fmtNum(c.orders) : '—'}</span>
             </button>
           {/each}
         </div>
-      </div>
-    {/if}
+      {/if}
+    </div>
 
     <div class="row" style="gap:10px">
       <div class="field" style="flex:1" class:co-bad={tried && !nameValid}>
@@ -1063,6 +1107,17 @@
         {#if tried && !phoneValid}<span class="err">رقم موبايل صحيح مطلوب (10 أرقام على الأقل)</span>{/if}
       </div>
     </div>
+
+    {#if knownCustomer}
+      <div class="cp-known">
+        <Icon name="check" size={12} color="var(--good)" />
+        <span>
+          زبونة معروفة — <b>{knownCustomer.name}</b>
+          {#if knownCustomer.orders}· {fmtNum(knownCustomer.orders)} عملية سابقة{/if}
+          {#if knownCustomer.province}· {knownCustomer.province}{/if}
+        </span>
+      </div>
+    {/if}
 
     <div class="row" style="gap:10px">
       <div class="field" style="flex:1" class:co-bad={tried && !provinceValid}>
@@ -1153,6 +1208,17 @@
   </div>
   {/if}
 </Sheet>
+
+<!-- خارج الورقة عمداً: ورقة الإتمام عليها transform، فأي عنصر fixed بداخلها
+     يتموضع نسبةً إليها لا للشاشة — والمنتقي يجب أن يطفو فوقها. -->
+<CustomerPicker
+  open={pickerOpen}
+  customers={customerBook}
+  selectedPhone={cphone}
+  onpick={pickCustomer}
+  onclose={() => (pickerOpen = false)}
+  onsave={saveNewCustomer}
+/>
 
 <style>
   :global(.search) {
@@ -1421,13 +1487,109 @@
     font-family: inherit; font-size: 12px; font-weight: 800;
     color: var(--burgundy); padding: 2px 4px;
   }
-  /* عدّاد الطلبات داخل رقاقة الزبونة المحفوظة */
-  .ch-ord {
-    font-size: 9.5px; font-weight: 800; color: var(--burgundy);
-    background: rgba(181, 73, 91, 0.12);
-    border-radius: 999px; padding: 1px 6px; margin-inline-start: 5px;
+  /* ---------- زبونات محفوظات (زر + اقتراحات سريعة) ---------- */
+  .cp-trigger {
+    border-radius: var(--r-md);
+    border: 1px solid rgba(201, 161, 90, 0.34);
+    background: linear-gradient(158deg, rgba(255, 255, 255, 0.8), rgba(201, 161, 90, 0.09));
+    overflow: hidden;
+  }
+  .cpt-head {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: none;
+    background: none;
+    text-align: start;
+    cursor: pointer;
+    font-family: inherit;
+    color: var(--ink);
+  }
+  .cpt-head:active { background: rgba(181, 73, 91, 0.05); }
+  .cpt-ic {
+    flex: none;
+    width: 32px; height: 32px;
+    border-radius: 11px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(181, 73, 91, 0.1);
+    border: 1px solid rgba(181, 73, 91, 0.15);
+  }
+  .cpt-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .cpt-txt b { font-size: 13px; font-weight: 900; color: var(--burgundy-deep); }
+  .cpt-txt i {
+    font-size: 10.5px; font-weight: 600; font-style: normal; color: var(--taupe);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cpt-all {
+    flex: none;
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 11px; font-weight: 800; color: var(--burgundy);
+  }
+  /* السهم يشير لليسار في RTL = «تقدّم» */
+  .cpt-all :global(svg) { transform: rotate(90deg); }
+  .cpt-quick {
+    display: flex;
+    gap: 6px;
+    padding: 0 10px 10px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .cpt-quick::-webkit-scrollbar { display: none; }
+  .cpt-c {
+    flex: 1 0 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 9px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.72);
+    cursor: pointer;
+    font-family: inherit;
+    max-width: 42%;
+  }
+  .cpt-c.on {
+    border-color: rgba(181, 73, 91, 0.45);
+    background: rgba(181, 73, 91, 0.09);
+  }
+  .cpt-av {
+    flex: none;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
+    color: #fff; font-size: 10.5px; font-weight: 900;
+  }
+  .cpt-nm {
+    flex: 1; min-width: 0;
+    font-size: 11.5px; font-weight: 800; color: var(--ink);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .cpt-od {
+    flex: none;
+    font-size: 9.5px; font-weight: 800; color: var(--taupe);
+    background: rgba(156, 123, 107, 0.14);
+    border-radius: 999px;
+    padding: 1px 5px;
     font-variant-numeric: tabular-nums;
   }
+  /* «زبونة معروفة» أثناء الكتابة — تأكيد فوري أن هذا الرقم مسجّل */
+  .cp-known {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 11px;
+    border-radius: 11px;
+    background: rgba(78, 138, 95, 0.09);
+    border: 1px solid rgba(78, 138, 95, 0.24);
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--ink-2);
+  }
+  .cp-known b { color: var(--burgundy-deep); font-weight: 900; }
   /* إطار الحقل الناقص — العين تُمرَّر إليه عند التأكيد الفاشل */
   .co-bad { outline: 2px solid rgba(181, 73, 91, 0.45); outline-offset: 4px; border-radius: 12px; }
   .comiss {

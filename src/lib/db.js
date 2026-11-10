@@ -168,6 +168,14 @@ db.version(12).stores({
   photoTrash: '++id, modelId, deletedAt'
 });
 
+/* v13: + customers (زبونات محفوظات بلا طلب بعد).
+   حتى الآن كانت «الزبونة» تُستنتج من مبيعاتها فقط — فمن حجز ولم يشترِ،
+   أو من حفظتِ اسمها ورقمها قبل أول طلب، لم تكن موجودة في قائمة الإتمام.
+   الجدول سجلّ اختياري: الدفتر يقرأه مع المبيعات والحجوزات والمناسبات. */
+db.version(13).stores({
+  customers: '++id, phone, name'
+});
+
 /* مسودات الشاشات: تُحفظ تلقائياً في IndexedDB (لا سقف localStorage) وتُستعاد
    عند العودة. المفتاح يميّز نوع المسودة — حالياً «receive» لفاتورة الوارد. */
 export async function saveDraft(key, data) {
@@ -2145,19 +2153,129 @@ export async function stocktakeApply(corrections) {
   await syncModelsFor(corrections.map((c) => c.sku));
 }
 
+/* ---------------- دفتر الزبونات (customer book) ----------------
+   مصدر واحد يقرأه كل من شاشة الزبونات وشاشة البيع، حتى لا يتناقض الاثنان
+   في هوية الزبونة أو في عدد عملياتها.
+
+   الهوية: أرقام الهاتف (لا الاسم) — اسمان متشابهان ليسا زبونة واحدة،
+   ورقم واحد لزوجين ليس زبونتين. بلا رقم: الاسم.
+
+   الدمج **حقلاً بحقل** من أغنى سجل: آخر طلب قد يكون محفوظاً بلا عنوان
+   (العنوان اختياري في الإتمام)، فلا يجوز أن يمسح عنواناً معروفاً من طلب
+   أقدم — وهذا كان خطأً فعلياً في قائمة الإتمام القديمة.
+
+   الترتيب ذكي: VIP أولاً ثم الأحدث. الترتيب الزمني وحده كان يغرق المشتري
+   الدائم تحت مشترٍ عابر اشترى مرة أمس. */
+const cbDigits = (v) => String(v || '').replace(/\D/g, '');
+const cbRicher = (a, b) => (String(b || '').trim().length > String(a || '').trim().length ? b : a);
+
+export async function loadCustomerBook() {
+  const [sales, reservations, occasions, saved] = await Promise.all([
+    db.sales.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.customers.toArray()
+  ]);
+
+  const map = new Map();
+  const touch = (name, phone) => {
+    const n = String(name || '').trim();
+    const ph = String(phone || '').trim();
+    if (!n && !ph) return null;
+    const digits = cbDigits(ph);
+    const key = digits ? `p:${digits}` : `n:${n.toLowerCase()}`;
+    let c = map.get(key);
+    if (!c) {
+      c = { key, name: '', phone: ph, province: '', address: '', orders: 0, spent: 0, last: null, sources: new Set() };
+      map.set(key, c);
+    }
+    c.name = cbRicher(c.name, n);
+    if (!c.phone && ph) c.phone = ph;
+    return c;
+  };
+
+  for (const s of sales) {
+    const c = touch(s.customerName, s.customerPhone);
+    if (!c) continue;
+    c.sources.add('sale');
+    /* الرواجع لا تُحتسب عملية ولا إيراداً — لكنها لا تمحو الزبونة */
+    if (s.status !== 'returned') {
+      c.orders += 1;
+      c.spent += Number(s.subtotal) || 0;
+    }
+    const d = s.date ? new Date(s.date) : null;
+    if (d && !Number.isNaN(d.getTime()) && (!c.last || d > c.last)) c.last = d;
+    c.province = c.province || s.province || '';
+    c.address = cbRicher(c.address, s.address);
+  }
+  for (const r of reservations) {
+    const c = touch(r.customerName, r.customerPhone);
+    if (!c) continue;
+    c.sources.add('reservation');
+    c.province = c.province || r.province || '';
+    c.address = cbRicher(c.address, r.address);
+  }
+  for (const o of occasions) {
+    const c = touch(o.customerName, o.customerPhone);
+    if (!c) continue;
+    c.sources.add('occasion');
+    c.province = c.province || o.province || '';
+    c.address = cbRicher(c.address, o.address);
+  }
+  for (const s of saved) {
+    const c = touch(s.name, s.phone);
+    if (!c) continue;
+    c.sources.add('saved');
+    c.province = c.province || s.province || '';
+    c.address = cbRicher(c.address, s.address);
+  }
+
+  const out = [...map.values()].map((c) => ({
+    ...c,
+    name: c.name || 'زبونة',
+    sources: [...c.sources],
+    vip: c.spent >= 150000 || c.orders >= 3
+  }));
+
+  return out.sort((a, b) => {
+    if (a.vip !== b.vip) return a.vip ? -1 : 1;
+    if (a.vip) return b.spent - a.spent;
+    return (b.last ? b.last.getTime() : 0) - (a.last ? a.last.getTime() : 0);
+  });
+}
+
+/* حفظ/تحديث زبونة في السجلّ — تُنادى من «زبونة جديدة» في قائمة الإتمام
+   ومن إتمام البيع نفسه، فتبقى الزبونة معروفة حتى لو حُذفت مبيعاتها. */
+export async function upsertCustomer({ name = '', phone = '', province = '', address = '' } = {}) {
+  const nm = String(name || '').trim();
+  const ph = String(phone || '').trim();
+  const digits = cbDigits(ph);
+  if (!nm && !digits) return null;
+  const all = await db.customers.toArray();
+  const hit = all.find((c) => (digits ? cbDigits(c.phone) === digits : String(c.name || '').trim().toLowerCase() === nm.toLowerCase()));
+  if (hit) {
+    await db.customers.update(hit.id, {
+      name: cbRicher(hit.name, nm),
+      phone: hit.phone || ph,
+      province: hit.province || province,
+      address: cbRicher(hit.address, address)
+    });
+    return hit.id;
+  }
+  return db.customers.add({ name: nm, phone: ph, province, address, createdAt: new Date().toISOString() });
+}
+
 /* ---------------- Backup / Restore ---------------- */
 
 export async function backupJSON() {
-  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos, lots, drafts, trash, receipts, photoTrash] = await Promise.all([
+  const [products, sales, movements, settings, expenses, reservations, occasions, vault, waitlists, referrals, testimonials, payments, photos, lots, drafts, trash, receipts, photoTrash, customers] = await Promise.all([
     db.products.toArray(), db.sales.toArray(), db.movements.toArray(), db.settings.toArray(),
     db.expenses.toArray(), db.reservations.toArray(), db.occasions.toArray(), db.vault.toArray(),
     db.waitlists.toArray(), db.referrals.toArray(), db.testimonials.toArray(), db.payments.toArray(),
-    db.photos.toArray(), db.lots.toArray(), db.drafts.toArray(), db.trash.toArray(), db.receipts.toArray(), db.photoTrash.toArray()
+    db.photos.toArray(), db.lots.toArray(), db.drafts.toArray(), db.trash.toArray(), db.receipts.toArray(), db.photoTrash.toArray(),
+    db.customers.toArray()
   ]);
   return {
-    app: 'ghazala-boutique', version: 12, exportedAt: new Date().toISOString(),
+    app: 'ghazala-boutique', version: 13, exportedAt: new Date().toISOString(),
     products, sales, movements, settings, expenses, reservations, occasions, vault,
-    waitlists, referrals, testimonials, payments, photos, lots, drafts, trash, receipts, photoTrash
+    waitlists, referrals, testimonials, payments, photos, lots, drafts, trash, receipts, photoTrash, customers
   };
 }
 
@@ -2173,7 +2291,7 @@ export async function restoreJSON(data, { merge = false } = {}) {
 
   const tables = [
     db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions,
-    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash, db.receipts, db.photoTrash
+    db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash, db.receipts, db.photoTrash, db.customers
   ];
 
   /* استعادة واحدة ذرّية: إما تنجح كاملة أو لا يُمَس شيء. الكتابة خارج معاملة
@@ -2201,8 +2319,8 @@ export async function restoreJSON(data, { merge = false } = {}) {
 }
 
 export async function wipeAll() {
-  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash, db.receipts, db.photoTrash, async () => {
-    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear(), db.lots.clear(), db.drafts.clear(), db.trash.clear(), db.receipts.clear(), db.photoTrash.clear()]);
+  await db.transaction('rw', db.products, db.sales, db.movements, db.expenses, db.reservations, db.occasions, db.vault, db.waitlists, db.referrals, db.testimonials, db.payments, db.photos, db.lots, db.drafts, db.trash, db.receipts, db.photoTrash, db.customers, async () => {
+    await Promise.all([db.products.clear(), db.sales.clear(), db.movements.clear(), db.expenses.clear(), db.reservations.clear(), db.occasions.clear(), db.vault.clear(), db.waitlists.clear(), db.referrals.clear(), db.testimonials.clear(), db.payments.clear(), db.photos.clear(), db.lots.clear(), db.drafts.clear(), db.trash.clear(), db.receipts.clear(), db.photoTrash.clear(), db.customers.clear()]);
   });
 }
 
