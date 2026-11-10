@@ -140,6 +140,17 @@ for (const [label, name] of [['الرئيسية', '01-dashboard'], ['المخز�
 /* أسفل القائمة: هل آخر بطاقة/صف مقروءة فوق الشريط العائم والزر؟ */
 await tab('المخزون');
 await shot('02b-inventory-bottom', { bottom: true });
+await page.evaluate(() => window.scrollTo(0, 0));
+await sleep(400);
+/* بطاقة الموديل: صف واحد لكل لون */
+await page.evaluate(() => {
+  const card = [...document.querySelectorAll('button')].find((e) => e.querySelector('img'));
+  card?.click();
+});
+await sleep(1300);
+await shot('02c-itemdetail');
+await page.evaluate(() => document.querySelector('.backdrop')?.click());
+await sleep(700);
 await tab('بيع');
 await shot('03b-sell-bottom', { bottom: true });
 

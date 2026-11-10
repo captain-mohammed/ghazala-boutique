@@ -9,7 +9,7 @@
   import Restock from './Restock.svelte';
   import ItemDetail from './ItemDetail.svelte';
   import { db, modelOptions, hexForColor, deleteProducts, modelGroupKey, subsOfType, subsOfType2, subsOfType3, countUnderType, typeChain, seasonsOf, loadProducts } from '../db.js';
-  import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl } from '../utils.js';
+  import { fmtIQD, fmtNum, buzz, fileToPhotoDataUrl, countAr } from '../utils.js';
   import { toastErr, toastOk, askConfirm, catalogFilters, filtersOpen } from '../store.js';
   import { get } from 'svelte/store';
 
@@ -531,11 +531,10 @@
       <div class="mv-colors">
         {#each g.colorRows as cr (cr.color)}
           <div class="mv-color" class:empty={cr.qty === 0}>
-            <div class="mvc-head">
+            <span class="mvc-lead">
               <i class="mvc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
               <span class="mvc-name">{cr.color || 'بدون لون'}</span>
-              <span class="mvc-qty">{fmtNum(cr.qty)} قطعة</span>
-            </div>
+            </span>
             <div class="mvc-sizes">
               {#each cr.sizes as sz (sz.size + sz.p.sku)}
                 <button class="szchip" class:hole={sz.qty === 0} onclick={() => { buzz(6); openSku = sz.p; }}>
@@ -544,6 +543,7 @@
                 </button>
               {/each}
             </div>
+            <span class="mvc-qty" class:zero={cr.qty === 0}>{countAr(cr.qty, 'قطعة', 'قطعتان', 'قطع')}</span>
           </div>
         {/each}
       </div>
@@ -787,19 +787,38 @@
     border-radius: 999px; padding: 3px 9px;
   }
   /* قسم الألوان بعد التصميم: بطاقة أنيقة لكل لون، شبكة مقاسات فيها ثقوب واضحة */
-  .mv-colors { display: flex; flex-direction: column; gap: 10px; }
+  /* سطر واحد لكل لون: الدائرة والاسم، ثم المقاسات، ثم عدّ اللون في الطرف.
+     كانت بطاقة عمودية: الاسم يميناً والعدّ يساراً في الأعلى، والمقاسات تحته
+     في مساحة بيضاء فارغة — العدّ يبدو منفصلاً عن لونه. */
+  .mv-colors { display: flex; flex-direction: column; gap: 8px; }
   .mv-color {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
     border: 1px solid var(--line-2, rgba(0, 0, 0, 0.1));
     border-radius: 14px;
-    padding: 10px 12px;
+    padding: 8px 11px;
     background: var(--glass, rgba(255, 255, 255, 0.5));
   }
   .mv-color.empty { opacity: 0.72; border-style: dashed; }
-  .mvc-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+  .mvc-lead { display: inline-flex; align-items: center; gap: 6px; flex: none; }
   .mvc-dot { width: 14px; height: 14px; border-radius: 50%; border: 1.5px solid var(--line-2, rgba(0,0,0,0.12)); flex: none; box-shadow: 0 0 0 1px rgba(0,0,0,0.04) inset; }
   .mvc-name { font-weight: 800; font-size: 13.5px; color: var(--ink); }
-  .mvc-qty { margin-inline-start: auto; font-size: 11px; color: var(--taupe); font-variant-numeric: tabular-nums; }
-  .mvc-sizes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .mvc-qty {
+    flex: none;
+    margin-inline-start: auto;
+    font-size: 11px;
+    font-weight: 800;
+    color: var(--taupe);
+    background: rgba(156, 123, 107, 0.1);
+    border-radius: 999px;
+    padding: 2px 7px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .mvc-qty.zero { color: var(--burgundy); background: rgba(181, 73, 91, 0.09); }
+  .mvc-sizes { display: flex; flex-wrap: wrap; gap: 5px; flex: 1 1 auto; min-width: 0; }
   .szchip {
     display: inline-flex; flex-direction: column; align-items: center; justify-content: center;
     min-width: 42px; padding: 5px 8px;
@@ -820,7 +839,7 @@
   }
   .szchip.hole .sz-num { color: var(--taupe); }
   .szchip.hole .sz-q { color: var(--burgundy); }
-  /* ملاحظات الموديل — تظهر الآن في بطاقة «الموديل كامل» */
+  /* ملاحظات الموديل — تظهر الآن في بطاقة «تفاصيل الموديل» */
   :global(.mv-notes) { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; }
   .mv-notes-t { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: var(--burgundy-deep); }
   .mv-note { margin: 0; font-size: 12px; line-height: 1.6; color: var(--ink-2); }
