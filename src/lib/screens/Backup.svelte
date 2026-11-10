@@ -4,7 +4,7 @@
   import Sheet from '../components/Sheet.svelte';
   import Glass from '../components/Glass.svelte';
   import { db, backupJSON, restoreJSON, getSetting, setSetting, loadProducts } from '../db.js';
-  import { downloadFile, fmtDate, fmtNum, buzz } from '../utils.js';
+  import { downloadFile, fmtDate, fmtNum, buzz, countAr } from '../utils.js';
   import { toastOk, toastErr, askConfirm, celebrateAt } from '../store.js';
   import * as XLSX from 'xlsx';
 
@@ -76,7 +76,7 @@
       pendingData = null;
       buzz([30, 60, 30]);
       celebrateAt(window.innerWidth / 2, window.innerHeight / 2.6, '🪄');
-      toastOk(`تمت الاستعادة — ${fmtNum(r.products)} موديل و${fmtNum(r.sales)} عملية بيع`);
+      toastOk(`تمت الاستعادة — ${countAr(r.products, 'موديل', 'موديلان', 'موديلات')} و${countAr(r.sales, 'عملية بيع', 'عمليتا بيع', 'عمليات بيع')}`);
     } catch (err) {
       /* الخطأ الحقيقي إلى وحدة التحكم، وسببه بالعربي إلى الشاشة */
       console.error('restoreJSON failed:', err);
@@ -161,7 +161,7 @@
 <Sheet open={restoreOpen} title="طريقة الاستعادة" onclose={() => { restoreOpen = false; pendingData = null; }}>
   <div class="stack" style="gap:12px">
     <p class="muted small" style="margin:0">
-      النسخة تحتوي {pendingData?.products?.length ?? 0} موديل و{pendingData?.sales?.length ?? 0} عملية بيع.
+      النسخة تحتوي {countAr(pendingData?.products?.length ?? 0, 'موديل', 'موديلان', 'موديلات')} و{countAr(pendingData?.sales?.length ?? 0, 'عملية بيع', 'عمليتا بيع', 'عمليات بيع')}.
     </p>
     {#if restoring}
       <p class="muted small" style="margin:0">… نستعيد البيانات — لا تغلقي التطبيق</p>

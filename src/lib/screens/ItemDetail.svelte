@@ -300,7 +300,7 @@
       {/if}
       <div class="row" style="gap:6px">
         <input class="input" style="flex:1.2" bind:value={wName} placeholder="اسم الزبونة" />
-        <input class="input" style="flex:1; text-align:right" bind:value={wPhone} inputmode="tel" dir="ltr" placeholder="07xx…" />
+        <input class="input" style="flex:1; text-align: start" bind:value={wPhone} inputmode="tel" dir="ltr" placeholder="07xx…" />
         <button class="btn gold" style="min-height:40px; padding-inline:14px" onclick={saveWait}><Icon name="plus" size={14} /></button>
       </div>
     </Glass>
@@ -397,15 +397,15 @@
     border-inline-start: 2px solid rgba(201, 162, 75, 0.5);
   }
   .sup-top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-  .sup-name { font-size: 11.5px; font-weight: 800; color: #8a6a35; }
+  .sup-name { font-size: 11.5px; font-weight: 800; color: var(--gold-ink); }
   .sup-cost { font-size: 11px; font-weight: 700; color: var(--ink-2); font-variant-numeric: tabular-nums; }
-  .sup-time { font-size: 10px; color: var(--taupe); font-variant-numeric: tabular-nums; }
+  .sup-time { font-size: 11px; color: var(--taupe); font-variant-numeric: tabular-nums; }
 
   .sup {
     display: inline-flex; align-items: center; gap: 5px;
     margin-top: 4px;
     font-size: 11px; font-weight: 800;
-    color: #8a6a35;
+    color: var(--gold-ink);
     background: var(--gold-soft, rgba(201, 162, 75, 0.12));
     border-radius: 999px;
     padding: 3px 9px;
@@ -441,7 +441,7 @@
     display: flex; align-items: center; justify-content: space-between; gap: 8px;
     width: 100%;
     padding: 0; background: none; border: none;
-    color: var(--ink); text-align: right; cursor: pointer;
+    color: var(--ink); text-align: start; cursor: pointer;
   }
   .chev { flex: none; display: inline-flex; color: var(--taupe); transition: transform 0.22s; }
   .chev.flip { transform: rotate(-90deg); }
@@ -457,7 +457,7 @@
     margin-top: 1px;
     border-radius: 50%;
     display: inline-flex; align-items: center; justify-content: center;
-    font-size: 10.5px; font-weight: 800;
+    font-size: 11px; font-weight: 800;
     color: var(--burgundy-deep);
     background: var(--gold-soft, rgba(201, 162, 75, 0.16));
   }
@@ -466,8 +466,8 @@
   .lot-top b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lot-tag {
     flex: none;
-    font-size: 9px; font-weight: 800;
-    color: #8a6a35;
+    font-size: 11px; font-weight: 800;
+    color: var(--gold-ink);
     background: var(--gold-soft, rgba(201, 162, 75, 0.18));
     border-radius: 999px; padding: 1px 7px;
   }

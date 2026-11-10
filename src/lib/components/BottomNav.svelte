@@ -148,7 +148,7 @@
   .tab.on { color: var(--burgundy); }
   .tab.on .ic { transform: scale(0.2); opacity: 0; }
   .lbl {
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 700;
     height: 15px;
     opacity: 0;

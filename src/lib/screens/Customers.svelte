@@ -8,7 +8,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
   import { db, upcomingOccasions, addReferral, addTestimonial, referralStats, loadCustomerBook } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, salePieces, saleItemLabel, daysAgoStart, buzz, sendWhatsApp, buildSalesMessage } from '../utils.js';
+  import { fmtIQD, fmtNum, fmtDate, salePieces, saleItemLabel, daysAgoStart, buzz, sendWhatsApp, buildSalesMessage, countAr, pluralAr } from '../utils.js';
   import { toastOk, toastErr } from '../store.js';
 
   let { goto } = $props();
@@ -240,9 +240,9 @@
             <span class="c-row">
               <span class="c-k"><Icon name="cart" size={11} color="var(--taupe)" /></span>
               <span class="c-v">
-                <b class="c-strong">{fmtNum(c.orders)}</b> عملية
+                <b class="c-strong">{countAr(c.orders, 'عملية', 'عمليتان', 'عمليات')}</b>
                 <span class="c-sep">·</span>
-                <b class="c-strong">{fmtNum(c.pieces)}</b> قطعة
+                <b class="c-strong">{countAr(c.pieces, 'قطعة', 'قطعتان', 'قطع')}</b>
               </span>
             </span>
             <span class="c-row">
@@ -296,8 +296,8 @@
 
         <!-- الأرقام الثلاثة في شريطها المفصول -->
         <div class="stats">
-          <div><b>{fmtNum(detail.orders)}</b><span>عملية</span></div>
-          <div><b>{fmtNum(detail.pieces)}</b><span>قطعة</span></div>
+          <div><b>{fmtNum(detail.orders)}</b><span>{pluralAr(detail.orders, 'عملية', 'عمليتان', 'عمليات')}</span></div>
+          <div><b>{fmtNum(detail.pieces)}</b><span>{pluralAr(detail.pieces, 'قطعة', 'قطعتان', 'قطع')}</span></div>
           <div><b>{fmtNum(detail.reservations.length)}</b><span>حجز</span></div>
         </div>
 
@@ -356,7 +356,7 @@
         </div>
         {#if (refStats.find((x) => x.fromName === detail.name)?.friends?.length)}
           <div class="ref-ribbon">
-            <Icon name="sparkle" size={13} color="#8a6a35" />
+            <Icon name="sparkle" size={13} color="var(--gold-ink)" />
             <span>جابت <b>{fmtNum(refStats.find((x) => x.fromName === detail.name).friends.length)}</b> صديقة {refStats.find((x) => x.fromName === detail.name).friends.map((f) => f.name).join('، ')}</span>
           </div>
         {/if}
@@ -406,7 +406,7 @@
       </button>
     {:else}
       <input class="input" bind:value={refName} placeholder="اسم الصديقة…" />
-      <input class="input" bind:value={refPhone} dir="ltr" inputmode="tel" placeholder="رقمها (اختياري)" style="text-align:right" />
+      <input class="input" bind:value={refPhone} dir="ltr" inputmode="tel" placeholder="رقمها (اختياري)" style="text-align: start" />
       <div class="row wrap" style="gap:6px">
         {#each customers.filter((c) => c.name !== detail?.name).slice(0, 8) as c (c.name + '|' + c.phone)}
           <button class="chip" onclick={() => { refPick = c; }}>{c.name}</button>
@@ -481,7 +481,7 @@
   .h-stat:last-child { border-inline-end: none; }
   .h-stat b { font-size: 15px; font-weight: 900; color: var(--burgundy-deep); font-variant-numeric: tabular-nums; }
   .h-stat b.dim { color: var(--taupe); opacity: 0.6; }
-  .h-stat span { font-size: 10px; font-weight: 800; color: var(--taupe); }
+  .h-stat span { font-size: 11px; font-weight: 800; color: var(--taupe); }
 
   /* ── ورقة الزبونة: كتل مفصولة بمصاريع رفيعة — لا شيء ملتصق بشيء.
      كانت كل المعلومات داخل Glass واحد بحشوة ١٤px بلا فواصل، فبدت مزدحمة
@@ -493,9 +493,9 @@
     border-bottom: 1px dashed rgba(201, 161, 90, 0.45);
   }
   .cs-name { font-weight: 900; font-size: 17px; color: var(--ink); line-height: 1.3; }
-  .cs-phone { font-size: 12.5px; font-weight: 700; color: var(--taupe); margin-top: 3px; text-align: right; }
+  .cs-phone { font-size: 12.5px; font-weight: 700; color: var(--taupe); margin-top: 3px; text-align: start; }
   .cs-total { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
-  .cs-total-l { font-size: 10px; font-weight: 700; color: var(--taupe); }
+  .cs-total-l { font-size: 11px; font-weight: 700; color: var(--taupe); }
   /* سطور المعلومات: مسافة مريحة بينها */
   .cs-lines { display: flex; flex-direction: column; gap: 9px; margin-top: 13px; }
   .kline { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
@@ -508,7 +508,7 @@
     background: rgba(201, 161, 90, 0.08);
     border: 1px dashed rgba(201, 161, 90, 0.35);
   }
-  .cs-stamph { font-size: 10px; font-weight: 800; color: #8a6a35; margin-bottom: 6px; }
+  .cs-stamph { font-size: 11px; font-weight: 800; color: var(--gold-ink); margin-bottom: 6px; }
   /* الإجراءات: مفصولة بخط متقطع قبلها */
   .cs-actions {
     display: flex; flex-direction: column; gap: 9px;
@@ -522,7 +522,7 @@
     background: rgba(201, 161, 90, 0.09);
     border: 1px dashed rgba(201, 161, 90, 0.4);
   }
-  .taste-h { font-size: 11px; font-weight: 800; color: #8a6a35; display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+  .taste-h { font-size: 11px; font-weight: 800; color: var(--gold-ink); display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
   .taste-row { display: flex; flex-wrap: wrap; gap: 5px 12px; }
   .taste-c { font-size: 12px; font-weight: 700; color: var(--taupe); }
   .taste-c b { color: var(--ink); font-weight: 800; }
@@ -546,7 +546,7 @@
   .cust {
     width: 100%; display: flex; align-items: flex-start; gap: 11px;
     background: none; border: none; padding: 0; cursor: pointer;
-    font-family: inherit; text-align: right;
+    font-family: inherit; text-align: start;
   }
   .avatar {
     width: 46px; height: 46px; border-radius: 50%; flex: none;
@@ -581,15 +581,16 @@
   }
   .c-strong { color: var(--burgundy); font-weight: 900; }
   .c-sep { color: var(--taupe); margin: 0 2px; }
-  .c-phone { direction: ltr; unicode-bidi: embed; text-align: right; }
+  /* الرقم يُكتب LTR، فـ start هنا يسار — نريد حافة اليمين (end) كما في التصميم */
+  .c-phone { direction: ltr; unicode-bidi: embed; text-align: end; }
   .c-badges { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; margin-top: 2px; }
   .badge {
     display: inline-flex; align-items: center; gap: 3px;
-    font-size: 9.5px; font-weight: 800; letter-spacing: 0.3px;
+    font-size: 11px; font-weight: 800; letter-spacing: 0.3px;
     padding: 2px 7px; border-radius: 999px; flex: none;
   }
   .badge.gold { color: #8a6d1a; background: rgba(212, 175, 55, 0.16); }
-  .badge.warn { color: #9a5b16; background: rgba(230, 145, 56, 0.16); }
+  .badge.warn { color: var(--gold-amber); background: rgba(230, 145, 56, 0.16); }
   .badge.rose { color: var(--burgundy); background: rgba(181, 73, 91, 0.12); }
   .stats {
     display: flex; justify-content: space-around;
@@ -598,7 +599,7 @@
   }
   .stats div { display: flex; flex-direction: column; align-items: center; gap: 1px; }
   .stats b { font-size: 16px; color: var(--ink); font-variant-numeric: tabular-nums; }
-  .stats span { font-size: 10.5px; color: var(--taupe); }
+  .stats span { font-size: 11px; color: var(--taupe); }
   .occ-line { margin-top: 8px; text-align: center; }
   /* ختم الغزالة: خمس نقاط ذهبية تتملى مع العمليات */
   .stamps { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
@@ -610,11 +611,11 @@
     flex: none;
   }
   .stamp.on {
-    background: linear-gradient(150deg, var(--gold), #a4803e);
+    background: linear-gradient(150deg, var(--gold), var(--gold-deep));
     border-color: transparent;
     box-shadow: 0 1px 4px rgba(164, 128, 62, 0.4);
   }
-  .st-x { font-size: 10px; font-weight: 800; color: #8a6a35; margin-inline-start: 4px; }
+  .st-x { font-size: 11px; font-weight: 800; color: var(--gold-ink); margin-inline-start: 4px; }
   /* شريط الإحالة الذهبي داخل شيت الزبونة */
   .ref-ribbon {
     display: flex; align-items: center; gap: 6px;
@@ -624,7 +625,7 @@
     border-radius: 10px;
     font-size: 11.5px; color: var(--ink-2);
   }
-  .ref-ribbon b { color: #8a6a35; }
+  .ref-ribbon b { color: var(--gold-ink); }
   /* نجوم الشهادة */
   .stars { display: flex; gap: 4px; justify-content: center; }
   .star {
@@ -642,8 +643,8 @@
   .g-wa {
     margin-inline-start: auto;
     display: inline-flex; align-items: center; gap: 4px;
-    font-family: inherit; font-size: 10.5px; font-weight: 800;
-    color: #1f7a44;
+    font-family: inherit; font-size: 11px; font-weight: 800;
+    color: var(--wa-deep);
     background: rgba(37, 211, 102, 0.14);
     border: none; border-radius: 999px;
     padding: 4px 10px; cursor: pointer;

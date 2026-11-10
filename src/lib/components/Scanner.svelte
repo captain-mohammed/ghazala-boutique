@@ -164,8 +164,8 @@
     margin-bottom: 12px;
   }
   video { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .starting { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #FBF3EE; }
-  .frame span { position: absolute; width: 30px; height: 30px; border: 3px solid #C9A15A; }
+  .starting { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ivory); }
+  .frame span { position: absolute; width: 30px; height: 30px; border: 3px solid var(--gold); }
   .frame span:nth-child(1) { top: 12%; right: 10%; border-left: none; border-bottom: none; border-radius: 0 10px 0 0; }
   .frame span:nth-child(2) { top: 12%; left: 10%; border-right: none; border-bottom: none; border-radius: 10px 0 0 0; }
   .frame span:nth-child(3) { bottom: 12%; right: 10%; border-left: none; border-top: none; border-radius: 0 0 10px 0; }
@@ -176,7 +176,7 @@
     right: 8%;
     top: 50%;
     height: 2px;
-    background: linear-gradient(90deg, transparent, #E8B4B8, #C9A15A, #E8B4B8, transparent);
+    background: linear-gradient(90deg, transparent, var(--blush), var(--gold), var(--blush), transparent);
     animation: laser 1.6s ease-in-out infinite;
   }
   @keyframes laser { 0%, 100% { top: 22%; } 50% { top: 78%; } }

@@ -658,7 +658,7 @@
     font-variant-numeric: tabular-nums; white-space: nowrap;
   }
   .hc-stat b.dim { color: var(--taupe); opacity: 0.6; }
-  .hc-stat span { font-size: 10px; font-weight: 800; color: var(--taupe); }
+  .hc-stat span { font-size: 11px; font-weight: 800; color: var(--taupe); }
   .hc-stat.grow b { font-size: 14px; }
 
   .save-hint {
@@ -758,7 +758,7 @@
   }
   .ln-photo:active { transform: scale(0.96); }
   .ln-photo-lg { width: 92px; height: 92px; flex-direction: column; gap: 4px; }
-  .ph-hint { font-size: 10.5px; font-weight: 800; color: var(--taupe); }
+  .ph-hint { font-size: 11px; font-weight: 800; color: var(--taupe); }
   .ln-photo.has { border-style: solid; border-color: rgba(181, 73, 91, 0.4); }
   .ln-photo img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .add-row { display: flex; gap: 8px; }
@@ -777,7 +777,7 @@
     line-height: 1.25;
     text-align: center;
   }
-  .add-line.same { border-color: rgba(201, 162, 75, 0.45); color: #8a6a35; }
+  .add-line.same { border-color: rgba(201, 162, 75, 0.45); color: var(--gold-ink); }
 
   /* شريط استعادة المسودة — يظهر عند فتح الشاشة وفيه فاتورة غير محفوظة */
   :global(.recover) {

@@ -165,7 +165,7 @@
     font-weight: 600;
     color: var(--ink);
     cursor: pointer;
-    text-align: right;
+    text-align: start;
     position: relative;
     perspective: 600px;
     transition: border-color 0.2s, box-shadow 0.2s, background 0.2s, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
@@ -228,7 +228,7 @@
     font-weight: 700;
     color: var(--ink);
     cursor: pointer;
-    text-align: right;
+    text-align: start;
     position: relative;
     transition: background 0.15s, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
     animation: pk-opt-in 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;

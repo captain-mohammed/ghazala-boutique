@@ -384,7 +384,7 @@
     animation: c-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) backwards;
   }
   .c-unit b { font-size: 19px; font-variant-numeric: tabular-nums; color: var(--ink); }
-  .c-unit span { font-size: 9px; color: var(--taupe); font-weight: 700; }
+  .c-unit span { font-size: 11px; color: var(--taupe); font-weight: 700; }
   @keyframes c-in {
     from { opacity: 0; transform: translateY(8px) scale(0.9); }
   }
@@ -399,7 +399,7 @@
   .pick-t .noimg { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
   .p-price {
     position: absolute; bottom: 2px; inset-inline: 0; text-align: center;
-    font-size: 8.5px; font-weight: 800; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
+    font-size: 11px; font-weight: 800; color: #fff; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.7);
   }
   :global(.orow) {
     display: flex;
@@ -416,7 +416,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    text-align: right;
+    text-align: start;
     padding: 0;
     font-family: inherit;
   }
@@ -429,7 +429,7 @@
     align-items: center;
     justify-content: center;
   }
-  .o-ic.gold { background: linear-gradient(150deg, var(--gold), #a4803e); }
+  .o-ic.gold { background: linear-gradient(150deg, var(--gold), var(--gold-deep)); }
   .o-ic.soon { background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep)); }
   .o-ic.calm { background: var(--accent-soft); }
   .o-when {
@@ -450,7 +450,7 @@
     border-radius: 50%;
     border: 1px solid rgba(37, 211, 102, 0.35);
     background: rgba(37, 211, 102, 0.12);
-    color: #1faf54;
+    color: var(--wa);
     display: flex;
     align-items: center;
     justify-content: center;

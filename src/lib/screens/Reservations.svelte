@@ -263,7 +263,7 @@
     padding: 7px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.35);
     flex-wrap: wrap;
   }
-  .tag { font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px; }
+  .tag { font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; }
   .tag.sold { background: rgba(78, 138, 95, 0.14); color: var(--good); }
   .tag.cancelled, .tag.expired { background: rgba(156, 123, 107, 0.15); color: var(--taupe); }
   .sum { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }

@@ -5,6 +5,27 @@ const nf = new Intl.NumberFormat('en-US');
 export const fmtNum = (n) => nf.format(Math.round(Number(n) || 0));
 export const fmtIQD = (n) => fmtNum(n) + ' د.ع';
 
+/* العدّ بالعربية كما تُكتب فعلاً: «عملية واحدة»، «عمليتان»، «٥ عمليات»،
+   «١٥ عملية». القاعدة النحوية تميّز المفرد والمثنى والجمع (٣-١٠)، وما فوق
+   العشرة يعود مفرداً منصوباً. كتابة «٣ عملية» خطأ شائع — تُقرأ غلط.
+   الاستعمال: countAr(n, 'عملية', 'عمليتان', 'عمليات') */
+export function countAr(n, one, two, few) {
+  const v = Math.abs(Math.round(Number(n) || 0));
+  if (!v) return `لا ${few}`;
+  if (v === 1) return `${one} واحدة`;
+  if (v === 2) return two;
+  if (v <= 10) return `${v} ${few}`;
+  return `${v} ${one}`;
+}
+/* الاسم وحده بلا رقم — للصفوف التي تعرض الرقم منفصلاً بخط عريض */
+export function pluralAr(n, one, two, few) {
+  const v = Math.abs(Math.round(Number(n) || 0));
+  if (v === 1) return one;
+  if (v === 2) return two;
+  if (v >= 3 && v <= 10) return few;
+  return one;
+}
+
 /* Iraqi money shorthand: what you type is read in thousands.
    5 → 5,000 د.ع · 12 → 12,000 · values ≥ 1000 are taken literally
    so old full numbers (32000) keep working untouched. */

@@ -528,14 +528,14 @@
   .h-stat:last-child { border-inline-end: none; }
   .h-stat b { font-size: 15px; font-weight: 900; color: var(--burgundy-deep); font-variant-numeric: tabular-nums; }
   .h-stat b.dim { color: var(--taupe); opacity: 0.6; }
-  .h-stat span { font-size: 10px; font-weight: 800; color: var(--taupe); }
+  .h-stat span { font-size: 11px; font-weight: 800; color: var(--taupe); }
 
   /* رأس القسم: زر كامل قابل للطي */
   .sect {
     width: 100%;
     display: flex; align-items: center; gap: 10px;
     padding: 11px 13px;
-    font-family: inherit; text-align: right; cursor: pointer;
+    font-family: inherit; text-align: start; cursor: pointer;
     border-radius: 18px;
     border: 1px solid rgba(181, 73, 91, 0.18);
     background: linear-gradient(140deg, rgba(255, 255, 255, 0.7), rgba(181, 73, 91, 0.06));
@@ -549,7 +549,7 @@
   }
   .sect-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .sect-t { font-size: 14px; font-weight: 900; color: var(--ink); }
-  .sect-s { font-size: 10.5px; font-weight: 700; color: var(--taupe); line-height: 1.35; }
+  .sect-s { font-size: 11px; font-weight: 700; color: var(--taupe); line-height: 1.35; }
   .sect-n {
     flex: none;
     font-size: 11.5px; font-weight: 900; color: var(--burgundy-deep);
@@ -581,7 +581,7 @@
 
   .why { display: flex; flex-wrap: wrap; gap: 6px; }
   .why-chip {
-    font-size: 11px; font-weight: 800; color: var(--burgundy-deep, #7A2E3A);
+    font-size: 11px; font-weight: 800; color: var(--burgundy-deep);
     background: var(--accent-soft); border: 1px solid rgba(181, 73, 91, 0.22);
     border-radius: 999px; padding: 3px 10px;
   }
@@ -611,10 +611,10 @@
     display: flex; flex-direction: column; align-items: center; gap: 2px;
     color: var(--taupe);
   }
-  .pnone i { font-size: 8.5px; font-style: normal; font-weight: 800; }
+  .pnone i { font-size: 11px; font-style: normal; font-weight: 800; }
   .qty-chip {
     display: inline-block; margin-inline-start: 5px;
-    font-size: 10px; font-weight: 800; color: var(--taupe);
+    font-size: 11px; font-weight: 800; color: var(--taupe);
     background: rgba(122, 46, 58, 0.07); border-radius: 999px; padding: 1px 7px;
   }
   .ptick {
@@ -625,7 +625,7 @@
   .pinfo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .prow { font-size: 12.5px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
   .oldest {
-    margin-inline-start: 6px; font-size: 10px; font-weight: 800;
+    margin-inline-start: 6px; font-size: 11px; font-weight: 800;
     color: var(--good, #4E8A5F); background: rgba(78, 138, 95, 0.12);
     border-radius: 999px; padding: 2px 7px;
   }
@@ -642,7 +642,7 @@
     background: var(--gold-soft, rgba(201, 162, 75, 0.12));
     color: var(--burgundy-deep);
   }
-  .lots-note { color: #8a6a35; font-weight: 700; }
+  .lots-note { color: var(--gold-ink); font-weight: 700; }
 
   /* الفصل العميق: دفعات داخل بطاقة واحدة */
   .lots-list { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
@@ -660,11 +660,11 @@
   .lot-row.on .lot-box { background: var(--burgundy); border-color: var(--burgundy); }
   .lot-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .lot-sup { font-size: 12px; font-weight: 800; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .lot-meta { font-size: 10.5px; color: var(--taupe); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lot-meta { font-size: 11px; color: var(--taupe); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lot-cost { flex: none; font-size: 12px; font-weight: 800; color: var(--burgundy); font-variant-numeric: tabular-nums; }
 
   :global(.undo-bar) { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border-color: rgba(201, 161, 90, 0.5); background: rgba(201, 161, 90, 0.1); }
   .pthumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-  .pthumb { aspect-ratio: 1; border-radius: 10px; overflow: hidden; border: 1px solid var(--line-2); padding: 0; cursor: pointer; background: var(--ivory, #FBF3EE); }
+  .pthumb { aspect-ratio: 1; border-radius: 10px; overflow: hidden; border: 1px solid var(--line-2); padding: 0; cursor: pointer; background: var(--ivory); }
   .pthumb img { width: 100%; height: 100%; object-fit: cover; }
 </style>

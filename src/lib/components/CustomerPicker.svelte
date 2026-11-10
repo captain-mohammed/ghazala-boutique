@@ -5,7 +5,7 @@
      هنا: بحث، القائمة كاملة، وكل صف يحمل هاتفها وعدد عملياتها. */
   import { fly, fade } from 'svelte/transition';
   import Icon from './Icon.svelte';
-  import { fmtNum } from '../utils.js';
+  import { fmtNum, countAr } from '../utils.js';
 
   let {
     open = false,
@@ -40,7 +40,7 @@
 
   const isSel = (c) => selDigits.length > 0 && digits(c.phone) === selDigits;
   const initial = (c) => (c.name || 'ز').trim().charAt(0);
-  const AV = ['#B5495B', '#A4803E', '#8A6A4F', '#7A2E3A', '#9C7B6B', '#6B7A8A'];
+  const AV = ['var(--burgundy)', 'var(--gold-deep)', '#8A6A4F', 'var(--burgundy-deep)', 'var(--taupe)', '#6B7A8A'];
   const avColor = (c) => AV[(c.key || '').split('').reduce((a, ch) => a + ch.charCodeAt(0), 0) % AV.length];
 
   /* إعادة الضبط عند كل فتح — تُفصَل عن التركيز حتى لا يعتمد أحدهما على الآخر */
@@ -136,7 +136,7 @@
               <span class="cp-p" dir="ltr">{c.phone || 'بلا رقم'}</span>
             </span>
             <span class="cp-ord" class:zero={!c.orders}>
-              {c.orders ? `${fmtNum(c.orders)} عملية` : 'جديدة'}
+              {c.orders ? countAr(c.orders, 'عملية', 'عمليتان', 'عمليات') : 'جديدة'}
             </span>
             {#if isSel(c)}<span class="cp-tick"><Icon name="check" size={13} color="#fff" /></span>{/if}
           </button>
@@ -233,7 +233,7 @@
   }
   .cp-h { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .cp-h b { font-size: 15px; font-weight: 900; color: var(--burgundy-deep); letter-spacing: -0.2px; }
-  .cp-h i { font-size: 10.5px; font-weight: 700; font-style: normal; color: var(--taupe); }
+  .cp-h i { font-size: 11px; font-weight: 700; font-style: normal; color: var(--taupe); }
   .cp-x {
     flex: none; width: 32px; height: 32px; border-radius: 10px;
     display: inline-flex; align-items: center; justify-content: center;
@@ -306,7 +306,7 @@
   }
   .cp-vip {
     flex: none;
-    font-size: 8.5px; font-weight: 900; font-style: normal; letter-spacing: 0.4px;
+    font-size: 11px; font-weight: 900; font-style: normal; letter-spacing: 0.4px;
     color: #7A5A1E;
     background: linear-gradient(150deg, rgba(201, 161, 90, 0.35), rgba(201, 161, 90, 0.2));
     border: 1px solid rgba(201, 161, 90, 0.5);
@@ -321,7 +321,7 @@
   }
   .cp-ord {
     flex: none;
-    font-size: 10px; font-weight: 800;
+    font-size: 11px; font-weight: 800;
     color: var(--burgundy);
     background: rgba(181, 73, 91, 0.1);
     border-radius: 999px;

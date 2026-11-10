@@ -14,7 +14,7 @@
   import VariantBits from '../components/VariantBits.svelte';
   import Pick from '../components/Pick.svelte';
   import { db, recordSale, getSetting, piecesSoldToday, modelOptions, modelGroupKey, subsOfType, subsOfType2, subsOfType3, hexForColor, countUnderType, createReservation, seasonsOf, loadProducts, openLotIndex, priceOptionsFrom, loadCustomerBook, upsertCustomer } from '../db.js';
-  import { fmtIQD, fmtNum, buzz, iqd } from '../utils.js';
+  import { fmtIQD, fmtNum, buzz, iqd, countAr } from '../utils.js';
   import { get } from 'svelte/store';
   import { toastOk, toastErr, toast, celebrateAt, milestoneFor, sellPrefill, catalogFilters, filtersOpen } from '../store.js';
 
@@ -1102,7 +1102,7 @@
         <Icon name="check" size={12} color="var(--good)" />
         <span>
           زبونة معروفة — <b>{knownCustomer.name}</b>
-          {#if knownCustomer.orders}· {fmtNum(knownCustomer.orders)} عملية سابقة{/if}
+          {#if knownCustomer.orders}· {countAr(knownCustomer.orders, 'عملية', 'عمليتان', 'عمليات')}{/if}
           {#if knownCustomer.province}· {knownCustomer.province}{/if}
         </span>
       </div>
@@ -1242,7 +1242,7 @@
     gap: 12px;
     padding: 10px 12px;
     cursor: pointer;
-    text-align: right;
+    text-align: start;
     transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   :global(.sell-card:active) { transform: scale(0.985); }
@@ -1261,7 +1261,7 @@
   :global(.sell-card.oos) .pthumb img { filter: grayscale(0.55); }
   .pcolors { display: flex; flex-wrap: wrap; gap: 3px 10px; }
   .pc-color { display: inline-flex; align-items: center; gap: 4px; }
-  .pc-qty { font-size: 10.5px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
+  .pc-qty { font-size: 11px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
   .pinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .pname { font-weight: 800; font-size: 14px; color: var(--ink); line-height: 1.55; word-break: break-word; }
   .psizes { margin-top: 0; }
@@ -1312,7 +1312,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    text-align: right;
+    text-align: start;
     padding: 4px 6px;
   }
   .cart-go {
@@ -1355,7 +1355,7 @@
   }
   .cart-txt { flex: 1; display: flex; flex-direction: column; align-items: flex-start; }
   .cart-badge.undo {
-    background: linear-gradient(150deg, var(--gold), #a4803e);
+    background: linear-gradient(150deg, var(--gold), var(--gold-deep));
     box-shadow: 0 6px 16px rgba(164, 128, 62, 0.35);
     display: flex; align-items: center; justify-content: center;
   }
@@ -1392,7 +1392,7 @@
   .ci-variants > :global(.pk) { flex: 1; min-width: 0; width: auto; }
   /* اختيار سعر الدفعة عند الإتمام — يظهر فقط حين تختلف الأسعار فعلاً */
   .price-opts { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; }
-  .po-lbl { font-size: 10.5px; font-weight: 700; color: var(--taupe); }
+  .po-lbl { font-size: 11px; font-weight: 700; color: var(--taupe); }
   .po-row { display: flex; gap: 6px; flex-wrap: wrap; }
   .pchip {
     flex: 1 1 0;
@@ -1407,7 +1407,7 @@
     transition: border-color 0.18s, background 0.18s, transform 0.15s;
   }
   .pchip b { font-size: 12.5px; font-weight: 800; }
-  .pchip .po-sub { font-size: 9.5px; color: var(--taupe); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .pchip .po-sub { font-size: 11px; color: var(--taupe); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
   .pchip.on {
     border-color: var(--burgundy);
     background: linear-gradient(150deg, rgba(181, 73, 91, 0.12), rgba(201, 161, 90, 0.14));
@@ -1491,7 +1491,7 @@
   .cpt-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .cpt-txt b { font-size: 13px; font-weight: 900; color: var(--burgundy-deep); }
   .cpt-txt i {
-    font-size: 10.5px; font-weight: 600; font-style: normal; color: var(--taupe);
+    font-size: 11px; font-weight: 600; font-style: normal; color: var(--taupe);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .cpt-all {
@@ -1533,7 +1533,7 @@
     border-radius: 50%;
     display: inline-flex; align-items: center; justify-content: center;
     background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
-    color: #fff; font-size: 10.5px; font-weight: 900;
+    color: #fff; font-size: 11px; font-weight: 900;
   }
   .cpt-nm {
     flex: 1; min-width: 0;
@@ -1542,7 +1542,7 @@
   }
   .cpt-od {
     flex: none;
-    font-size: 9.5px; font-weight: 800; color: var(--taupe);
+    font-size: 11px; font-weight: 800; color: var(--taupe);
     background: rgba(156, 123, 107, 0.14);
     border-radius: 999px;
     padding: 1px 5px;
@@ -1575,7 +1575,7 @@
   /* ── مراجعة الطلب: القطع ملخصة ثم الحساب — قبل التأكيد بآخر نظرة ── */
   :global(.review) { padding: 12px 14px; display: flex; flex-direction: column; gap: 9px; }
   .rv-head { display: flex; align-items: center; justify-content: space-between; }
-  .rv-count { font-size: 10.5px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
+  .rv-count { font-size: 11px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
   .rv-lines { display: flex; flex-direction: column; gap: 6px; max-height: 148px; overflow-y: auto; }
   .rv-line { display: flex; align-items: center; gap: 7px; font-size: 11.5px; }
   .rv-title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--ink-2); font-weight: 700; }

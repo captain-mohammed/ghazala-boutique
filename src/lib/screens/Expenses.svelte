@@ -175,13 +175,13 @@
     border-radius: 12px; background: var(--accent-soft);
   }
   .a-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-  .tiny { font-size: 10.5px; }
+  .tiny { font-size: 11px; }
   .e-x {
     flex: none; width: 28px; height: 28px;
     border-radius: 50%; border: none;
     background: rgba(181, 73, 91, 0.08); color: var(--burgundy);
     cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   }
-  .e-x[aria-label="تعديل"] { background: rgba(201, 161, 90, 0.14); color: #8a6a35; }
+  .e-x[aria-label="تعديل"] { background: rgba(201, 161, 90, 0.14); color: var(--gold-ink); }
   .ts-input { direction: ltr; text-align: center; font-variant-numeric: tabular-nums; }
 </style>

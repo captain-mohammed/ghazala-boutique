@@ -65,7 +65,7 @@
     box-shadow:
       inset 0 2px 5px rgba(255, 255, 255, 0.28),
       inset 0 -3px 6px rgba(0, 0, 0, 0.16),
-      0 0 0 2.5px var(--bg, #FBF3EE),
+      0 0 0 2.5px var(--bg, var(--ivory)),
       0 0 0 5px var(--burgundy);
   }
   .sw-picked { display: flex; flex-wrap: wrap; gap: 6px; }

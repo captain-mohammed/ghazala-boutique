@@ -93,7 +93,7 @@
       const next = new Date(d); next.setDate(d.getDate() + 1);
       const total = sales
         .filter((s) => s.status !== 'returned' && new Date(s.date) >= d && new Date(s.date) < next)
-        .reduce((a, s) => a + (s.subtotal ?? s.total), 0);
+        .reduce((a, s) => a + (s.subtotal ?? ((Number(s.total) || 0) - (Number(s.deliveryFee) || 0))), 0);
       days.push({ d, total });
     }
     return days;
@@ -220,6 +220,16 @@
     </Glass>
   {/if}
 
+  {#if !sales.length}
+    <!-- بوتيك جديد: شاشة أصفار صامتة لا تخبر بشيء. نقول لها ماذا يحدث بعد أول بيع -->
+    <Glass class="empty-rep rise" radius="var(--r-md)">
+      <span class="er-ic"><Icon name="chart" size={26} color="var(--gold)" /></span>
+      <h2 class="h2" style="margin:6px 0 2px">لا مبيعات بعد</h2>
+      <p class="muted small" style="margin:0">
+        أول عملية بيع تفتح كل شيء هنا: الإيراد، صافي الربح، مبيعات الأيام، وربح كل مورد على حدة.
+      </p>
+    </Glass>
+  {:else}
   <section class="cards">
     <Glass class="stat rise" style="animation-delay:0s; padding:13px 15px; display:flex; flex-direction:column; gap:3px"><span class="muted small">الإيرادات</span><div class="big"><Ticker value={totals.revenue} /> <span class="cur">د.ع</span></div></Glass>
     <Glass class="stat rise" style="animation-delay:0.05s; padding:13px 15px; display:flex; flex-direction:column; gap:3px"><span class="muted small">صافي الربح</span><div class="big gold"><Ticker value={totals.profit - totals.expenses} /> <span class="cur">د.ع</span></div><span class="muted tiny">بعد خصم {fmtIQD(totals.expenses)} مصاريف</span></Glass>
@@ -369,9 +379,24 @@
     </Glass>
   {/if}
   {/if}
+  {/if}
 </div>
 
 <style>
+  :global(.empty-rep) {
+    padding: 26px 20px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .er-ic {
+    width: 54px; height: 54px;
+    border-radius: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--gold-soft);
+    border: 1px solid rgba(201, 161, 90, 0.35);
+  }
   .cards { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .big { font-size: 20px; font-weight: 800; color: var(--ink); display: flex; align-items: baseline; gap: 4px; }
   .big .cur { font-size: 11px; color: var(--taupe); font-weight: 700; }
@@ -389,7 +414,7 @@
     min-height: 4px;
   }
   @keyframes grow { from { transform: scaleY(0); } to { transform: scaleY(1); } }
-  .bar-label { font-size: 9px; }
+  .bar-label { font-size: 11px; }
 
   .ret-toggle {
     width: 100%; display: flex; align-items: center; justify-content: space-between;
@@ -454,7 +479,7 @@
   .peak-days { display: flex; justify-content: space-between; align-items: flex-end; gap: 6px; margin-bottom: 10px; }
   .pk-day { display: flex; flex-direction: column; align-items: center; gap: 4px; flex: 1; }
   .pk-bar { width: 100%; max-width: 26px; border-radius: 6px 6px 3px 3px; background: rgba(122, 46, 58, 0.14); display: block; }
-  .pk-bar.best { background: linear-gradient(180deg, var(--gold), #a4803e); box-shadow: 0 2px 8px rgba(164, 128, 62, 0.35); }
-  .pk-lab { font-size: 9.5px; font-weight: 800; color: var(--taupe); }
+  .pk-bar.best { background: linear-gradient(180deg, var(--gold), var(--gold-deep)); box-shadow: 0 2px 8px rgba(164, 128, 62, 0.35); }
+  .pk-lab { font-size: 11px; font-weight: 800; color: var(--taupe); }
   .peak-line { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); padding: 2px 0; flex-wrap: wrap; }
 </style>

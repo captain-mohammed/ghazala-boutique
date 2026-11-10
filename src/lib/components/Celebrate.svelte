@@ -3,7 +3,7 @@
   import { spawnSparks } from '../motion.js';
 
   let burst = $state(null);
-  const COLORS = ['#B5495B', '#C9A15A', '#7A2E3A', '#E8B4B8', '#D4B276'];
+  const COLORS = ['var(--burgundy)', 'var(--gold)', 'var(--burgundy-deep)', 'var(--blush)', '#D4B276'];
 
   $effect(() => {
     const ev = $celebrate;

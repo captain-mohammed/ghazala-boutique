@@ -86,17 +86,17 @@
      بلا رحلة إلى الإعدادات. set = دالة تختار القيمة الجديدة فوراً. */
   let addCtx = $state(null); // { kind, parent, set }
   let addValue = $state('');
-  let addHex = $state('#9C7B6B');
-  function startAdd(kind, parent, set) { addCtx = { kind, parent, set }; addValue = ''; addHex = '#9C7B6B'; }
+  let addHex = $state('var(--taupe)');
+  function startAdd(kind, parent, set) { addCtx = { kind, parent, set }; addValue = ''; addHex = 'var(--taupe)'; }
   async function confirmAdd() {
     if (!addCtx) return;
     const v = addValue.trim();
     if (!v) { addCtx = null; return; }
-    const payload = addCtx.kind === 'colors' ? { label: v, hex: addHex || '#9C7B6B' } : v;
+    const payload = addCtx.kind === 'colors' ? { label: v, hex: addHex || 'var(--taupe)' } : v;
     await addModelOption(addCtx.kind, payload, addCtx.parent);
     await refreshOpts();
     if (addCtx.set) addCtx.set(v);
-    addCtx = null; addValue = ''; addHex = '#9C7B6B';
+    addCtx = null; addValue = ''; addHex = 'var(--taupe)';
     buzz(8);
   }
   function cancelAdd() { addCtx = null; addValue = ''; }
@@ -149,7 +149,7 @@
     ...opts.colors,
     ...selColors
       .filter((c) => c !== NOCOLOR && !opts.colors.some((o) => o.label === c))
-      .map((c) => ({ label: c, hex: '#9C7B6B' }))
+      .map((c) => ({ label: c, hex: 'var(--taupe)' }))
   ]);
 
   let img = $state(photo || product?.photo || null);
@@ -758,7 +758,7 @@
   .re-take {
     position: absolute; bottom: 4px; inset-inline-start: 4px;
     display: inline-flex; align-items: center; gap: 3px;
-    font-size: 9.5px; font-weight: 800; color: #fff;
+    font-size: 11px; font-weight: 800; color: #fff;
     background: rgba(58, 26, 32, 0.55);
     backdrop-filter: blur(8px);
     border-radius: 999px; padding: 3px 7px;
@@ -792,7 +792,7 @@
   .cb-dot { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; }
   .cb-count {
     margin-inline-start: auto;
-    font-size: 10.5px; font-weight: 800; color: var(--taupe);
+    font-size: 11px; font-weight: 800; color: var(--taupe);
     background: rgba(122, 46, 58, 0.07);
     border-radius: 999px; padding: 3px 9px;
   }
@@ -840,8 +840,8 @@
   /* خط «أضيفي أثناء الإضافة» — رقاقة منقّطة تفتح حقل إدخال سريع دون الرجوع للإعدادات */
   .chip.add {
     border-style: dashed;
-    border-color: var(--burgundy, #B5495B);
-    color: var(--burgundy, #B5495B);
+    border-color: var(--burgundy);
+    color: var(--burgundy);
     background: rgba(181, 73, 91, 0.06);
     font-size: 12.5px;
     padding: 7px 13px;

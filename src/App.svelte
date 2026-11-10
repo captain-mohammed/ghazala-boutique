@@ -33,7 +33,7 @@
   import MyStore from './lib/screens/MyStore.svelte';
   import Trash from './lib/screens/Trash.svelte';
   import PhotoTrash from './lib/screens/PhotoTrash.svelte';
-  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable, sweepAllDuplicateVariants, backfillReceipts, backfillCustomers, verifyCustomersTable, db, SCHEMA_VERSION, storedDbVersion, rawDump } from './lib/db.js';
+  import { sweepMonthClosing, backfillModelIds, backfillTypeTree, sweepOosModelWide, sweepSeasonArrays, migratePhotosToTable, sweepAllDuplicateVariants, backfillReceipts, backfillCustomers, verifyCustomersTable, db, SCHEMA_VERSION, storedDbVersion, rawDump, sweepOrphanPhotos, sweepSettledPending } from './lib/db.js';
 
   let locked = $state(true);
   let screen = $state('home');
@@ -171,6 +171,10 @@
       }
     });
     backfillCustomers().catch(() => {});
+    /* تنظيفات صغيرة عند الإقلاع: صورة بلا موديل → سلة الصور، وعملية
+       قبضت الشركة ثمنها وبقيت «قيد التوصيل» → مسلّمة */
+    sweepOrphanPhotos().catch(() => {});
+    sweepSettledPending().catch(() => {});
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       deferredInstall = e;

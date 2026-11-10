@@ -368,7 +368,7 @@
         {#if deadPieces > 0}
           <Glass class="meter warn">
             <div class="mt-h">
-              <span class="mt-l"><Icon name="clock" size={13} color="#9a5b16" /> راكد على الرف</span>
+              <span class="mt-l"><Icon name="clock" size={13} color="var(--gold-amber)" /> راكد على الرف</span>
               <span class="mt-n warn">{fmtNum(deadPieces)} قطعة</span>
             </div>
             <div class="mt-s">بلا حركة منذ 30 يوماً أو أكثر — راجعي «إصلاح الموديلات» والتقارير</div>
@@ -542,7 +542,7 @@
   }
   .sh-chip {
     display: inline-flex; align-items: center; gap: 5px;
-    font-size: 10.5px; font-weight: 800; color: var(--taupe);
+    font-size: 11px; font-weight: 800; color: var(--taupe);
     background: rgba(255, 255, 255, 0.55);
     border: 1px solid var(--line);
     border-radius: 999px; padding: 3px 10px;
@@ -557,22 +557,22 @@
     display: flex; flex-direction: column; gap: 3px; min-width: 0;
   }
   :global(.hs-main) { grid-column: span 2; }
-  .hs-l { font-size: 10.5px; font-weight: 800; color: var(--taupe); }
+  .hs-l { font-size: 11px; font-weight: 800; color: var(--taupe); }
   .hs-v {
     font-weight: 900; font-size: 17px; color: var(--ink);
     display: flex; align-items: baseline; gap: 3px;
     font-variant-numeric: tabular-nums;
   }
   :global(.hs-main) .hs-v { font-size: 22px; }
-  .hs-v.gold { color: #8a6a35; }
-  .hs-s { font-size: 10px; font-weight: 700; color: var(--taupe); }
+  .hs-v.gold { color: var(--gold-ink); }
+  .hs-s { font-size: 11px; font-weight: 700; color: var(--taupe); }
 
   /* عنوان القسم = زرّ الطيّ نفسه */
   .sec-t {
     width: 100%;
     display: flex; align-items: center; gap: 8px;
     background: none; border: none; cursor: pointer;
-    font-family: inherit; text-align: right;
+    font-family: inherit; text-align: start;
     padding: 6px 2px; margin: 2px 0 8px;
   }
   .st-ic {
@@ -582,7 +582,7 @@
   }
   .st-t { flex: 1; font-weight: 900; font-size: 13px; color: var(--ink); letter-spacing: 0.2px; }
   .st-badge {
-    font-size: 10px; font-weight: 800; color: var(--burgundy);
+    font-size: 11px; font-weight: 800; color: var(--burgundy);
     background: rgba(181, 73, 91, 0.1);
     border-radius: 999px; padding: 2px 8px;
     font-variant-numeric: tabular-nums;
@@ -601,16 +601,16 @@
     display: flex; align-items: center; justify-content: center;
     background: var(--accent-soft);
   }
-  .sl { font-size: 10.5px; font-weight: 700; color: var(--taupe); }
+  .sl { font-size: 11px; font-weight: 700; color: var(--taupe); }
   .s-v {
     font-weight: 800; font-size: 14px; color: var(--ink);
     display: flex; align-items: baseline; gap: 3px;
     font-variant-numeric: tabular-nums;
   }
-  .s-v.gold { color: #8a6a35; }
+  .s-v.gold { color: var(--gold-ink); }
   .s-v.good { color: var(--good); }
   .s-v.bad { color: var(--burgundy); }
-  .cur { font-size: 10.5px; font-weight: 700; color: var(--taupe); }
+  .cur { font-size: 11px; font-weight: 700; color: var(--taupe); }
 
   /* شريط توزيع الإيراد */
   :global(.flow) { margin-top: 9px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
@@ -620,12 +620,12 @@
     background: rgba(156, 123, 107, 0.14);
   }
   .fl-seg { height: 100%; transition: width 0.5s ease; }
-  .fl-seg.profit { background: linear-gradient(90deg, var(--gold), #a4803e); }
+  .fl-seg.profit { background: linear-gradient(90deg, var(--gold), var(--gold-deep)); }
   .fl-seg.rest { background: rgba(156, 123, 107, 0.28); }
   .fl-legend { display: flex; flex-wrap: wrap; gap: 5px 12px; }
-  .lg { display: inline-flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; color: var(--taupe); }
+  .lg { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 700; color: var(--taupe); }
   .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-  .dot.profit { background: linear-gradient(150deg, var(--gold), #a4803e); }
+  .dot.profit { background: linear-gradient(150deg, var(--gold), var(--gold-deep)); }
   .dot.rest { background: rgba(156, 123, 107, 0.35); }
   .dot.gold { background: var(--burgundy); }
 
@@ -635,34 +635,34 @@
   .mt-h { display: flex; align-items: center; justify-content: space-between; }
   .mt-l { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 800; color: var(--ink); }
   .mt-n { font-size: 14px; font-weight: 900; color: var(--burgundy-deep); font-variant-numeric: tabular-nums; }
-  .mt-n.warn { color: #9a5b16; }
+  .mt-n.warn { color: var(--gold-amber); }
   .mt-bar { height: 8px; border-radius: 999px; background: rgba(156, 123, 107, 0.14); overflow: hidden; }
   .mt-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--burgundy), var(--gold)); transition: width 0.5s ease; }
-  .mt-s { font-size: 10.5px; font-weight: 700; color: var(--taupe); }
+  .mt-s { font-size: 11px; font-weight: 700; color: var(--taupe); }
 
   /* آخر الأشهر: أعمدة حقيقية */
   :global(.months) { margin-top: 9px; padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; }
   .mh-h { display: flex; justify-content: space-between; }
   .mh-row { display: flex; align-items: center; gap: 8px; }
-  .mh-l { flex: none; width: 78px; font-size: 10.5px; font-weight: 700; color: var(--taupe); }
+  .mh-l { flex: none; width: 78px; font-size: 11px; font-weight: 700; color: var(--taupe); }
   .mh-bar { flex: 1; min-width: 0; height: 8px; border-radius: 999px; background: rgba(156, 123, 107, 0.12); overflow: hidden; }
   .mh-fill { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--burgundy)); transition: width 0.5s ease; }
-  .mh-v { flex: none; min-width: 60px; text-align: left; font-size: 10.5px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .mh-v { flex: none; min-width: 60px; text-align: left; font-size: 11px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
 
   /* رتّب الأنواع */
   :global(.rank) { padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
-  .rk-h { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 800; color: #8a6a35; }
+  .rk-h { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 800; color: var(--gold-ink); }
   .rk-row { display: flex; align-items: center; gap: 9px; }
   .rk-n {
     flex: none; width: 22px; height: 22px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 10.5px; font-weight: 900; color: var(--taupe);
+    font-size: 11px; font-weight: 900; color: var(--taupe);
     background: rgba(156, 123, 107, 0.12);
     font-variant-numeric: tabular-nums;
   }
-  .rk-n.first { background: linear-gradient(150deg, var(--gold), #a4803e); color: #fff; }
+  .rk-n.first { background: linear-gradient(150deg, var(--gold), var(--gold-deep)); color: #fff; }
   .rk-name { flex: 1; min-width: 0; font-size: 12px; font-weight: 800; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rk-v { flex: none; font-size: 12px; font-weight: 900; color: #8a6a35; font-variant-numeric: tabular-nums; }
+  .rk-v { flex: none; font-size: 12px; font-weight: 900; color: var(--gold-ink); font-variant-numeric: tabular-nums; }
 
   :global(.vault-row), :global(.arch-row), :global(.last) {
     margin-top: 9px; padding: 12px 14px;

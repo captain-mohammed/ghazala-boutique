@@ -364,7 +364,7 @@
   .cap-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
   .cap-k { font-size: 11px; font-weight: 700; color: var(--taupe); }
   .cap-v { font-size: 17px; font-weight: 900; color: var(--burgundy); font-variant-numeric: tabular-nums; }
-  .cap-hint { flex: none; font-size: 9.5px; font-weight: 700; color: var(--taupe); background: rgba(156, 123, 107, 0.1); border-radius: 999px; padding: 3px 8px; }
+  .cap-hint { flex: none; font-size: 11px; font-weight: 700; color: var(--taupe); background: rgba(156, 123, 107, 0.1); border-radius: 999px; padding: 3px 8px; }
 
   /* ---------- بطاقة الاستلام ---------- */
   :global(.rc) {
@@ -381,7 +381,7 @@
   .rc-date { flex: none; font-size: 11px; font-weight: 900; color: var(--burgundy); background: rgba(181, 73, 91, 0.09); border: 1px solid rgba(181, 73, 91, 0.16); border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
   .rc-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .rc-sup { font-weight: 800; font-size: 13.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .rc-sub { font-size: 10px; font-weight: 700; color: var(--taupe); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .rc-sub { font-size: 11px; font-weight: 700; color: var(--taupe); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .rc-pieces { flex: none; font-size: 11px; font-weight: 800; color: var(--taupe); background: rgba(156, 123, 107, 0.1); border-radius: 999px; padding: 4px 10px; white-space: nowrap; }
   .chev { flex: none; width: 20px; height: 20px; display: inline-flex; align-items: center; justify-content: center; transition: transform 0.2s; color: var(--taupe); }
   .chev.flip { transform: rotate(-90deg); }
@@ -389,19 +389,19 @@
   .rc-sell { display: flex; align-items: center; gap: 10px; margin-top: 11px; }
   .rc-bar { position: relative; flex: 1; height: 7px; border-radius: 999px; background: rgba(156, 123, 107, 0.16); overflow: hidden; }
   .rc-bar i { position: absolute; inset-inline-start: 0; top: 0; bottom: 0; background: linear-gradient(90deg, var(--gold), var(--burgundy)); border-radius: 999px; }
-  .rc-pct { flex: none; font-size: 10.5px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
+  .rc-pct { flex: none; font-size: 11px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
 
   .rc-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; margin-top: 11px; border-top: 1px solid var(--line); padding-top: 10px; }
   .rc-stats .stat { display: flex; flex-direction: column; gap: 2px; text-align: center; border-inline-start: 1px solid var(--line); }
   .rc-stats .stat:first-child { border-inline-start: none; }
-  .rc-stats .k { font-size: 9.5px; font-weight: 700; color: var(--taupe); }
+  .rc-stats .k { font-size: 11px; font-weight: 700; color: var(--taupe); }
   .rc-stats b { font-size: 12px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
   .rc-stats b.good { color: var(--good); }
   .rc-stats b.bad { color: var(--burgundy); }
 
   .rc-foot { display: flex; align-items: center; gap: 10px; margin-top: 9px; flex-wrap: wrap; }
-  .rc-auto { flex: none; font-size: 9.5px; font-weight: 800; color: var(--taupe); background: rgba(156, 123, 107, 0.1); border-radius: 999px; padding: 3px 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .rc-note { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 10.5px; font-weight: 600; color: var(--taupe); }
+  .rc-auto { flex: none; font-size: 11px; font-weight: 800; color: var(--taupe); background: rgba(156, 123, 107, 0.1); border-radius: 999px; padding: 3px 9px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .rc-note { display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 11px; font-weight: 600; color: var(--taupe); }
   .rc-note span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .lines { margin-top: 10px; border-top: 1px solid var(--line); padding-top: 8px; display: flex; flex-direction: column; gap: 5px; }
@@ -425,23 +425,23 @@
   .mdl-ic { flex: none; width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: rgba(181, 73, 91, 0.1); border: 1px solid rgba(181, 73, 91, 0.16); }
   .sup-id, .mdl-id { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
   .sup-name, .mdl-name { font-weight: 800; font-size: 13.5px; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sup-meta, .mdl-meta { font-size: 10px; font-weight: 700; color: var(--taupe); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sup-meta, .mdl-meta { font-size: 11px; font-weight: 700; color: var(--taupe); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .sup-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 9px 12px; margin-top: 11px; border-top: 1px solid var(--line); padding-top: 10px; }
   .sup-stats .stat { display: flex; flex-direction: column; gap: 1px; }
-  .sup-stats .k { font-size: 9.5px; font-weight: 700; color: var(--taupe); }
+  .sup-stats .k { font-size: 11px; font-weight: 700; color: var(--taupe); }
   .sup-stats b { font-size: 12.5px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
   .sup-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 9px; padding-top: 8px; border-top: 1px dashed var(--line); }
   .sup-foot b { font-size: 12.5px; font-weight: 800; }
 
   .mdl-profit { flex: none; display: flex; flex-direction: column; gap: 1px; text-align: center; }
-  .mdl-profit .k { font-size: 9px; font-weight: 700; color: var(--taupe); }
+  .mdl-profit .k { font-size: 11px; font-weight: 700; color: var(--taupe); }
   .mdl-profit b { font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
   .mdl-cost { display: flex; align-items: center; gap: 7px; margin-top: 9px; font-size: 11px; color: var(--taupe); }
   .mdl-cost .k { font-weight: 700; }
   .cost-from, .cost-to { font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
   .mdl-cost .arrow { color: var(--gold); font-weight: 900; }
-  .delta { margin-inline-start: auto; font-size: 10.5px; font-weight: 800; padding: 2px 8px; border-radius: 999px; }
+  .delta { margin-inline-start: auto; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; }
   .delta.up { color: var(--burgundy); background: rgba(181, 73, 91, 0.1); }
   .delta.down { color: var(--good); background: rgba(78, 138, 95, 0.12); }
 
@@ -450,13 +450,13 @@
   .warn { color: var(--warn) !important; }
 
   .cmp { margin-top: 10px; border-top: 1px dashed var(--line); padding-top: 8px; }
-  .cmp-title { font-size: 10.5px; font-weight: 800; color: var(--taupe); margin-bottom: 6px; }
+  .cmp-title { font-size: 11px; font-weight: 800; color: var(--taupe); margin-bottom: 6px; }
   .cmp-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; padding: 5px 7px; border-radius: 8px; }
   .cmp-row.best { background: rgba(78, 138, 95, 0.1); }
   .cmp-sup { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .cmp-qty { flex: none; font-size: 10px; color: var(--taupe); }
+  .cmp-qty { flex: none; font-size: 11px; color: var(--taupe); }
   .cmp-cost { font-weight: 800; color: var(--burgundy); font-variant-numeric: tabular-nums; }
-  .cmp-best { flex: none; font-size: 9px; font-weight: 800; color: var(--good); background: rgba(78, 138, 95, 0.14); border-radius: 999px; padding: 2px 7px; }
+  .cmp-best { flex: none; font-size: 11px; font-weight: 800; color: var(--good); background: rgba(78, 138, 95, 0.14); border-radius: 999px; padding: 2px 7px; }
 
   .btn { font-family: inherit; font-size: 12.5px; font-weight: 700; border-radius: var(--r-md); padding: 0 12px; cursor: pointer; border: 1px solid var(--line); background: rgba(255,255,255,0.6); color: var(--ink); display: inline-flex; align-items: center; gap: 5px; }
   .btn.ghost { background: transparent; }

@@ -106,7 +106,7 @@
     gap: 3px;
     padding: 13px 15px;
     cursor: pointer;
-    text-align: right;
+    text-align: start;
     width: 100%;
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }

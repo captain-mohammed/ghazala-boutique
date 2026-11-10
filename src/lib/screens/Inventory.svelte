@@ -606,7 +606,7 @@
     padding: 0;
     overflow: hidden;
     cursor: pointer;
-    text-align: right;
+    text-align: start;
     width: 100%;
     /* زوايا أنعم من الافتراضي (٢٤px) — البطاقة تبدو رقيقة لا صلبة */
     border-radius: 27px !important;
@@ -678,12 +678,12 @@
   .cc-more {
     width: 20px; height: 20px; border-radius: 50%;
     display: inline-flex; align-items: center; justify-content: center;
-    font-size: 9px; font-weight: 800; color: var(--burgundy);
+    font-size: 11px; font-weight: 800; color: var(--burgundy);
     background: rgba(181, 73, 91, 0.1);
   }
   .cc-item { display: inline-flex; flex-direction: column; align-items: center; gap: 4px; }
   .cc-dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
-  .cc-qty { color: var(--ink-2); font-weight: 800; font-size: 10px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .cc-qty { color: var(--ink-2); font-weight: 800; font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums; }
   /* حاوية القياسات: بلا حدود ظاهرة — تثبّت المساحة فقط */
   .card-sizes-box {
     flex: 0 1 auto; /* لا تلتقط المساحة الحرة —:auto-margin هو اللي يدفع الدوائر لليسار */
@@ -694,10 +694,10 @@
     gap: 4px;
     overflow: hidden;
   }
-  .sz-label { font-weight: 800; color: var(--taupe); font-size: 10.5px; }
+  .sz-label { font-weight: 800; color: var(--taupe); font-size: 11px; }
   .sz-flow { display: flex; flex-wrap: wrap; gap: 3px 4px; align-content: flex-start; overflow: hidden; }
   .sz-chip {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     color: var(--ink-2);
     background: rgba(122, 46, 58, 0.06);
@@ -708,7 +708,7 @@
   }
   .sz-chip.empty { background: none; color: var(--taupe); }
   .sz-more {
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 800;
     color: var(--burgundy);
     background: rgba(181, 73, 91, 0.1);
@@ -724,7 +724,7 @@
     top: 8px;
     left: 50%;
     transform: translateX(-50%);
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 800;
     color: var(--ink);
     background: rgba(255, 255, 255, 0.9);
@@ -770,7 +770,7 @@
   .mv-sups { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
   .mv-sup {
     display: inline-flex; align-items: center; gap: 4px;
-    font-size: 10.5px; font-weight: 800; color: #8a6a35;
+    font-size: 11px; font-weight: 800; color: var(--gold-ink);
     background: rgba(201, 162, 75, 0.14);
     border-radius: 999px; padding: 3px 9px;
   }
@@ -865,7 +865,7 @@
     white-space: nowrap;
   }
   .qo-btn.gold {
-    background: linear-gradient(150deg, var(--gold), #a4803e);
+    background: linear-gradient(150deg, var(--gold), var(--gold-deep));
     color: #fff;
     border: none;
   }

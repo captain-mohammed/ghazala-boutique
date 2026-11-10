@@ -9,7 +9,7 @@
   {#each $toasts as t (t.id)}
     <div class="toast {t.kind}" in:toastDrop out:fade={{ duration: 180 }}>
       <span class="t-ic">
-        <Icon name={t.kind === 'success' ? 'check' : t.kind === 'error' ? 'alert' : 'info'} size={18} color="#FBF3EE" />
+        <Icon name={t.kind === 'success' ? 'check' : t.kind === 'error' ? 'alert' : 'info'} size={18} color="var(--ivory)" />
       </span>
       {t.message}
     </div>

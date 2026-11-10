@@ -8,7 +8,7 @@
   import VariantBits from '../components/VariantBits.svelte';
   import TargetRing from '../components/TargetRing.svelte';
   import { db, allSettings, upcomingOccasions, vaultState, vaultManual, archivedModels, moneyInTransit, loadProducts } from '../db.js';
-  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey, stockArrival, shelfAgeDays, baghdadLocalInput, isoFromBaghdadLocal, baghdadHour } from '../utils.js';
+  import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey, stockArrival, shelfAgeDays, baghdadLocalInput, isoFromBaghdadLocal, baghdadHour, countAr } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
   import Sheet from '../components/Sheet.svelte';
   import { invoicePreset, sellPrefill, toastOk, toastErr, celebrateAt } from '../store.js';
@@ -411,7 +411,7 @@
       <span class="tr-ic"><Icon name="truck" size={18} color="#fff" /></span>
       <div class="a-body">
         <div class="bold">عند شركات التوصيل: {fmtIQD(transit)}</div>
-        <div class="muted small">{fmtNum(transitCount)} عملية — اضغطي للحساب والتسوية</div>
+        <div class="muted small">{countAr(transitCount, 'عملية', 'عمليتان', 'عمليات')} — اضغطي للحساب والتسوية</div>
       </div>
       <Icon name="back" size={16} color="var(--taupe)" />
     </Glass>
@@ -434,7 +434,7 @@
       <div class="stat spot" use:spotlight>
         <div class="muted small">مبيعات اليوم</div>
         <div class="big"><Ticker value={today.total} /> <span class="cur">د.ع</span></div>
-        <div class="muted small">{today.count} عملية بيع</div>
+        <div class="muted small">{countAr(today.count, 'عملية بيع', 'عمليتا بيع', 'عمليات بيع')}</div>
       </div>
       <div class="stat spot" use:spotlight>
         <div class="muted small">ربح اليوم</div>
@@ -585,7 +585,7 @@
   :global(.transit) {
     display: flex; align-items: center; gap: 12px;
     padding: 12px 14px; border-radius: var(--r-md);
-    text-align: right; width: 100%; cursor: pointer;
+    text-align: start; width: 100%; cursor: pointer;
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   /* ---- الهدف اليومي ---- */
@@ -595,14 +595,14 @@
     position: absolute; font-size: 13px; font-weight: 800; color: var(--ink);
     font-variant-numeric: tabular-nums;
   }
-  .target-num.hit { color: #8a6a35; }
+  .target-num.hit { color: var(--gold-ink); }
   .target-text { display: flex; flex-direction: column; gap: 1px; }
 
   /* ---- خزنة الغزالة ---- */
   :global(.vault) {
     display: flex; align-items: center; gap: 12px;
     padding: 13px 15px; border-radius: var(--r-md);
-    text-align: right; width: 100%; cursor: pointer;
+    text-align: start; width: 100%; cursor: pointer;
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   :global(.vault:active) { transform: scale(0.98); }
@@ -619,7 +619,7 @@
   }
   .v-bar i {
     display: block; height: 100%; border-radius: 999px;
-    background: linear-gradient(90deg, var(--gold), #a4803e);
+    background: linear-gradient(90deg, var(--gold), var(--gold-deep));
     transition: width 0.9s cubic-bezier(0.22, 1, 0.36, 1);
   }
   .ts-input { direction: ltr; text-align: center; font-variant-numeric: tabular-nums; }
@@ -656,14 +656,14 @@
   .b-ic {
     flex: none; width: 34px; height: 34px;
     border-radius: 11px;
-    background: linear-gradient(150deg, var(--gold), #a4803e);
+    background: linear-gradient(150deg, var(--gold), var(--gold-deep));
     display: flex; align-items: center; justify-content: center;
   }
   :global(.transit:active) { transform: scale(0.98); }
   .tr-ic {
     flex: none; width: 40px; height: 40px;
     border-radius: 13px;
-    background: linear-gradient(150deg, var(--gold), #a4803e);
+    background: linear-gradient(150deg, var(--gold), var(--gold-deep));
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 4px 12px rgba(164, 128, 62, 0.3);
   }
@@ -685,7 +685,7 @@
   :global(.alert) {
     display: flex; align-items: center; gap: 12px;
     padding: 13px 15px; border-radius: var(--r-md);
-    text-align: right; width: 100%;
+    text-align: start; width: 100%;
     cursor: pointer;
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
@@ -730,7 +730,7 @@
   button.medal { cursor: pointer; transition: transform 0.14s cubic-bezier(0.34, 1.56, 0.64, 1); }
   button.medal:active { transform: scale(0.94); }
   .gold-medal {
-    color: #8a6a35;
+    color: var(--gold-ink);
     background: var(--gold-soft);
     border-color: rgba(201, 161, 90, 0.35);
   }
@@ -744,7 +744,7 @@
   }
   .sm-ic {
     width: 24px; height: 24px; border-radius: 8px;
-    background: linear-gradient(150deg, var(--gold), #a4803e);
+    background: linear-gradient(150deg, var(--gold), var(--gold-deep));
     display: flex; align-items: center; justify-content: center;
   }
   .sm-row {

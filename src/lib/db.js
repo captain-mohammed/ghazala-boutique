@@ -849,6 +849,32 @@ export async function restorePhotoTrash(id, modelId) {
 export async function purgePhotoTrash(id) { await db.photoTrash.delete(id); }
 export async function purgeAllPhotoTrash() { await db.photoTrash.clear(); }
 
+/* صور بلا موديل: بقيت في جدول الصور بعد حذف موديلها (أو دمج قديم لم ينظّف).
+   تُنقل إلى سلة الصور لا تُحذف — قاعدة التطبيق: لا صورة تضيع بلا رجعة. */
+export async function sweepOrphanPhotos() {
+  const [photos, products] = await Promise.all([db.photos.toArray(), db.products.toArray()]);
+  const live = new Set(products.map((p) => p.modelId).filter(Boolean));
+  let n = 0;
+  for (const ph of photos) {
+    if (!ph.modelId || live.has(ph.modelId)) continue;
+    await db.photoTrash.add({
+      modelId: ph.modelId, data: ph.data,
+      deletedAt: new Date().toISOString(), reason: 'موديل محذوف'
+    });
+    await db.photos.delete(ph.modelId);
+    n++;
+  }
+  return n;
+}
+
+/* عملية قبضت الشركة ثمنها وبقيت «قيد التوصيل» — تُصحّح مرة عند الإقلاع.
+   قبض الثمن يعني أنها سُلّمت؛ بقاؤها معلّقة يُفسد عدّاد الشاشة إلى الأبد. */
+export async function sweepSettledPending() {
+  const rows = await db.sales.filter((s) => s.status === 'pending' && !!s.settledAt).toArray();
+  for (const s of rows) await db.sales.update(s.id, { status: 'delivered' });
+  return rows.length;
+}
+
 /* صرف كمية من دفعات بسعر محدّد (FIFO داخل نفس السعر). السعر غير الموجود
    (تغيّر يدوي مثلاً) يرتد إلى الأقدم المتاح بدل أن يفشل البيع. */
 export async function consumeAtPrice(sku, price, qty) {
@@ -1662,19 +1688,46 @@ export async function addCompanyPayment({ company, amount, date, note = '', hist
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
   let left = amt;
+
+  /* ١) دين المرتجعات أولاً: عملية رجعت بعد أن قبضنا ثمنها. تُخصم من الدفعة
+     القادمة قبل تسوية أي عملية جديدة — وإلا بقي البوتيك مديناً بلا أثر.
+     بالعملية الكاملة لا بالكسر، مثل تسوية المبيعات تماماً. */
+  const debtRows = all
+    .filter((s) => s.status === 'returned' && s.settledAt && !s.debtSettledAt && (s.deliveryCompany || '').trim() === co)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+  let debtApplied = 0;
+  for (const s of debtRows) {
+    const d = Number(s.subtotal) || 0;
+    if (d <= left) {
+      await db.sales.update(s.id, { debtSettledAt: iso });
+      left -= d;
+      debtApplied += d;
+    } else break;
+  }
+
+  /* ٢) ثم تسوية المبيعات — الأقدم أولاً */
   const settledSaleIds = [];
   for (const s of open) {
     const due = Number(s.subtotal) || 0;
     if (due <= left) { settledSaleIds.push(s.id); left -= due; }
     else break; /* لا نشقّ عملية نصفين — الباقي يبقى رصيداً دائناً */
   }
-  for (const id of settledSaleIds) await db.sales.update(id, { settledAt: iso });
+  const byId = new Map(all.map((s) => [s.id, s]));
+  for (const id of settledSaleIds) {
+    /* قبضت الشركة ثمنها = سُلّمت. عملية بقيت «قيد التوصيل» بعد التسوية كانت
+       تُبقي عدّاد الشاشة غلطاً إلى الأبد. */
+    const was = byId.get(id);
+    await db.sales.update(id, {
+      settledAt: iso,
+      ...(was && was.status === 'pending' ? { status: 'delivered' } : {})
+    });
+  }
 
   const id = await db.payments.add({
     company: co, amount: amt, date: iso, note: (note || '').trim(),
-    settledSaleIds, credit: left, historical: false, createdAt: new Date().toISOString()
+    settledSaleIds, credit: left, debtApplied, historical: false, createdAt: new Date().toISOString()
   });
-  return { ok: true, id, settled: settledSaleIds.length, credit: left, historical: false };
+  return { ok: true, id, settled: settledSaleIds.length, credit: left, debtApplied, historical: false };
 }
 
 /* الدفعات القديمة (أرشيف) — للعرض والذاكرة فقط، لا تدخل أي حساب جارٍ */
@@ -1707,13 +1760,34 @@ export async function companyCredits() {
    الحساب («عند شركات التوصيل الآن» / «لم تُستلم بعد»)، والبضاعة عند الشركة
    في الحالتين. قد يكون الرصيد سالباً إن قُبض أكثر مما سُجّل من مبيعات.
    بضعة البوتيك فقط — أجرة التوصيل تجوزها الزبونة للشركة مباشرة */
+/* مستحقّ للشركة: عملية رجعت **بعد** أن قبضت الشركة ثمنها. البوتيك قبض مالاً
+   على بيع لم يتم، فيصير عليه مثله للشركة — وكان هذا يضيع بصمت: الإرجاع يخصم
+   الربح من الخزنة ولا يمسّ دفتر الشركة إطلاقاً.
+   مشتق من المبيعات (بلا جدول جديد) ويُخصم تلقائياً من أول دفعة قادمة، ثم
+   يُختم على العملية `debtSettledAt` حتى لا يُخصم مرتين. */
+export async function companyDebts() {
+  const rows = await db.sales.toArray();
+  const m = new Map();
+  for (const s of rows) {
+    if (s.status !== 'returned' || !s.settledAt || s.debtSettledAt) continue;
+    const k = (s.deliveryCompany || '').trim();
+    if (!k) continue;
+    m.set(k, (m.get(k) || 0) + (Number(s.subtotal) || 0));
+  }
+  return m;
+}
+
 export async function moneyInTransit() {
   const [sales, payments] = await Promise.all([db.sales.toArray(), db.payments.toArray()]);
   const owed = sales
     .filter((s) => s.status !== 'returned' && !s.settledAt)
     .reduce((a, s) => a + (Number(s.subtotal) || 0), 0);
   const credit = payments.reduce((a, p) => a + (Number(p.credit) || 0), 0);
-  return owed - credit;
+  /* المرتجعات بعد التسوية دين على البوتيك — تنقص ما عند الشركات الآن */
+  const debt = sales
+    .filter((s) => s.status === 'returned' && s.settledAt && !s.debtSettledAt)
+    .reduce((a, s) => a + (Number(s.subtotal) || 0), 0);
+  return owed - credit - debt;
 }
 
 export async function returnSale(id) {
@@ -1812,7 +1886,7 @@ export async function returnSaleItems(id, selections, { markDelivered = false } 
     items: backItems,
     subtotal: backSub, cost: backCost, profit: backProfit,
     deliveryFee: 0, total: backSub,
-    status: 'returned', settledAt: null,
+    status: 'returned', settledAt: s.settledAt || null,
     returnedFrom: id, splitAt: now, createdAt: now, updatedAt: now
   });
 

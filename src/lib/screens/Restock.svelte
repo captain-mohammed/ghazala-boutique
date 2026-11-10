@@ -32,7 +32,7 @@
   let addSupVal = $state('');
   let addColorOpen = $state(false);
   let addColorLabel = $state('');
-  let addColorHex = $state('#9C7B6B');
+  let addColorHex = $state('var(--taupe)');
   let saving = $state(false);
 
   function group(ps) {
@@ -70,7 +70,7 @@
   const chosen = $derived(models.find((m) => m.modelId === picked) || null);
   const palette = $derived([
     ...opts.colors,
-    ...selColors.filter((c) => c !== NOCOLOR && !opts.colors.some((o) => o.label === c)).map((c) => ({ label: c, hex: '#9C7B6B' }))
+    ...selColors.filter((c) => c !== NOCOLOR && !opts.colors.some((o) => o.label === c)).map((c) => ({ label: c, hex: 'var(--taupe)' }))
   ]);
   const baseSizes = $derived((opts.sizes && opts.sizes[category]) || SIZE_RUNS[category] || SIZE_RUNS['نسائية']);
 
@@ -134,10 +134,10 @@
   async function addColor() {
     const v = addColorLabel.trim();
     if (!v) return;
-    await addModelOption('colors', { label: v, hex: addColorHex || '#9C7B6B' }, null);
+    await addModelOption('colors', { label: v, hex: addColorHex || 'var(--taupe)' }, null);
     await refreshOpts();
     if (!selColors.includes(v)) { selColors = [...selColors, v]; byColor = { ...byColor, [v]: byColor[v] || {} }; }
-    addColorOpen = false; addColorLabel = ''; addColorHex = '#9C7B6B';
+    addColorOpen = false; addColorLabel = ''; addColorHex = 'var(--taupe)';
     buzz(8);
   }
 
@@ -350,11 +350,11 @@
   .mgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-bottom: 80px; }
   .mcard { display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--glass, rgba(255,255,255,0.5)); cursor: pointer; text-align: center; font-family: inherit; }
   .mcard:active { transform: scale(0.97); }
-  .m-img { width: 100%; aspect-ratio: 1; border-radius: 9px; background: var(--ivory, #FBF3EE); display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
+  .m-img { width: 100%; aspect-ratio: 1; border-radius: 9px; background: var(--ivory, var(--ivory)); display: flex; align-items: center; justify-content: center; overflow: hidden; flex: none; }
   .m-img img { width: 100%; height: 100%; object-fit: cover; }
   .m-img.big { width: 60px; height: 60px; aspect-ratio: auto; border-radius: 14px; }
   .m-chain { font-size: 11px; font-weight: 700; color: var(--ink); line-height: 1.25; max-height: 2.5em; overflow: hidden; }
-  .m-qty { font-size: 10px; color: var(--taupe); }
+  .m-qty { font-size: 11px; color: var(--taupe); }
   :global(.picked) { padding: 12px 14px; display: flex; align-items: center; gap: 12px; }
   :global(.summary) { padding: 11px 14px; display: flex; align-items: center; gap: 8px; }
   .sum-k { font-size: 11px; font-weight: 700; color: var(--taupe); }
@@ -365,7 +365,7 @@
   .color-block { border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 12px; background: rgba(255, 255, 255, 0.28); }
   .cb-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
   .cb-dot { width: 15px; height: 15px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; }
-  .cb-count { margin-inline-start: auto; font-size: 10.5px; font-weight: 800; color: var(--taupe); background: rgba(122, 46, 58, 0.07); border-radius: 999px; padding: 3px 9px; }
+  .cb-count { margin-inline-start: auto; font-size: 11px; font-weight: 800; color: var(--taupe); background: rgba(122, 46, 58, 0.07); border-radius: 999px; padding: 3px 9px; }
   .cb-count.has { color: var(--good); background: rgba(78, 138, 95, 0.12); }
   .cb-empty { font-size: 12.5px; font-weight: 700; color: var(--taupe); border: 1.5px dashed var(--line-2); border-radius: var(--r-md); padding: 14px; text-align: center; }
   .add-hex { width: 44px; height: 44px; padding: 0; border: 1px solid var(--line-2); border-radius: 10px; background: #fff; flex: none; }

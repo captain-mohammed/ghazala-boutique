@@ -4,8 +4,8 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Sheet from '../components/Sheet.svelte';
   import Pick from '../components/Pick.svelte';
-  import { db, settleSale, moneyInTransit, setSetting, getSetting, addCompanyPayment, deleteCompanyPayment, companyCredits, historicalPayments } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, buzz, copyText, sendWhatsApp, iqd, baghdadLocalInput, isoFromBaghdadLocal } from '../utils.js';
+  import { db, settleSale, moneyInTransit, setSetting, getSetting, addCompanyPayment, deleteCompanyPayment, companyCredits, companyDebts, historicalPayments } from '../db.js';
+  import { fmtIQD, fmtNum, fmtDate, buzz, copyText, sendWhatsApp, iqd, baghdadLocalInput, isoFromBaghdadLocal, countAr } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   let sales = $state([]);
@@ -19,6 +19,8 @@
   /* ---- دفعات الشركات: مبلغ + تاريخ يُدخلان يدوياً (فواتير قديمة مثلاً) ---- */
   let payments = $state([]);
   let credits = $state(new Map());
+  /* مستحقّ للشركة: مرتجعات بعد أن قبضت ثمنها — دين على البوتيك، لا يختفي */
+  let debts = $state(new Map());
   let payCompany = $state('');
   let payAmount = $state('');
   let payDate = $state(baghdadLocalInput().slice(0, 10)); /* تاريخ بغداد */
@@ -59,8 +61,9 @@
       if (r.historical) {
         toastOk(`حُفظت في السجل القديم: ${fmtIQD(amt)} — دون لمس الرصيد الحالي`);
       } else {
+        const debtPart = r.debtApplied > 0 ? ` — خُصم ${fmtIQD(r.debtApplied)} مقابل مرتجعات سابقة` : '';
         const extra = r.credit > 0 ? ` — ${fmtIQD(r.credit)} رصيد دائن (فواتير أقدم من التطبيق)` : '';
-        toastOk(`سُجّلت دفعة ${fmtIQD(amt)} — سوّت ${fmtNum(r.settled)} عملية${extra}`);
+        toastOk(`سُجّلت دفعة ${fmtIQD(amt)} — سوّت ${countAr(r.settled, 'عملية', 'عمليتان', 'عمليات')}${debtPart}${extra}`);
       }
       payAmount = '';
       payNote = '';
@@ -115,9 +118,9 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [s, c, pays, cr, arch] = await Promise.all([
+      const [s, c, pays, cr, arch, dbts] = await Promise.all([
         db.sales.toArray(), db.settings.get('deliveryCompanies'),
-        db.payments.toArray(), companyCredits(), historicalPayments()
+        db.payments.toArray(), companyCredits(), historicalPayments(), companyDebts()
       ]);
       if (!alive) return;
       sales = s;
@@ -125,6 +128,7 @@
       payments = pays;
       credits = cr;
       archived = arch;
+      debts = dbts;
     };
     grab();
     const t = setInterval(grab, 4000);
@@ -157,8 +161,10 @@
   /* ما قُبض من الشركة يُسوّي عملياتها، وأي فائض يبقى رصيداً دائناً ينقص
      الرصيد الكلي (فواتير قديمة تخصّ مبيعات لم تُسجَّل في التطبيق) */
   const creditTotal = $derived([...credits.values()].reduce((a, v) => a + (Number(v) || 0), 0));
+  /* مرتجعات بعد التسوية = دين على البوتيك، يُخصم من أول دفعة قادمة */
+  const debtTotal = $derived([...debts.values()].reduce((a, v) => a + (Number(v) || 0), 0));
   const owedGross = $derived(byCompany.reduce((a, c) => a + c.amount, 0));
-  const inTransit = $derived(owedGross - creditTotal);
+  const inTransit = $derived(owedGross - creditTotal - debtTotal);
   const inTransitCount = $derived(byCompany.reduce((a, c) => a + c.count, 0));
 
   const settled = $derived(
@@ -380,7 +386,11 @@
           </div>
           <div class="col" style="align-items:flex-end; gap:2px">
             <div class="money">{fmtIQD(g.amount)}</div>
-            <span class="muted tiny">اضغطي للتفاصيل</span>
+            {#if (debts.get(g.company) || 0) > 0}
+              <span class="co-debt">مستحق لها {fmtIQD(debts.get(g.company))}</span>
+            {:else}
+              <span class="muted tiny">اضغطي للتفاصيل</span>
+            {/if}
           </div>
         </Glass>
       {/each}
@@ -517,7 +527,7 @@
   :global(.co) {
     display: flex; align-items: center; gap: 12px;
     padding: 12px 14px;
-    cursor: pointer; text-align: right; width: 100%;
+    cursor: pointer; text-align: start; width: 100%;
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   :global(.co:active) { transform: scale(0.98); }
@@ -527,7 +537,15 @@
     border-radius: 13px; background: var(--accent-soft);
   }
   .a-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  .tiny { font-size: 10.5px; }
+  /* دين مرتجعات على البوتيك — أحمر خفيف، لا يمرّ بلا ملاحظة */
+  .co-debt {
+    font-size: 11px; font-weight: 800;
+    color: var(--burgundy);
+    background: rgba(181, 73, 91, 0.1);
+    border-radius: 999px;
+    padding: 2px 7px;
+  }
+  .tiny { font-size: 11px; }
   :global(.hist) { padding: 12px 14px; }
   .hist-head {
     width: 100%; display: flex; align-items: center; justify-content: space-between;
@@ -542,7 +560,7 @@
   }
   :global(.sum) { padding: 12px 16px; display: flex; flex-direction: column; gap: 6px; }
   .wa {
-    background: linear-gradient(135deg, #25d366, #1faf54);
+    background: linear-gradient(135deg, #25d366, var(--wa));
     color: #fff; border: none;
     box-shadow: 0 4px 14px rgba(31, 175, 84, 0.25);
   }

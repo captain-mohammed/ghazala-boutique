@@ -11,7 +11,7 @@
   let newSeason = $state('');
   let newMaterial = $state('');
   let newColorName = $state('');
-  let newColorHex = $state('#b5495b');
+  let newColorHex = $state('var(--burgundy)');
   let subFor = $state('');    // النوع المفتوح لتحرير قائمته الفرعية
   let newSub = $state('');
   let sub2For = $state('');   // التفصيل المفتوح لتحرير قائمته الثالثة
@@ -102,7 +102,7 @@
   /* منتقي الدرجات — شريط صبغة + شبكة درجات، دقيق على الموبايل */
   import ColorPicker from '../components/ColorPicker.svelte';
   let pickOpen = $state(false);
-  let pickFrom = $state('#b5495b');
+  let pickFrom = $state('var(--burgundy)');
   let pickMode = $state('new'); // 'new' | { label }
   function openPickNew() { pickMode = 'new'; pickFrom = newColorHex; pickOpen = true; buzz(8); }
   function openPickRecolor(label, hex) { pickMode = label; pickFrom = hex; pickOpen = true; buzz(8); }
@@ -488,7 +488,7 @@
     cursor: pointer;
   }
   .sub-toggle b { flex: none; }
-  .sub-toggle span { flex: 1; text-align: right; }
+  .sub-toggle span { flex: 1; text-align: start; }
   .sub-chev {
     width: 8px; height: 8px;
     border-inline-end: 2px solid var(--taupe); border-bottom: 2px solid var(--taupe);

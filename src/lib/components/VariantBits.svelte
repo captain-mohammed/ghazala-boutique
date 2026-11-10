@@ -45,8 +45,8 @@
     border: 1.5px solid var(--line-2);
   }
   .vb-name { font-size: 11px; font-weight: 800; color: var(--ink-2); white-space: nowrap; }
-  .vb-sizes { font-size: 10.5px; font-weight: 700; color: var(--taupe); white-space: nowrap; }
+  .vb-sizes { font-size: 11px; font-weight: 700; color: var(--taupe); white-space: nowrap; }
   .vb.dense .vb-dot { width: 9px; height: 9px; border-width: 1px; }
-  .vb.dense .vb-name { font-size: 10px; }
-  .vb.dense .vb-sizes { font-size: 9.5px; }
+  .vb.dense .vb-name { font-size: 11px; }
+  .vb.dense .vb-sizes { font-size: 11px; }
 </style>

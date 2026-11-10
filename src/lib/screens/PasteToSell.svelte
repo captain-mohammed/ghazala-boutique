@@ -260,7 +260,7 @@
   }
   :global(.ps-card) {
     display: flex; align-items: center; gap: 10px;
-    padding: 10px 12px; cursor: pointer; text-align: right;
+    padding: 10px 12px; cursor: pointer; text-align: start;
     transition: transform 0.16s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   :global(.ps-card:active) { transform: scale(0.98); }

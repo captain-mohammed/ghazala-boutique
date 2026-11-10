@@ -5,7 +5,7 @@
   import Icon from './Icon.svelte';
   import { buzz } from '../utils.js';
 
-  let { open = false, hex = '#b5495b', onpick = () => {}, onclose = () => {} } = $props();
+  let { open = false, hex = 'var(--burgundy)', onpick = () => {}, onclose = () => {} } = $props();
 
   function hexToHsl(h) {
     const n = parseInt(String(h).replace('#', ''), 16);

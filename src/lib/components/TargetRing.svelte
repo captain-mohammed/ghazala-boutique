@@ -24,7 +24,7 @@
   <defs>
     <linearGradient id="ring-gold" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="var(--gold)" />
-      <stop offset="1" stop-color="#a4803e" />
+      <stop offset="1" stop-color="var(--gold-deep)" />
     </linearGradient>
   </defs>
 </svg>

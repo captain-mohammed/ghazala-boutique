@@ -432,7 +432,7 @@
     gap: 9px;
     padding: 12px 14px;
     cursor: pointer;
-    text-align: right;
+    text-align: start;
     width: 100%;
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
@@ -469,7 +469,7 @@
   .s-foot { display: flex; align-items: center; gap: 10px; }
   .s-tags { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 4px 6px; }
   .s-tag {
-    font-size: 10px; font-weight: 800; color: var(--taupe);
+    font-size: 11px; font-weight: 800; color: var(--taupe);
     background: rgba(122, 46, 58, 0.06);
     border-radius: 999px; padding: 2px 8px;
     font-variant-numeric: tabular-nums;
@@ -490,9 +490,9 @@
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 800;
-    color: #1faf54;
+    color: var(--wa);
     background: rgba(37, 211, 102, 0.12);
     border: 1px solid rgba(37, 211, 102, 0.3);
     padding: 3px 9px;
@@ -503,13 +503,13 @@
   }
   .wa-chip:active { transform: scale(0.92); }
   .wa {
-    background: linear-gradient(135deg, #25d366, #1faf54);
+    background: linear-gradient(135deg, #25d366, var(--wa));
     color: #fff;
     border: none;
     box-shadow: 0 8px 20px rgba(31, 175, 84, 0.3);
   }
   .st {
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 800;
     padding: 2px 8px;
     border-radius: 999px;
@@ -524,7 +524,7 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 800;
     background: rgba(255, 255, 255, 0.25);
     color: inherit;
@@ -535,7 +535,7 @@
   :global(.head-card) { padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
   .ts-edit {
     display: inline-flex; align-items: center; gap: 3px;
-    font-family: inherit; font-size: 10px; font-weight: 800;
+    font-family: inherit; font-size: 11px; font-weight: 800;
     color: var(--burgundy);
     background: rgba(181, 73, 91, 0.09);
     border: none; border-radius: 999px;
@@ -550,7 +550,7 @@
     align-items: center;
     gap: 4px;
     font-family: inherit;
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 800;
     color: var(--taupe);
     background: rgba(122, 46, 58, 0.06);

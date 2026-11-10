@@ -100,17 +100,17 @@
       c.width = W; c.height = H;
       const x = c.getContext('2d');
       /* الخلفية الكريمية + دوائر غازية خفيفة */
-      x.fillStyle = '#FBF3EE'; x.fillRect(0, 0, W, H);
+      x.fillStyle = 'var(--ivory)'; x.fillRect(0, 0, W, H);
       x.strokeStyle = 'rgba(181, 73, 91, 0.08)'; x.lineWidth = 2;
       for (const [cx, cy, r] of [[W - 120, 180, 260], [120, H - 220, 300], [W / 2, H / 2, 380]]) {
         x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.stroke();
       }
-      x.fillStyle = '#B5495B';
+      x.fillStyle = 'var(--burgundy)';
       x.font = 'bold 72px "Noto Naskh Arabic", sans-serif';
       x.textAlign = 'center';
       x.fillText('بوتيك غزالة', W / 2, 220);
       x.font = '34px "Noto Naskh Arabic", sans-serif';
-      x.fillStyle = '#9C7B6B';
+      x.fillStyle = 'var(--taupe)';
       x.fillText('أناقة تمشي بخطى واثقة', W / 2, 285);
       /* الشعار (إن وُجد) أو غزالة */
       const logoData = await getSetting('logo', '');
@@ -134,7 +134,7 @@
       let y = H - 360;
       for (const l of lines) { x.fillText(l, W / 2, y); y += 64; }
       x.font = '30px "Noto Naskh Arabic", sans-serif';
-      x.fillStyle = '#B5495B';
+      x.fillStyle = 'var(--burgundy)';
       x.fillText('راسلينا على واتساب وطلبك يوصلك للباب 💛', W / 2, H - 90);
       cardUrl = c.toDataURL('image/png');
       cardOpen = true;
@@ -270,13 +270,13 @@
   .noimg { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; background: rgba(255, 255, 255, 0.4); }
   .t-chain {
     position: absolute; inset-inline: 6px; bottom: 22px;
-    font-size: 10px; font-weight: 800; color: #fff;
+    font-size: 11px; font-weight: 800; color: #fff;
     text-shadow: 0 1px 6px rgba(0, 0, 0, 0.55); text-align: center;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
   .t-price {
     position: absolute; inset-inline: 6px; bottom: 6px;
-    font-size: 10.5px; font-weight: 800; color: var(--gold);
+    font-size: 11px; font-weight: 800; color: var(--gold);
     text-shadow: 0 1px 5px rgba(0, 0, 0, 0.6); text-align: center;
   }
   .prev { width: 58px; height: 58px; border-radius: 12px; object-fit: cover; flex: none; }
@@ -285,7 +285,7 @@
   .lab { font-size: 12px; font-weight: 800; color: var(--ink-2); }
   .copy {
     display: inline-flex; align-items: center; gap: 4px;
-    font-family: inherit; font-size: 10.5px; font-weight: 800;
+    font-family: inherit; font-size: 11px; font-weight: 800;
     color: var(--burgundy); background: rgba(181, 73, 91, 0.08);
     border: none; border-radius: 999px; padding: 4px 10px; cursor: pointer;
   }

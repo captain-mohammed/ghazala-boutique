@@ -90,9 +90,9 @@
 <style>
   .pthumbs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-bottom: 80px; }
   :global(.pt-card) { padding: 10px; display: flex; flex-direction: column; gap: 8px; border-radius: var(--r-md); }
-  .pt-img { aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--ivory, #FBF3EE); display: flex; align-items: center; justify-content: center; }
+  .pt-img { aspect-ratio: 1; border-radius: 10px; overflow: hidden; background: var(--ivory); display: flex; align-items: center; justify-content: center; }
   .pt-img img { width: 100%; height: 100%; object-fit: cover; }
-  .pt-meta { font-size: 9.5px; color: var(--taupe); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pt-meta { font-size: 11px; color: var(--taupe); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .btn { font-family: inherit; font-size: 12px; font-weight: 700; border-radius: var(--r-md); padding: 0 10px; cursor: pointer; border: 1px solid var(--line); background: rgba(255,255,255,0.6); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-height: 38px; }
   .btn.danger { background: rgba(181,73,91,0.1); border-color: rgba(181,73,91,0.3); color: var(--burgundy); }
 </style>

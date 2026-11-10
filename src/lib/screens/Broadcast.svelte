@@ -255,7 +255,7 @@
   const reqBaseSizes = $derived((opts.sizes && opts.sizes['نسائية']) || SIZE_RUNS['نسائية']);
   const reqPalette = $derived([
     ...opts.colors,
-    ...reqSelColors.filter((c) => c !== NOCOLOR && !opts.colors.some((o) => o.label === c)).map((c) => ({ label: c, hex: '#9C7B6B' }))
+    ...reqSelColors.filter((c) => c !== NOCOLOR && !opts.colors.some((o) => o.label === c)).map((c) => ({ label: c, hex: 'var(--taupe)' }))
   ]);
   const reqColorPieces = (c) => Object.values(reqByColor[c] || {}).reduce((a, n) => a + (Number(n) || 0), 0);
   const reqTotalPieces = $derived(reqSelColors.reduce((a, c) => a + reqColorPieces(c), 0));
@@ -407,7 +407,7 @@
           <b>حبيبات الدرج</b><span class="muted tiny">{fmtNum(vipList.length)} من الدرجة الأولى</span>
         </button></Glass>
         <Glass class="rise ch" style="padding:14px; animation-delay:.12s"><button class="ch-b" onclick={() => startChain('rescue')}>
-          <span class="ch-ic" style="background:rgba(230,145,56,.16)"><Icon name="undo" size={19} color="#9a5b16" /></span>
+          <span class="ch-ic" style="background:rgba(230,145,56,.16)"><Icon name="undo" size={19} color="var(--gold-amber)" /></span>
           <b>إنقاذ راكد</b><span class="muted tiny">عرض خاص لمشتريات نفس النوع</span>
         </button></Glass>
       </div>
@@ -557,7 +557,7 @@
     <label class="lab" for="wl-name">اسم الزبونة *</label>
     <input id="wl-name" class="input" bind:value={capName} placeholder="مثال: زينب" />
     <label class="lab" for="wl-phone">رقم الواتساب</label>
-    <input id="wl-phone" class="input" bind:value={capPhone} dir="ltr" inputmode="tel" placeholder="07XX XXX XXXX" style="text-align:right" />
+    <input id="wl-phone" class="input" bind:value={capPhone} dir="ltr" inputmode="tel" placeholder="07XX XXX XXXX" style="text-align: start" />
 
     {#if capMode === 'request'}
       <!-- شجرة النوع: نفس نموذج الموديل تماماً -->
@@ -691,7 +691,7 @@
   .seg-b { flex: 1; border: none; background: none; font-family: inherit; font-weight: 800; font-size: 12px; color: var(--taupe); padding: 8px 6px; border-radius: 9px; cursor: pointer; }
   .seg-b.on { background: var(--burgundy); color: #fff; box-shadow: 0 2px 8px rgba(181, 73, 91, 0.3); }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .ch-b { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; text-align: right; }
+  .ch-b { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; background: none; border: none; padding: 0; cursor: pointer; font-family: inherit; text-align: start; }
   .ch-b b { font-size: 13.5px; color: var(--ink); }
   .ch-ic { width: 38px; height: 38px; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
   .mini { border: 1px solid var(--line-2); background: rgba(255, 255, 255, 0.55); color: var(--ink-2); font-family: inherit; font-weight: 800; font-size: 11px; border-radius: 999px; padding: 5px 11px; cursor: pointer; }
@@ -702,15 +702,15 @@
   .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold), var(--burgundy)); border-radius: 999px; transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
   .msg { width: 100%; border: 1px dashed var(--line-2); border-radius: 12px; background: rgba(255, 255, 255, 0.6); font-family: inherit; font-size: 13px; color: var(--ink); padding: 10px; resize: vertical; }
   .lab { font-size: 12px; font-weight: 800; color: var(--ink-2); }
-  .mpick { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; background: rgba(255, 255, 255, 0.55); border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 12px; cursor: pointer; font-family: inherit; text-align: right; }
+  .mpick { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; background: rgba(255, 255, 255, 0.55); border: 1px solid var(--line-2); border-radius: 12px; padding: 10px 12px; cursor: pointer; font-family: inherit; text-align: start; }
   .mpick:active { transform: scale(0.98); }
   .mchain { font-weight: 800; font-size: 13px; color: var(--ink); }
-  .badge-rose { color: var(--burgundy); background: rgba(181, 73, 91, 0.12); font-size: 9.5px; font-weight: 800; padding: 2px 7px; border-radius: 999px; margin-inline-start: 6px; }
+  .badge-rose { color: var(--burgundy); background: rgba(181, 73, 91, 0.12); font-size: 11px; font-weight: 800; padding: 2px 7px; border-radius: 999px; margin-inline-start: 6px; }
   .ink { color: var(--ink); }
   .cap-pick { margin-top: 8px; }
   .g-wa {
     display: inline-flex; align-items: center; gap: 4px;
-    font-family: inherit; font-size: 10.5px; font-weight: 800; color: #1f7a44;
+    font-family: inherit; font-size: 11px; font-weight: 800; color: var(--wa-deep);
     background: rgba(37, 211, 102, 0.14); border: none; border-radius: 999px;
     padding: 5px 10px; cursor: pointer;
   }
@@ -720,7 +720,7 @@
   :global(.wl) { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
   .wl-head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
   .wl-new {
-    font-size: 9px; font-weight: 800; color: #8a6a35;
+    font-size: 11px; font-weight: 800; color: var(--gold-ink);
     background: var(--gold-soft, rgba(201, 162, 75, 0.18));
     border-radius: 999px; padding: 2px 7px;
   }
@@ -762,7 +762,7 @@
   .cb-head { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
   .cb-dot { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--sw, var(--taupe)); flex: none; }
   .cb-count { margin-inline-start: auto; font-size: 11px; font-weight: 800; color: var(--taupe); }
-  .cb-count.has { color: #1f7a44; }
+  .cb-count.has { color: var(--wa-deep); }
   .cb-empty {
     font-size: 11.5px; color: var(--taupe); line-height: 1.6;
     background: rgba(255, 255, 255, 0.5); border: 1px dashed var(--line-2);

@@ -42,10 +42,12 @@
 
   /* حيّ مثل باقي الشاشات — بيع جديد أو مورد سُجّل في الإعدادات يظهران دون مغادرة،
      وبوابة التحميل تظهر على أول جلب فقط حتى لا ترمش الصفحة كل ثوانٍ */
+  let alive = true;
   $effect(() => {
+    alive = true;
     load();
     const t = setInterval(load, 5000);
-    return () => clearInterval(t);
+    return () => { alive = false; clearInterval(t); };
   });
   async function load() {
     if (!loadedOnce) loading = true;
@@ -54,6 +56,8 @@
       db.sales.toArray(),
       getSetting('suppliers', [])
     ]);
+    /* الشاشة قد تكون أُغلقت أثناء الجلب — لا تكتب على مكوّن ميت */
+    if (!alive) return;
     suppliers = Array.isArray(supList) ? supList : [];
     const saleBySku = new Map();
     for (const s of sales) {
@@ -268,11 +272,11 @@
     font-weight: 800; font-size: 15px; color: var(--ink);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .sup-meta { font-size: 10.5px; font-weight: 700; color: var(--taupe); font-variant-numeric: tabular-nums; }
-  .sup-last { font-size: 10px; font-weight: 700; color: var(--taupe); opacity: 0.85; font-variant-numeric: tabular-nums; }
+  .sup-meta { font-size: 11px; font-weight: 700; color: var(--taupe); font-variant-numeric: tabular-nums; }
+  .sup-last { font-size: 11px; font-weight: 700; color: var(--taupe); opacity: 0.85; font-variant-numeric: tabular-nums; }
   .sup-money { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
   .sup-money b { font-size: 14px; font-weight: 900; color: var(--burgundy-deep); font-variant-numeric: tabular-nums; }
-  .sup-money i { font-size: 9.5px; font-weight: 700; font-style: normal; color: var(--taupe); }
+  .sup-money i { font-size: 11px; font-weight: 700; font-style: normal; color: var(--taupe); }
 
   .sup-prog { display: flex; align-items: center; gap: 8px; }
   .pct {
@@ -280,7 +284,7 @@
     font-size: 11px; font-weight: 800; color: var(--burgundy-deep);
     font-variant-numeric: tabular-nums;
   }
-  .sup-line { display: flex; gap: 14px; font-size: 10.5px; font-weight: 700; color: var(--taupe); }
+  .sup-line { display: flex; gap: 14px; font-size: 11px; font-weight: 700; color: var(--taupe); }
   .sup-line b { color: var(--ink-2); font-weight: 800; font-variant-numeric: tabular-nums; }
   .reg-head {
     width: 100%; display: flex; align-items: center; gap: 10px;
@@ -306,14 +310,14 @@
     background: rgba(255, 255, 255, 0.45); border: 1px solid var(--line);
   }
   .stat b { font-size: 14px; font-weight: 900; color: var(--burgundy-deep); font-variant-numeric: tabular-nums; }
-  .stat span { font-size: 10px; font-weight: 700; color: var(--taupe); }
+  .stat span { font-size: 11px; font-weight: 700; color: var(--taupe); }
 
   .sell-bar { flex: 1; height: 7px; border-radius: 999px; overflow: hidden; background: rgba(122, 46, 58, 0.1); }
   .sell-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--gold), var(--burgundy)); }
 
   .m-title { font-weight: 800; font-size: 12px; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
   .m-n {
-    font-size: 10px; font-weight: 800; color: var(--taupe);
+    font-size: 11px; font-weight: 800; color: var(--taupe);
     background: rgba(122, 46, 58, 0.07); border-radius: 999px; padding: 2px 8px;
   }
   .m-list { display: flex; flex-direction: column; gap: 6px; max-height: 280px; overflow-y: auto; }

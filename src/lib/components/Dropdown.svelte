@@ -145,7 +145,7 @@
   .dd-label {
     flex: 1;
     min-width: 0;
-    text-align: right;
+    text-align: start;
     font-size: 13px;
     font-weight: 800;
     color: var(--ink);
@@ -183,7 +183,7 @@
     border-radius: 12px;
     cursor: pointer;
     font-family: inherit;
-    text-align: right;
+    text-align: start;
     transition: background 0.15s;
     flex: none;
   }
