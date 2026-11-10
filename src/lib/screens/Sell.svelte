@@ -181,20 +181,7 @@
     return () => io.disconnect();
   });
 
-  /* المقاسات المتوفرة للموديل كله — نفس مصدر الـpicker بالضبط */
-  const modelSizes = $derived.by(() => {
-    const m = new Map();
-    for (const p of products) {
-      const k = modelGroupKey(p);
-      if (!m.has(k)) m.set(k, new Set());
-      if (p.qty > 0 && p.size) m.get(k).add(String(p.size).trim());
-    }
-    return m;
-  });
-  const sizesLabel = (p) => {
-    const set = modelSizes.get(modelGroupKey(p));
-    return set && set.size ? [...set].sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0)).join('، ') : '—';
-  };
+  /* المقاسات صارت تُعرض لكل لون على حدة في البطاقة — لا حاجة لتجميع عام */
   /* عدد القطع الكلي للموديل على الرف */
   const modelQty = $derived.by(() => {
     const m = new Map();
@@ -547,11 +534,18 @@
     const map = new Map();
     for (const x of modelMates(p)) {
       const label = (x.color || '').trim() || NOCOLOR;
-      const cur = map.get(label) || { label, qty: 0 };
+      const cur = map.get(label) || { label, qty: 0, sizes: [] };
       cur.qty += x.qty || 0;
+      const sz = String(x.size || '').trim();
+      /* المقاسات المتوفرة فعلياً لهذا اللون — لا المقاسات الفارغة */
+      if (sz && sz !== '—' && (x.qty || 0) > 0 && !cur.sizes.includes(sz)) cur.sizes.push(sz);
       map.set(label, cur);
     }
-    return [...map.values()].map((v) => ({ ...v, hex: v.label === NOCOLOR ? '#d8cfc9' : hexForColor(v.label, opts.colors) }));
+    return [...map.values()].map((v) => ({
+      ...v,
+      sizes: v.sizes.sort((a, b) => (parseFloat(a) || 0) - (parseFloat(b) || 0)),
+      hex: v.label === NOCOLOR ? '#d8cfc9' : hexForColor(v.label, opts.colors)
+    }));
   }
   /* the line's sku must follow the chosen color/size — it IS the shelf card */
   function rekeyLine(c) {
@@ -660,7 +654,7 @@
   let advancing = $state(false);
   let flying = $state(null);
   let flyEl = $state(null);
-  const FLY_MS = 520;
+  const FLY_MS = 780;
 
   async function gotoStep2(e) {
     if (!cart.length || advancing || flying) return;
@@ -907,21 +901,25 @@
           <div class="pinfo">
             <!-- سلسلة النوع بعرض كامل وتلتف أسطراً — كل التفاصيل تُقرأ -->
             <div class="pname">{p.modelChain || p.type || p.name}</div>
-            <div class="pcolors">
+            <!-- لون في كل سطر، ومقاساته بجانبه أفقياً — المقاسات أكثر من الألوان -->
+            <div class="pvar">
               {#each modelColorsOf(p) as cc (cc.label)}
-                <span class="pc-color">
+                <div class="pv-row" title="{cc.label} — {fmtNum(cc.qty)} قطعة">
                   <i class="pdot" style="background:{cc.hex}"></i>
-                  <span class="pc-qty">{fmtNum(cc.qty)}</span>
-                </span>
+                  <span class="pv-sizes">
+                    {#each cc.sizes.slice(0, 4) as s (s)}<b class="pv-sz">{s}</b>{/each}
+                    {#if cc.sizes.length > 4}<b class="pv-sz more">+{cc.sizes.length - 4}</b>{/if}
+                    {#if !cc.sizes.length}<b class="pv-sz none">—</b>{/if}
+                  </span>
+                </div>
               {/each}
             </div>
-            <div class="psizes muted tiny">مقاسات: {sizesLabel(p)}</div>
           </div>
           <!-- السعر بجوار خاتم الإضافة -->
           <div class="psum">
             <span class="pprice">{fmtIQD(p.price)}</span>
           </div>
-          <span class="add-ic"><Icon name="plus" size={16} color="#fff" /></span>
+          <span class="add-ic"><Icon name="plus" size={19} color="var(--burgundy)" /></span>
         </Glass>
       {/each}
     </div>
@@ -1348,24 +1346,36 @@
   }
   .pthumb img { width: 100%; height: 100%; object-fit: cover; }
   :global(.sell-card.oos) .pthumb img { filter: grayscale(0.55); }
-  .pcolors { display: flex; flex-wrap: wrap; gap: 3px 10px; }
-  .pc-color { display: inline-flex; align-items: center; gap: 4px; }
-  .pc-qty { font-size: 11px; font-weight: 800; color: var(--taupe); font-variant-numeric: tabular-nums; }
+  .pvar { display: flex; flex-direction: column; gap: 3px; }
+  .pv-row { display: flex; align-items: center; gap: 5px; }
+  .pv-sizes { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+  .pv-sz {
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--burgundy-deep);
+    background: rgba(181, 73, 91, 0.09);
+    border-radius: 5px;
+    padding: 2px 4px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .pv-sz.more { color: var(--taupe); background: rgba(156, 123, 107, 0.14); }
+  .pv-sz.none { color: var(--taupe); background: rgba(156, 123, 107, 0.1); }
   .pinfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
   .pname { font-weight: 800; font-size: 14px; color: var(--ink); line-height: 1.55; word-break: break-word; }
-  .psizes { margin-top: 0; }
   /* السعر بجوار خاتم الإضافة */
   .psum { flex: none; display: flex; flex-direction: column; align-items: flex-end; }
   .pprice { font-weight: 900; font-size: 15px; color: var(--burgundy); font-variant-numeric: tabular-nums; letter-spacing: 0.2px; }
-  /* خاتم الإضافة: دائرة نبيتية بإطار ذهبي — تُختم تحت الإصبع */
+  /* علامة الإضافة وحدها: أُزيلت الدائرة الذهبية — النقر على البطاقة كلها يضيف */
   .add-ic {
     flex: none;
-    width: 38px; height: 38px;
-    border-radius: 50%;
-    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
-    border: 1.5px solid rgba(201, 161, 90, 0.6);
+    width: 34px; height: 34px;
     display: flex; align-items: center; justify-content: center;
-    box-shadow: 0 4px 12px rgba(181, 73, 91, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+    background: none;
+    border: none;
+    box-shadow: none;
+    color: var(--burgundy);
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   :global(.sell-card:active) .add-ic { transform: scale(0.86) rotate(-6deg); }
@@ -1550,13 +1560,14 @@
     right: 0;
     width: 0;
     background: linear-gradient(to left, rgba(201, 161, 90, 0.95), rgba(201, 161, 90, 0.6));
-    animation: thread-fill 270ms linear 250ms forwards;
+    animation: thread-fill 406ms linear 374ms forwards;
   }
   @keyframes thread-fill {
     from { width: 0; }
     to { width: 100%; }
   }
-  /* الشاحنة الطائرة: جسم واحد من الزر إلى الخيط، خارج تدفّق الورقة */
+  /* الشاحنة الطائرة: جسم واحد من الزر إلى الخيط، خارج تدفّق الورقة.
+     الأيقونة نفسها تقود يميناً، والسير في RTL يساراً — فتُقلب أفقياً */
   .fly-truck {
     position: fixed;
     z-index: 6;
@@ -1566,6 +1577,7 @@
     pointer-events: none;
     will-change: transform;
   }
+  .fly-truck :global(svg) { transform: scaleX(-1); }
   /* لوحة الخطوة: الارتفاع ينزلق، والمحتوى يدخل من جهة التقدّم */
   /* لوحة الخطوة: موضع نسبي كي يخرج المغادر مطلقاً بلا أن يحجز ارتفاعاً */
   .step-panel { position: relative; overflow: hidden; }

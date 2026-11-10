@@ -430,8 +430,8 @@
                       <span class="cc-item" title="{cr.color} — مقاسات {sizesOf(cr).join(' · ') || '—'}">
                         <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
                         <span class="cc-sizes">
-                          {#each sizesOf(cr).slice(0, 2) as s (s)}<b class="cc-sz">{s}</b>{/each}
-                          {#if sizesOf(cr).length > 2}<b class="cc-sz more">+{sizesOf(cr).length - 2}</b>{/if}
+                          {#each sizesOf(cr).slice(0, 3) as s (s)}<b class="cc-sz">{s}</b>{/each}
+                          {#if sizesOf(cr).length > 3}<b class="cc-sz more">+{sizesOf(cr).length - 3}</b>{/if}
                           {#if !sizesOf(cr).length}<b class="cc-sz none">—</b>{/if}
                         </span>
                       </span>
@@ -499,18 +499,7 @@
         </div>
         <div class="mv-info">
           {#if g.type || g.typeSub || g.typeSub2 || g.typeSub3}<div class="mv-type">{typeChain(g)}</div>{/if}
-          <!-- كل تصنيف بسطره: كانت الثلاثة في سطر واحد فيضيع أيهم أيها -->
-          <div class="mv-meta">
-            {#if g.category}
-              <div class="mv-meta-row"><span class="mv-meta-k">التصنيف</span><span class="mv-meta-v">{g.category}</span></div>
-            {/if}
-            {#if g.seasons.length}
-              <div class="mv-meta-row"><span class="mv-meta-k">الموسم</span><span class="mv-meta-v">{g.seasons.join(' · ')}</span></div>
-            {/if}
-            {#if g.material}
-              <div class="mv-meta-row"><span class="mv-meta-k">المادة</span><span class="mv-meta-v">{g.material}</span></div>
-            {/if}
-          </div>
+          <div class="muted small">{[g.category, g.seasons.length ? g.seasons.join(' - ') : '', g.material].filter(Boolean).join(' - ')}</div>
           <div class="mv-stats">
             <span class="money" style="color:var(--burgundy)">{fmtIQD(g.price)}</span>
             <span class="mv-qty" class:zero={g.qty === 0}>{fmtNum(g.qty)} قطعة</span>
@@ -664,18 +653,20 @@
   /* الدوائر ملتصقة بيسار البطاقة، ومقاسات كل لون تحتها مباشرة.
      صف المقاسات العام أُزيل: صار تكراراً، ومساحته للدوائر. */
   .card-colors {
-    /* يسار البطاقة: الدائرة ومقاساتها تحتها، والألوان المتعددة جنباً إلى جنب */
+    /* الألوان عمودياً والمقاسات أفقياً بجانب كل دائرة — الواقع أن المقاسات
+       لكل لون أكثر من الألوان، فالعمود للقليل والصف للكثير */
     margin-inline-start: auto;
     display: flex;
+    flex-direction: column;
     align-items: flex-start;
-    gap: 10px;
+    gap: 4px;
     min-height: 0;
     overflow: hidden;
   }
-  .cc-item { display: inline-flex; flex-direction: column; align-items: center; gap: 3px; }
-  /* الدائرة أكبر قليلاً من شارة المقاس — تُقرأ كعنوان تحته أبناؤه */
+  .cc-item { display: inline-flex; flex-direction: row; align-items: center; gap: 5px; }
+  /* الدائرة أكبر قليلاً من شارة المقاس — تُقرأ كعنوان بجانبه أبناؤه */
   .cc-dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }
-  .cc-sizes { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  .cc-sizes { display: flex; flex-direction: row; align-items: center; gap: 3px; }
   /* كل مقاس شارة مستقلة — تُقرأ عمودياً تحت دائرتها بلا التباس */
   .cc-sz {
     font-size: 11px;
@@ -726,11 +717,6 @@
   .mv-thumb.oos { opacity: 0.75; }
   .mv-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
   .mv-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-  /* التصنيف والموسم والمادة: سطر لكل واحد، من جهة اليمين */
-  .mv-meta { display: flex; flex-direction: column; gap: 1px; margin-top: 1px; }
-  .mv-meta-row { display: flex; align-items: baseline; gap: 6px; font-size: 12px; line-height: 1.5; }
-  .mv-meta-k { color: var(--taupe); font-weight: 700; flex: none; }
-  .mv-meta-v { color: var(--ink-2); font-weight: 800; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mv-stats { display: flex; align-items: baseline; gap: 10px; margin-top: 2px; }
   .mv-qty { font-size: 12px; font-weight: 800; color: var(--good); }
   .mv-qty.zero { color: var(--burgundy-deep); }

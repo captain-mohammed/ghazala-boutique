@@ -89,7 +89,7 @@
     transition: bottom 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   /* rides above the floating cart bar when one is on screen (بيع) */
-  .sd-root.lift { bottom: calc(var(--nav-h) + 98px + var(--sab)); }
+  .sd-root.lift { bottom: calc(var(--nav-h) + 132px + var(--sab)); }
   .sd-items { display: flex; flex-direction: column; align-items: center; gap: 10px; }
   .sd-item {
     pointer-events: auto;
