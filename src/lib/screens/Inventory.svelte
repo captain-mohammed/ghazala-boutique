@@ -424,16 +424,22 @@
               {/if}
               <!-- الدوائر وحدها: مقاسات كل لون تحتها، بلا صف مقاسات مكرّر -->
               <div class="card-mid">
+                <!-- حاوية شفافة على اليمين: التصنيف ثم الموسم، واحد تحت الآخر.
+                     تملأ الفراغ الميت بين العنوان والدوائر بلا تكبير البطاقة -->
+                <div class="card-stamps">
+                  {#if g.category}<span class="cs cs-cat">{g.category}</span>{/if}
+                  {#if g.seasons.length}<span class="cs cs-sea">{g.seasons.slice(0, 2).join(' · ')}</span>{/if}
+                </div>
                 {#if g.colorRows.some((cr) => cr.color)}
                   <div class="card-colors">
                     {#each g.colorRows.filter((cr) => cr.qty > 0).slice(0, 4) as cr (cr.color)}
                       <span class="cc-item" title="{cr.color} — مقاسات {sizesOf(cr).join(' · ') || '—'}">
-                        <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
                         <span class="cc-sizes">
                           {#each sizesOf(cr).slice(0, 3) as s (s)}<b class="cc-sz">{s}</b>{/each}
                           {#if sizesOf(cr).length > 3}<b class="cc-sz more">+{sizesOf(cr).length - 3}</b>{/if}
                           {#if !sizesOf(cr).length}<b class="cc-sz none">—</b>{/if}
                         </span>
+                        <i class="cc-dot" style="background:{hexForColor(cr.color, opts.colors)}"></i>
                       </span>
                     {/each}
                     {#if g.colorRows.filter((cr) => cr.qty > 0).length > 4}
@@ -650,6 +656,21 @@
   .chain-warn { font-size: 11px; margin-inline-start: 4px; }
   /* الصف الأوسط: القياسات يميناً (مرن) والدوائر يساراً (ثابتة) */
   .card-mid { flex: 1; min-height: 0; display: flex; }
+  /* حاوية بلا خلفية ولا إطار — موضع فقط */
+  .card-stamps { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; flex: none; }
+  .cs {
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 5px;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cs-cat { color: var(--burgundy-deep); background: rgba(181, 73, 91, 0.09); }
+  .cs-sea { color: var(--gold-ink); background: rgba(201, 161, 90, 0.16); }
   /* الدوائر ملتصقة بيسار البطاقة، ومقاسات كل لون تحتها مباشرة.
      صف المقاسات العام أُزيل: صار تكراراً، ومساحته للدوائر. */
   .card-colors {
@@ -663,6 +684,8 @@
     min-height: 0;
     overflow: hidden;
   }
+  /* الدائرة أولاً في القراءة البصرية (يسار الصف في RTL) ثم المقاسات تصاعدياً.
+     لذلك المقاسات أولاً في الـDOM والدائرة آخراً — فتُرسم الدائرة في الطرف. */
   .cc-item { display: inline-flex; flex-direction: row; align-items: center; gap: 5px; }
   /* الدائرة أكبر قليلاً من شارة المقاس — تُقرأ كعنوان بجانبه أبناؤه */
   .cc-dot { width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid var(--line-2); flex: none; box-shadow: 0 1px 4px rgba(58, 26, 32, 0.12); }

@@ -607,8 +607,10 @@
     catch (e) { console.error(e); }
   }
 
-  /* الاقتراحات السريعة: أعلى 3 من الترتيب الذكي (VIP ثم الأحدث) */
-  const quickCustomers = $derived(customerBook.slice(0, 3));
+  /* الاقتراحات السريعة: أعلى 4 من الترتيب الذكي (VIP ثم الأحدث) */
+  const quickCustomers = $derived(customerBook.slice(0, 4));
+  /* مفتوحة افتراضياً: الشرائح اختصار يومي، لا شيء يُخفى على أول فتح */
+  let custOpen = $state(true);
 
   const phoneDigits = $derived(cphone.replace(/\D/g, ''));
 
@@ -919,7 +921,7 @@
           <div class="psum">
             <span class="pprice">{fmtIQD(p.price)}</span>
           </div>
-          <span class="add-ic"><Icon name="plus" size={19} color="var(--burgundy)" /></span>
+          <span class="add-ic"><Icon name="plus" size={16} color="#fff" /></span>
         </Glass>
       {/each}
     </div>
@@ -1133,24 +1135,35 @@
       <Icon name="undo" size={13} /> رجوع للقطع
     </button>
 
-    <!-- زبونات محفوظات: زر واحد يفتح المنتقي الطافي (بحث + القائمة كاملة).
-         الصفّ السابق كان شرائح بسقف 6 وبلا هاتف — لا يميّز اسمين متشابهين. -->
+    <!-- زبونات محفوظات: الرأس يفتح القائمة الكاملة، والسهم على اليسار يطوي الشرائح.
+         مطوية/مفتوحة: مفتوحة افتراضياً — الشرائح اختصار لا محتوى مخفي. -->
     <div class="cp-trigger">
-      <button type="button" class="cpt-head" onclick={openPicker}>
-        <span class="cpt-ic"><Icon name="user" size={15} color="var(--burgundy)" /></span>
-        <span class="cpt-txt">
-          <b>زبونات محفوظات</b>
-          <i>
-            {#if customerBook.length}
-              {fmtNum(customerBook.length)} زبونة — لمسة وتتعبى كل الحقول
-            {:else}
-              ابحثي بالاسم أو الرقم، أو أضيفي زبونة جديدة
-            {/if}
-          </i>
-        </span>
-        <span class="cpt-all">الكل <Icon name="back" size={12} /></span>
-      </button>
-      {#if quickCustomers.length}
+      <div class="cpt-head">
+        <button type="button" class="cpt-main" onclick={openPicker}>
+          <span class="cpt-ic"><Icon name="user" size={15} color="var(--burgundy)" /></span>
+          <span class="cpt-txt">
+            <b>زبونات محفوظات</b>
+            <i>
+              {#if customerBook.length}
+                {countAr(customerBook.length, 'زبونة', 'زبونتان', 'زبونات')} — لمسة وتتعبى كل الحقول
+              {:else}
+                ابحثي بالاسم أو الرقم، أو أضيفي زبونة جديدة
+              {/if}
+            </i>
+          </span>
+          <span class="cpt-all">الكل <Icon name="back" size={12} /></span>
+        </button>
+        <button
+          type="button"
+          class="cpt-toggle"
+          aria-label={custOpen ? 'اطوِ الزبونات' : 'اعرضي الزبونات'}
+          aria-expanded={custOpen}
+          onclick={() => { custOpen = !custOpen; buzz(6); }}
+        >
+          <span class="cpt-chev" class:open={custOpen}><Icon name="back" size={13} color="var(--taupe)" /></span>
+        </button>
+      </div>
+      {#if custOpen && quickCustomers.length}
         <div class="cpt-quick">
           {#each quickCustomers as c (c.key)}
             <button
@@ -1367,15 +1380,14 @@
   /* السعر بجوار خاتم الإضافة */
   .psum { flex: none; display: flex; flex-direction: column; align-items: flex-end; }
   .pprice { font-weight: 900; font-size: 15px; color: var(--burgundy); font-variant-numeric: tabular-nums; letter-spacing: 0.2px; }
-  /* علامة الإضافة وحدها: أُزيلت الدائرة الذهبية — النقر على البطاقة كلها يضيف */
+  /* دائرة عنابية بلا إطار ذهبي — النقر على البطاقة كلها يضيف */
   .add-ic {
     flex: none;
-    width: 34px; height: 34px;
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    background: linear-gradient(150deg, var(--burgundy), var(--burgundy-deep));
     display: flex; align-items: center; justify-content: center;
-    background: none;
-    border: none;
-    box-shadow: none;
-    color: var(--burgundy);
+    box-shadow: 0 4px 12px rgba(181, 73, 91, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.28);
     transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
   :global(.sell-card:active) .add-ic { transform: scale(0.86) rotate(-6deg); }
@@ -1614,8 +1626,15 @@
     background: linear-gradient(158deg, rgba(255, 255, 255, 0.8), rgba(201, 161, 90, 0.09));
     overflow: hidden;
   }
+  /* الرأس صفّان: الزر الرئيسي (يفتح القائمة) والسهم (يطوي) — السهم في الطرف */
   .cpt-head {
     width: 100%;
+    display: flex;
+    align-items: stretch;
+  }
+  .cpt-main {
+    flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -1627,7 +1646,19 @@
     font-family: inherit;
     color: var(--ink);
   }
-  .cpt-head:active { background: rgba(181, 73, 91, 0.05); }
+  .cpt-main:active { background: rgba(181, 73, 91, 0.05); }
+  .cpt-toggle {
+    flex: none;
+    width: 40px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-inline-start: 1px solid rgba(201, 161, 90, 0.3);
+  }
+  .cpt-toggle:active { background: rgba(181, 73, 91, 0.05); }
+  .cpt-chev { display: inline-flex; transform: rotate(90deg); transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1); }
+  .cpt-chev.open { transform: rotate(-90deg); }
   .cpt-ic {
     flex: none;
     width: 32px; height: 32px;
@@ -1656,8 +1687,9 @@
     gap: 6px;
     padding: 0 10px 10px;
   }
+  /* عرض الشريحة على قدر اسمها — لا انكماش ولا اقتطاع؛ الزائد ينزل سطراً */
   .cpt-c {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     min-width: 0;
     max-width: 100%;
     display: flex;
@@ -1669,7 +1701,6 @@
     background: rgba(255, 255, 255, 0.72);
     cursor: pointer;
     font-family: inherit;
-    max-width: 42%;
   }
   .cpt-c.on {
     border-color: rgba(181, 73, 91, 0.45);
@@ -1684,7 +1715,8 @@
     color: #fff; font-size: 11px; font-weight: 900;
   }
   .cpt-nm {
-    flex: 1; min-width: 0;
+    /* basis auto لا 0 — وإلا لم يحسب عرض الشريحة اسمَها فتُقتطع كلها */
+    flex: 0 1 auto; min-width: 0;
     font-size: 11.5px; font-weight: 800; color: var(--ink);
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
