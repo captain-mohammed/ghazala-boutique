@@ -979,30 +979,37 @@
       {@const cph = products.find((x) => x.sku === c.sku)?.photo}
       <Glass class="citem" radius="var(--r-md)">
         <div class="ci-info">
-          <div style="display:flex; gap:8px; align-items:center">
+          <!-- الصورة هي الهوية، والمقاس واللون بجانبها مباشرة: الاختيار هو مصدر
+               الحقيقة. النص النوعي الذي كان بينهما أُزيل — تكرار لما تقوله القائمتان -->
+          <div class="ci-top">
             <span class="ci-thumb">{#if cph}<img src={cph} alt="" />{:else}<Icon name="image" size={14} color="var(--taupe)" />{/if}</span>
-            <VariantBits variants={[c]} />
-          </div>
-          <!-- لكل سطر اختيار اللون والمقاس من المتاح فقط -->
-          <div class="ci-variants">
-            <Pick
-              bind:value={c.color}
-              size="sm"
-              disabled={colorOptsFor(c).length <= 1}
-              options={colorOptsFor(c).map((o) => ({ v: o === NOCOLOR ? '' : o, l: o }))}
-              valOf={(o) => o.v}
-              labelOf={(o) => o.l}
-              onchange={() => { c.size = ''; rekeyLine(c); }}
-            />
-            <Pick
-              bind:value={c.size}
-              size="sm"
-              disabled={sizeOptsFor(c).length <= 1}
-              options={sizeOptsFor(c).map((o) => ({ v: o === '—' ? '' : o, l: o === '—' ? 'مقاس واحد' : `مقاس ${o}` }))}
-              valOf={(o) => o.v}
-              labelOf={(o) => o.l}
-              onchange={() => rekeyLine(c)}
-            />
+            <div class="ci-picks">
+              <div class="ci-pf">
+                <span class="ci-pl">اللون</span>
+                <Pick
+                  bind:value={c.color}
+                  size="sm"
+                  disabled={colorOptsFor(c).length <= 1}
+                  options={colorOptsFor(c).map((o) => ({ v: o === NOCOLOR ? '' : o, l: o, h: o === NOCOLOR ? '#d8cfc9' : hexForColor(o, opts.colors) }))}
+                  valOf={(o) => o.v}
+                  labelOf={(o) => o.l}
+                  dotOf={(o) => o.h}
+                  onchange={() => { c.size = ''; rekeyLine(c); }}
+                />
+              </div>
+              <div class="ci-pf">
+                <span class="ci-pl">المقاس</span>
+                <Pick
+                  bind:value={c.size}
+                  size="sm"
+                  disabled={sizeOptsFor(c).length <= 1}
+                  options={sizeOptsFor(c).map((o) => ({ v: o === '—' ? '' : o, l: o === '—' ? 'واحد' : o }))}
+                  valOf={(o) => o.v}
+                  labelOf={(o) => o.l}
+                  onchange={() => rekeyLine(c)}
+                />
+              </div>
+            </div>
           </div>
           {#if priceGroups(c.sku).length > 1}
             <div class="price-opts">
@@ -1022,12 +1029,14 @@
               </div>
             </div>
           {/if}
-          <div class="muted small">{fmtIQD(c.price)} × {c.qty} = <span class="money">{fmtIQD(c.price * c.qty)}</span></div>
-        </div>
-        <div class="stepper">
-          <button class="stp" onclick={() => setQty(c, -1)}>−</button>
-          <span class="qn">{c.qty}</span>
-          <button class="stp" onclick={() => setQty(c, +1)}>+</button>
+          <div class="ci-foot">
+            <div class="stepper">
+              <button class="stp" onclick={() => setQty(c, -1)}>−</button>
+              <span class="qn">{c.qty}</span>
+              <button class="stp" onclick={() => setQty(c, +1)}>+</button>
+            </div>
+            <div class="muted small">{fmtIQD(c.price)} × {c.qty} = <span class="money">{fmtIQD(c.price * c.qty)}</span></div>
+          </div>
         </div>
       </Glass>
     {/each}
@@ -1134,8 +1143,6 @@
       <div class="field" style="flex:1">
         <label>أجور التوصيل (د.ع)</label>
         <input class="input" bind:value={fee} inputmode="decimal" dir="ltr" style="text-align:center" />
-        <!-- الحقل يقبل «5» = 5,000 (اختصار الألف). نعرض الناتج صريحاً حتى لا يبقى الرقم غامضاً -->
-        <span class="fee-echo">{fmtIQD(iqd(fee))}</span>
       </div>
       <div class="field" style="flex:1">
         <label>شركة التوصيل</label>
@@ -1303,14 +1310,7 @@
     border-radius: 20px;
     z-index: 45;
   }
-  /* خياطة الإيصال: خط ذهبي متقطع أعلى الشريط — فاتورة تُكتب الآن */
-  .cartbar::before {
-    content: '';
-    position: absolute;
-    top: 5px;
-    inset-inline: 16px;
-    border-top: 1.5px dashed rgba(201, 161, 90, 0.5);
-  }
+  /* خياطة الإيصال أُزيلت بطلب صاحبة البوتيك — الشريط أنظف بلاها */
   .cart-info {
     flex: 1;
     display: flex;
@@ -1378,6 +1378,16 @@
     border-radius: var(--r-md);
   }
   .ci-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  /* الصورة والاختياران في صف واحد — البطاقة تقصر بدل ثلاثة صفوف متراكبة */
+  .ci-top { display: flex; align-items: flex-end; gap: 10px; }
+  .ci-picks { flex: 1; min-width: 0; display: flex; gap: 8px; }
+  .ci-pf { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+  .ci-pl { font-size: 11px; font-weight: 800; color: var(--taupe); padding-inline-start: 2px; }
+  /* قوائم صغيرة لكن مقروءة: ٣٨px ارتفاعاً و١٣.٥px خطاً */
+  .ci-picks > .ci-pf > :global(.pk) { width: 100%; min-height: 38px; font-size: 13.5px; }
+  .ci-picks :global(.pk-label) { font-weight: 800; }
+  /* العدّاد تحت الاختيارين لا بجانبهما — كان يسرق ١١٠px فتقتطع أسماء الألوان */
+  .ci-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; }
   .ci-thumb {
     flex: none;
     width: 34px; height: 34px;
@@ -1388,8 +1398,6 @@
     border: 1px solid var(--line);
   }
   .ci-thumb img { width: 100%; height: 100%; object-fit: cover; }
-  .ci-variants { display: flex; gap: 6px; }
-  .ci-variants > :global(.pk) { flex: 1; min-width: 0; width: auto; }
   /* اختيار سعر الدفعة عند الإتمام — يظهر فقط حين تختلف الأسعار فعلاً */
   .price-opts { display: flex; flex-direction: column; gap: 5px; margin-top: 2px; }
   .po-lbl { font-size: 11px; font-weight: 700; color: var(--taupe); }

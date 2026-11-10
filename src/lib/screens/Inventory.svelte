@@ -247,13 +247,7 @@
     return () => io.disconnect();
   });
 
-  /* جدار الصور: تصفح الصور أولاً — ثلاث بطاقات بالصف، النوع والسعر رقاقة */
-  let wall = $state(localStorage.getItem('ghazala.inv.wall') === '1');
-  function toggleWall() {
-    wall = !wall;
-    try { localStorage.setItem('ghazala.inv.wall', wall ? '1' : '0'); } catch { /* noop */ }
-    buzz(8);
-  }
+  /* جدار الصور أُزيل بطلب صاحبة البوتيك — البطاقات العادية هي العرض الوحيد */
 
   function closeDetail() { detailGroup = null; openSku = null; }
   function openAdd() {
@@ -384,11 +378,8 @@
 
   <div class="sort-row">
     <div class="muted small sort-note">
-      {fmtNum(totalModels)} موديل{f.cat !== 'الكل' ? ` في ${f.cat}` : ''} — كل بطاقة تجمع مقاسات الموديل وألوانه
+      {fmtNum(totalModels)} موديل{f.cat !== 'الكل' ? ` في ${f.cat}` : ''}
     </div>
-    <button type="button" class="chip" class:on={wall} onclick={toggleWall} title="جدار الصور">
-      <Icon name="image" size={12} /> جدار الصور
-    </button>
   </div>
 
   {#if sorted.length === 0}
@@ -400,7 +391,7 @@
       icon={isDefault ? 'box' : 'search'}
     />
   {:else}
-    <div class="grid" class:wall={wall}>
+    <div class="grid">
       {#each invShown as g, i (g.key + g.items.length)}
         <div class="cardwrap" class:lit={quickOps && quickOps.g.key === g.key} bind:this={wraps[i]}>
           <Glass
@@ -423,9 +414,7 @@
               {:else}
                 <span class="thumb-badge">{fmtNum(g.qty)}</span>
               {/if}
-              {#if wall}<span class="wall-price">{fmtIQD(g.price)}</span>{/if}
             </div>
-            {#if !wall}
             <div class="card-body">
               <!-- النوع بعرض البطاقة كاملاً أسفل الصورة مباشرة -->
               {#if g.chain}
@@ -459,7 +448,6 @@
               </div>
             </div>
             <div class="card-price">{fmtIQD(g.price)}</div>
-            {/if}
           </Glass>
         </div>
       {/each}
@@ -522,7 +510,7 @@
           </div>
           {#if g.suppliers?.length}
             <div class="mv-sups">
-              {#each g.suppliers as s}<span class="mv-sup"><Icon name="upload" size={11} /> من {s}</span>{/each}
+              {#each g.suppliers as s}<span class="mv-sup"><Icon name="store" size={11} /> من {s}</span>{/each}
             </div>
           {/if}
         </div>
@@ -729,26 +717,6 @@
   }
   /* صف العنوان: العدّاد يميناً ومفتاح جدار الصور يساراً */
   .sort-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  /* جدار الصور: ثلاث بطاقات بالصف — الصورة تتكلم */
-  .grid.wall { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .wall-price {
-    position: absolute;
-    top: 8px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 11px;
-    font-weight: 800;
-    color: var(--ink);
-    background: rgba(255, 255, 255, 0.9);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    padding: 2px 8px;
-    white-space: nowrap;
-    font-variant-numeric: tabular-nums;
-    box-shadow: 0 2px 8px rgba(58, 26, 32, 0.12);
-  }
   .card-price {
     margin: 8px 12px 12px;
     border-top: 1.5px solid var(--line-2);
