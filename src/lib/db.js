@@ -311,6 +311,10 @@ export const DEFAULT_SETTINGS = {
   waTemplateReturned: null,  // null → app default — رسالة «راجع»
   dailyTarget: 0,      // قطع — daily goal ring on the dashboard (0 = off)
   vaultGoal: 500000,   // د.ع — the vault celebration threshold (0 = off)
+  /* رأس المال الابتدائي: نقد + قيمة البضاعة بالتكلفة يوم البداية.
+     يُدخل مرة واحدة من «متجري»، ويُقاس عليه العائد. 0 = لم يُحدَّد بعد. */
+  initialCapital: 0,
+  initialCapitalDate: null, // ISO — الافتراضي أول تاريخ في الدفاتر لا اليوم
   archiveDays: 30,     // sold-out this long → المدينة القديمة (archive shelf)
   typeSubs: null,      // { 'بوت': ['كعب عالي','كعب قصير'] } — القائمة الثانية تحت النوع
   typeSubs2: null,     // { 'بوت': { 'كعب عالي': ['جيب جانبي',…] } } — القائمة الثالثة تحت التفصيل
@@ -1969,6 +1973,49 @@ export async function vaultState() {
 export async function vaultClear() {
   await db.vault.clear();
   await setSetting('vaultCelebratedAt', null);
+}
+
+/* ---------------- رأس المال الابتدائي والعائد ----------------
+   رأس المال = نقد + قيمة البضاعة بالتكلفة يوم البداية (تعريف صاحبة البوتيك).
+   العائد = صافي الربح **منذ تاريخ رأس المال** ÷ رأس المال.
+
+   التاريخ افتراضياً أول عملية في الدفاتر — لا اليوم. إدخال رأس المال اليوم
+   مع تاريخ اليوم يجعل العائد ٠٪ بينما كل أرباح الأشهر السابقة في الخزنة،
+   فيبدو الرقم معطلاً وهو صحيح. */
+export async function firstRecordDate() {
+  const [sales, vault, expenses] = await Promise.all([db.sales.toArray(), db.vault.toArray(), db.expenses.toArray()]);
+  const stamps = [...sales, ...vault, ...expenses].map((r) => r?.date).filter(Boolean).map((d) => new Date(d).getTime()).filter((n) => Number.isFinite(n));
+  if (!stamps.length) return null;
+  return new Date(Math.min(...stamps)).toISOString();
+}
+
+export async function capitalStats() {
+  const [capRaw, dateRaw, entries, expenses] = await Promise.all([
+    getSetting('initialCapital', 0),
+    getSetting('initialCapitalDate', null),
+    db.vault.toArray(),
+    db.expenses.toArray()
+  ]);
+  const capital = Math.max(0, Number(capRaw) || 0);
+  const since = dateRaw ? new Date(dateRaw) : null;
+  const inRange = (d) => !since || (d && new Date(d) >= since);
+  const profit = entries.filter((e) => inRange(e.date)).reduce((a, e) => a + (e.kind === 'in' ? e.amount : -e.amount), 0);
+  const spent = expenses.filter((e) => inRange(e.date)).reduce((a, e) => a + (Number(e.amount) || 0), 0);
+  const net = profit - spent;
+  return {
+    capital,
+    since,
+    profit,
+    spent,
+    net,
+    roi: capital > 0 ? (net / capital) * 100 : null,
+    worth: capital + net
+  };
+}
+
+export async function saveCapital(amount, dateIso) {
+  await setSetting('initialCapital', Math.max(0, Number(amount) || 0));
+  await setSetting('initialCapitalDate', dateIso || null);
 }
 
 /* ---------------- المدينة القديمة (the archive shelf) ----------------

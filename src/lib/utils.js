@@ -105,6 +105,13 @@ export function isoFromBaghdadLocal(v) {
   return new Date(guess.getTime() - baghdadOffsetMs(guess)).toISOString();
 }
 
+/* التاريخ وحده بلا ساعة — للتواريخ التي لا وقت لها (رأس المال، بداية الحساب) */
+export function fmtDay(iso) {
+  if (!iso) return '—';
+  const p = baghdadWall(new Date(iso));
+  return `${+p.day} ${MONTHS_AR[+p.month - 1]} ${p.year}`;
+}
+
 export function fmtDate(iso) {
   if (!iso) return '—';
   const p = baghdadWall(new Date(iso));

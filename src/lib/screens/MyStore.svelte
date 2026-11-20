@@ -7,8 +7,10 @@
   import Glass from '../components/Glass.svelte';
   import EmptyState from '../components/EmptyState.svelte';
   import Ticker from '../components/Ticker.svelte';
-  import { db, loadProducts, vaultState, moneyInTransit, historicalPayments, modelGroupKey } from '../db.js';
-  import { fmtIQD, fmtNum, fmtDate, salePieces, baghdadDayKey, baghdadMonthKeyOf, MONTHS_AR } from '../utils.js';
+  import Sheet from '../components/Sheet.svelte';
+  import { db, loadProducts, vaultState, moneyInTransit, historicalPayments, modelGroupKey, capitalStats, saveCapital, firstRecordDate } from '../db.js';
+  import { fmtIQD, fmtNum, fmtDate, fmtDay, salePieces, baghdadDayKey, baghdadMonthKeyOf, MONTHS_AR, iqd, isoFromBaghdadLocal, buzz } from '../utils.js';
+  import { toastOk, toastErr } from '../store.js';
 
   let products = $state([]);
   let sales = $state([]);
@@ -23,19 +25,49 @@
   let archive = $state([]);
   let loaded = $state(false);
 
+  /* رأس المال الابتدائي — يُدخل من هنا (متجري) لأنه هنا يُقرأ العائد */
+  let cap = $state(null);
+  let capOpen = $state(false);
+  let capAmount = $state('');
+  let capDate = $state('');
+  let capSaving = $state(false);
+
+  async function openCap() {
+    buzz(6);
+    capAmount = cap?.capital ? String(cap.capital) : '';
+    const base = cap?.since || (await firstRecordDate());
+    capDate = base ? baghdadDayKey(base) : baghdadDayKey(new Date());
+    capOpen = true;
+  }
+
+  async function saveCap() {
+    const amount = iqd(capAmount);
+    if (!(amount > 0)) { toastErr('أدخلي مبلغاً أكبر من صفر'); return; }
+    capSaving = true;
+    try {
+      await saveCapital(amount, capDate ? isoFromBaghdadLocal(`${capDate}T00:00`) : null);
+      cap = await capitalStats();
+      capOpen = false;
+      buzz(10);
+      toastOk('حُفظ رأس المال — العائد يظهر الآن');
+    } finally {
+      capSaving = false;
+    }
+  }
+
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, s, e, rv, rf, ts, wl, mv, v, tr, ar] = await Promise.all([
+      const [p, s, e, rv, rf, ts, wl, mv, v, tr, ar, cp] = await Promise.all([
         loadProducts(), db.sales.toArray(), db.expenses.toArray(),
         db.reservations.toArray(), db.referrals.toArray(), db.testimonials.toArray(),
         db.waitlists.toArray(), db.movements.toArray(),
-        vaultState(), moneyInTransit(), historicalPayments()
+        vaultState(), moneyInTransit(), historicalPayments(), capitalStats()
       ]);
       if (!alive) return;
       products = p; sales = s; expenses = e; reservations = rv;
       referrals = rf; testimonials = ts; waitlists = wl; movements = mv;
-      vault = v; transit = tr; archive = ar;
+      vault = v; transit = tr; archive = ar; cap = cp;
       loaded = true;
     };
     grab();
@@ -229,6 +261,35 @@
         <span class="st-chev" class:open={secOpen.money}><Icon name="back" size={13} color="var(--taupe)" /></span>
       </button>
       {#if secOpen.money}
+        <!-- رأس المال: مقام كل عائد. يُقرأ هنا ويُعدَّل من هنا -->
+        {#if cap}
+          <Glass class="cap-card">
+            {#if cap.capital > 0}
+              <div class="cap-head">
+                <span class="cap-k"><Icon name="wallet" size={14} color="var(--gold)" /> رأس المال الابتدائي</span>
+                <button class="cap-edit" onclick={openCap}>تعديل</button>
+              </div>
+              <div class="cap-main">
+                <span class="cap-v">{fmtIQD(cap.capital)}</span>
+                <span class="cap-roi" class:pos={cap.net >= 0} class:neg={cap.net < 0}>
+                  {cap.roi === null ? '—' : `${fmtNum(Math.round(cap.roi))}%`}
+                </span>
+              </div>
+              <div class="cap-rows">
+                <div><span>صافي الربح منذ {cap.since ? fmtDay(cap.since) : 'البداية'}</span><b>{fmtIQD(cap.net)}</b></div>
+                <div><span>القيمة الحالية (رأس المال + الربح)</span><b>{fmtIQD(cap.worth)}</b></div>
+              </div>
+            {:else}
+              <button class="cap-empty" onclick={openCap}>
+                <span class="ce-ic"><Icon name="wallet" size={17} color="var(--burgundy)" /></span>
+                <span>
+                  <b>حدّدي رأس المال الابتدائي</b>
+                  <i>نقد + قيمة البضاعة يوم البداية — عندها يظهر عائدك الحقيقي</i>
+                </span>
+              </button>
+            {/if}
+          </Glass>
+        {/if}
         <div class="grid">
           <Glass class="stat">
             <span class="s-ic"><Icon name="sparkle" size={16} color="var(--burgundy)" /></span>
@@ -510,7 +571,63 @@
   {/if}
 </div>
 
+<Sheet open={capOpen} title="رأس المال الابتدائي" onclose={() => (capOpen = false)}>
+  <div class="stack" style="gap:14px">
+    <p class="muted small" style="margin:0; line-height:1.7">
+      نقد + قيمة البضاعة بالتكلفة يوم البداية. تُدخل مرة واحدة، ويُقاس عليها العائد:
+      <b>صافي الربح منذ ذلك التاريخ ÷ رأس المال</b>.
+    </p>
+    <div class="field">
+      <label>المبلغ (د.ع)</label>
+      <input class="input" bind:value={capAmount} inputmode="decimal" dir="ltr" style="text-align:center" placeholder="500000" />
+    </div>
+    <div class="field">
+      <label>يُحتسب من تاريخ</label>
+      <input class="input" type="date" bind:value={capDate} dir="ltr" style="text-align:center" />
+      <span class="muted tiny" style="line-height:1.6">
+        افتراضياً أول عملية في الدفاتر — لا تغيّريه إلا إذا كان المبلغ يمثّل وضعاً لاحقاً.
+      </span>
+    </div>
+    <button class="btn primary lg block" onclick={saveCap} disabled={capSaving}>
+      <Icon name="check" size={18} />
+      {iqd(capAmount) > 0 ? `حفظ ${fmtIQD(iqd(capAmount))}` : 'حفظ'}
+    </button>
+  </div>
+</Sheet>
+
 <style>
+  /* ---------- رأس المال والعائد ---------- */
+:global(.cap-card) { display: flex; flex-direction: column; gap: 8px; padding: 14px 15px; margin-bottom: 10px; }
+  .cap-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .cap-k { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 800; color: var(--taupe); }
+  .cap-edit {
+    flex: none; font-family: inherit; font-size: 11px; font-weight: 800;
+    color: var(--burgundy); background: rgba(181, 73, 91, 0.08);
+    border: none; border-radius: 999px; padding: 4px 10px; cursor: pointer;
+  }
+  .cap-main { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .cap-v { font-size: 21px; font-weight: 900; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .cap-roi {
+    flex: none; font-size: 17px; font-weight: 900; font-variant-numeric: tabular-nums;
+    padding: 2px 9px; border-radius: 999px;
+  }
+  .cap-roi.pos { color: var(--good); background: rgba(60, 130, 90, 0.1); }
+  .cap-roi.neg { color: var(--burgundy); background: rgba(181, 73, 91, 0.1); }
+  .cap-rows { display: flex; flex-direction: column; gap: 4px; border-top: 1px dashed rgba(201, 161, 90, 0.4); padding-top: 8px; }
+  .cap-rows > div { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; font-size: 12px; }
+  .cap-rows span { color: var(--taupe); font-weight: 600; }
+  .cap-rows b { font-weight: 800; color: var(--ink-2); font-variant-numeric: tabular-nums; }
+  .cap-empty {
+    width: 100%; display: flex; align-items: center; gap: 10px; text-align: start;
+    background: none; border: none; font-family: inherit; cursor: pointer; padding: 0;
+  }
+  .ce-ic {
+    flex: none; width: 36px; height: 36px; border-radius: 12px;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: rgba(181, 73, 91, 0.1);
+  }
+  .cap-empty b { display: block; font-size: 13px; font-weight: 900; color: var(--burgundy-deep); }
+  .cap-empty i { display: block; font-style: normal; font-size: 11px; color: var(--taupe); line-height: 1.5; margin-top: 2px; }
   /* اسم خاص بالمكوّن: `:global(.hero)` ليست محصورة، وكانت تعيد ضبط حشوة رأس كل شاشة أخرى */
   :global(.store-hero) {
     padding: 15px 16px;

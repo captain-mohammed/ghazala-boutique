@@ -7,7 +7,7 @@
   import EmptyState from '../components/EmptyState.svelte';
   import VariantBits from '../components/VariantBits.svelte';
   import TargetRing from '../components/TargetRing.svelte';
-  import { db, allSettings, upcomingOccasions, vaultState, vaultManual, archivedModels, moneyInTransit, loadProducts } from '../db.js';
+  import { db, allSettings, upcomingOccasions, vaultState, vaultManual, archivedModels, moneyInTransit, loadProducts, capitalStats } from '../db.js';
   import { fmtIQD, fmtNum, isSameDay, daysAgoStart, lastSaleMap, salePieces, fmtDate, buzz, baghdadDayKey, dayLabelFromKey, stockArrival, shelfAgeDays, baghdadLocalInput, isoFromBaghdadLocal, baghdadHour, countAr } from '../utils.js';
   import { spotlight, tilt } from '../motion.js';
   import Sheet from '../components/Sheet.svelte';
@@ -26,19 +26,21 @@
   let occasions = $state([]);
   let reservations = $state([]);
   let vault = $state(null);
+  let cap = $state(null);
 
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, s, r, v, st, tr] = await Promise.all([
+      const [p, s, r, v, st, tr, cp] = await Promise.all([
         loadProducts(), db.sales.toArray(), db.reservations.toArray(), vaultState(), allSettings(),
-        moneyInTransit()
+        moneyInTransit(), capitalStats()
       ]);
       if (!alive) return;
       products = p;
       sales = s;
       reservations = r.filter((x) => x.status === 'active');
       vault = v;
+      cap = cp;
       /* المبلغ عند الشركات من نفس الدالة التي تستعملها شاشة الحساب — ناقصاً
          الأرصدة الدائنة للدفعات المستلمة، فلا يختلف الرقمان أبداً */
       transit = tr;
@@ -472,6 +474,12 @@
         {:else}
           <div class="muted tiny">أرباح كل المبيعات، بلا مصاريف</div>
         {/if}
+        {#if cap?.capital > 0}
+          <div class="v-roi">
+            العائد على رأس المال
+            <b class:neg={cap.net < 0}>{cap.roi === null ? '—' : `${fmtNum(Math.round(cap.roi))}%`}</b>
+          </div>
+        {/if}
       </div>
       <Icon name="back" size={16} color="var(--taupe)" />
     </Glass>
@@ -612,6 +620,15 @@
     display: flex; align-items: center; justify-content: center;
     box-shadow: 0 4px 12px rgba(122, 46, 58, 0.3);
   }
+  .v-roi {
+    margin-top: 3px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--taupe);
+    display: flex; align-items: center; gap: 5px;
+  }
+  .v-roi b { font-weight: 900; color: var(--good); font-variant-numeric: tabular-nums; }
+  .v-roi b.neg { color: var(--burgundy); }
   .v-bar {
     height: 5px; border-radius: 999px; margin: 4px 0 3px;
     background: rgba(122, 46, 58, 0.12);

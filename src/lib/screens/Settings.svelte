@@ -3,7 +3,7 @@
   import Icon from '../components/Icon.svelte';
   import Glass from '../components/Glass.svelte';
   import { db, allSettings, setSetting, seedDemo, wipeAll } from '../db.js';
-  import { buzz, hashPin, WA_VARS, WA_STATUS_TEMPLATES, MKT_TEMPLATES, MKT_VARS } from '../utils.js';
+  import { buzz, hashPin, fmtIQD, WA_VARS, WA_STATUS_TEMPLATES, MKT_TEMPLATES, MKT_VARS } from '../utils.js';
   import { toastOk, toastErr, askConfirm } from '../store.js';
 
   let { goto = () => {} } = $props();
@@ -11,6 +11,8 @@
   let deadDays = $state(30);
   let dailyTarget = $state(0);
   let vaultGoal = $state(500000);
+  /* قراءة فقط هنا — الإدخال في «متجري» حيث يُقرأ العائد */
+  let initialCapital = $state(0);
   let archiveDays = $state(30);
   let loaded = $state(false);
 
@@ -37,6 +39,7 @@
     deadDays = s.deadStockDays;
     dailyTarget = s.dailyTarget ?? 0;
     vaultGoal = s.vaultGoal ?? 500000;
+    initialCapital = s.initialCapital ?? 0;
     archiveDays = s.archiveDays ?? 30;
     waText = s[waCurrent.key] || waCurrent.def;
     waTouched = !!s[waCurrent.key];
@@ -196,6 +199,13 @@
           <input class="input" bind:value={vaultGoal} inputmode="numeric" />
         </div>
         <div class="field">
+          <label>رأس المال الابتدائي</label>
+          <div class="cap-echo">
+            <b>{initialCapital > 0 ? fmtIQD(initialCapital) : 'لم يُحدَّد بعد'}</b>
+            <span class="muted tiny">يُعدَّل من «متجري» ← قسم المال</span>
+          </div>
+        </div>
+        <div class="field">
           <label>انقل الموديل للمدينة القديمة بعد نفاد (يوم)</label>
           <input class="input" bind:value={archiveDays} inputmode="numeric" />
         </div>
@@ -299,6 +309,13 @@
 </div>
 
 <style>
+  .cap-echo {
+    display: flex; flex-direction: column; gap: 2px;
+    padding: 9px 12px; border-radius: var(--r-sm);
+    background: rgba(156, 123, 107, 0.08);
+    border: 1px dashed rgba(156, 123, 107, 0.28);
+  }
+  .cap-echo b { font-size: 14px; font-weight: 900; color: var(--ink); font-variant-numeric: tabular-nums; }
   .wa-ta {
     width: 100%;
     min-height: 170px;

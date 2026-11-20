@@ -2,10 +2,10 @@
   import Icon from '../components/Icon.svelte';
   import Ticker from '../components/Ticker.svelte';
   import VariantBits from '../components/VariantBits.svelte';
-  import { db, allSettings, getSetting, WOMENS_TYPES, modelGroupKey, loadProducts } from '../db.js';
+  import { db, allSettings, getSetting, WOMENS_TYPES, modelGroupKey, loadProducts, capitalStats } from '../db.js';
   import Glass from '../components/Glass.svelte';
   import ReceiveHistory from './ReceiveHistory.svelte';
-  import { fmtIQD, fmtNum, fmtDate, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR, shelfAgeDays, stockArrival, baghdadWeekday, baghdadDayPart, isoFromBaghdadLocal } from '../utils.js';
+  import { fmtIQD, fmtNum, fmtDate, fmtDay, startOfToday, daysAgoStart, lastSaleMap, salePieces, MONTHS_AR, shelfAgeDays, stockArrival, baghdadWeekday, baghdadDayPart, isoFromBaghdadLocal } from '../utils.js';
 
   let products = $state([]);
   let sales = $state([]);
@@ -14,6 +14,8 @@
   let expenses = $state([]);
   let closings = $state([]);
   let settings = $state(null);
+  /* رأس المال: يظهر في «الكل» فقط — أرقام الفترات لا تُخلط برقم عمره كل الوقت */
+  let cap = $state(null);
   let period = $state('today');
   let view = $state('reports'); // reports | history
   let customFrom = $state('');
@@ -43,7 +45,7 @@
   $effect(() => {
     let alive = true;
     const grab = async () => {
-      const [p, s, e, c, st] = await Promise.all([loadProducts(), db.sales.toArray(), db.expenses.toArray(), getSetting('monthClosing', []), allSettings()]);
+      const [p, s, e, c, st, cp] = await Promise.all([loadProducts(), db.sales.toArray(), db.expenses.toArray(), getSetting('monthClosing', []), allSettings(), capitalStats()]);
       if (!alive) return;
       products = p;
       sales = s;
@@ -51,6 +53,7 @@
       closings = Array.isArray(c) ? c : [];
       /* حد الرکود حيّ مع كل جلب — تغييره في الإعدادات ينعكس دون مغادرة الصفحة */
       settings = st;
+      cap = cp;
     };
     grab();
     const t = setInterval(grab, 5000);
@@ -240,6 +243,19 @@
     <Glass class="stat rise" style="animation-delay:0.15s; padding:13px 15px; display:flex; flex-direction:column; gap:3px"><span class="muted small">قيمة المخزون</span><div class="big"><Ticker value={stockValue} /> <span class="cur">د.ع</span></div></Glass>
   </section>
 
+  <!-- العائد على رأس المال: رقم عمره كل الوقت، فلا يظهر إلا في «الكل» -->
+  {#if period === 'all' && cap?.capital > 0}
+    <Glass class="cap-row rise" style="animation-delay:0.18s">
+      <span class="cr-k"><Icon name="wallet" size={14} color="var(--gold)" /> العائد على رأس المال</span>
+      <span class="cr-v" class:pos={cap.net >= 0} class:neg={cap.net < 0}>
+        {cap.roi === null ? '—' : `${fmtNum(Math.round(cap.roi))}%`}
+      </span>
+      <span class="muted tiny cr-sub">
+        صافي {fmtIQD(cap.net)} على رأس مال {fmtIQD(cap.capital)} منذ {cap.since ? fmtDay(cap.since) : 'البداية'}
+      </span>
+    </Glass>
+  {/if}
+
   <Glass class="chart rise" style="animation-delay:0.1s; padding:16px">
     <h2 class="h2">مبيعات آخر 14 يوم</h2>
     <div class="bars" class:empty={!hasDaily}>
@@ -393,6 +409,16 @@
 </div>
 
 <style>
+  /* العائد على رأس المال — سطر واحد، لا بطاقة كاملة */
+:global(.cap-row) {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+    padding: 12px 14px;
+  }
+  .cr-k { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 800; color: var(--taupe); }
+  .cr-v { font-size: 16px; font-weight: 900; font-variant-numeric: tabular-nums; margin-inline-start: auto; padding: 1px 8px; border-radius: 999px; }
+  .cr-v.pos { color: var(--good); background: rgba(60, 130, 90, 0.1); }
+  .cr-v.neg { color: var(--burgundy); background: rgba(181, 73, 91, 0.1); }
+  .cr-sub { flex-basis: 100%; }
   :global(.empty-rep) {
     padding: 26px 20px 24px;
     display: flex;
